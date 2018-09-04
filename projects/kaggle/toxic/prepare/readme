@@ -1,0 +1,20 @@
+python3 ./gen-vocab-parse.py --out_dir $dir --vocab_name vocab.full --min_count -1 --input ~/temp/toxic/v9/tfrecords/glove.bak/train.csv  --test_input ~/temp/toxic/v9/tfrecords/glove.bak/test.csv 
+
+for fast update attributes 
+
+
+improve from 0.9833 to 0.9854 after preprocess try to simple split or fix word (ni*gger to nigger) 
+sees ./tokenizer-v2.py 
+
+
+now from v13 change to use toxic word dict f**in will not norm to fin 
+
+TODO for v14
+also use text blob try to error correcting for example peopel to people
+
+notice NO UNK!  
+
+v14 no unk seems not work well, chang back to use.. unk  
+unk problem seems can be handel with simple rule based method since many other language useless char is non toxic 
+
+v15 back to min count 10
