@@ -21,6 +21,7 @@ FLAGS = flags.FLAGS
 
 from tensorflow import keras
 
+import wenzheng
 from wenzheng.utils import vocabulary, embedding
 
 from algos.config import NUM_CLASSES
@@ -34,26 +35,44 @@ class Model(keras.Model):
     super(Model, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
-    self.embedding = keras.layers.Embedding(vocab_size, FLAGS.emb_dim)
-    self.pooling = keras.layers.GlobalMaxPool1D()
-    self.logits = keras.layers.Dense(NUM_CLASSES, activation=None)
-    self.probs = keras.layers.Dense(NUM_CLASSES, activation=tf.nn.sigmoid)
+    #self.embedding = keras.layers.Embedding(vocab_size, FLAGS.emb_dim)
+    #with tf.device('/cpu:0'):
+    self.embedding = wenzheng.utils.Embedding(vocab_size, FLAGS.emb_dim, 
+                                              FLAGS.word_embedding_file, 
+                                              trainable=FLAGS.finetune_word_embedding)
+    
+    self.encode = melt.layers.CudnnRnn(num_layers=1, num_units=FLAGS.rnn_hidden_size, keep_prob=0.7)
 
-  def call(self, inputs, training=False):
-    #inputs = Input(*inputs)
-    x = inputs.comment
+    #self.encode = keras.layers.CuDNNGRU(units=FLAGS.rnn_hidden_size, 
+    # self.encode = keras.layers.CuDNNLSTM(units=FLAGS.rnn_hidden_size, 
+    #                                     return_sequences=True, 
+    #                                     return_state=False, 
+    #                                     recurrent_initializer='glorot_uniform')
+
+    #self.encode = keras.layers.GRU(units=FLAGS.rnn_hidden_size, 
+    #                     return_sequences=True, 
+    #                     return_state=False, 
+    #                     recurrent_activation='sigmoid', 
+    #                     recurrent_initializer='glorot_uniform')
+
+    #self.pooling = keras.layers.GlobalMaxPool1D()
+    self.pooling = melt.layers.MaxPooling()
+
+    self.logits = keras.layers.Dense(NUM_CLASSES, activation=None)
+
+  def call(self, x, training=False):
+    x = x.comment
+    length = melt.length(x)
+    #with tf.device('/cpu:0'):
     x = self.embedding(x)
+    #print('----------------length', tf.reduce_max(length), inputs.comment.shape)
+    x = self.encode(x, length)
+    #x = self.encode(x)
+    x = self.pooling(x, length)
     #x = self.pooling(x)
-    x = melt.max_pooling(x, melt.length(inputs.comment))
     x = self.logits(x)
     return x
 
-
-def calc_loss(model, inputs, training=False):
-  #print('----', x)
-  y_ = model(inputs, training=training)
-  y = inputs.classes
-  #y_ = model(x.comment)
-  #y_ = model(tf.constant([[1,2,3,0], [2,2,3,4]]))
+def criterion(model, x, y, training=False):
+  y_ = model(x, training=training)
   return tf.losses.sigmoid_cross_entropy(y, y_)   
-

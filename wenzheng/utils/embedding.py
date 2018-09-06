@@ -50,6 +50,9 @@ flags.DEFINE_float('emb_stddev', 0., 'if 0 use hidden_size ** -0.5, another choi
 
 import sys
 import os
+
+import numpy as np
+
 import melt
 logging = melt.logging
 import gezi
@@ -64,6 +67,49 @@ try:
 except Exception:
   print('Warning, no conf.py in current path use util conf', file=sys.stderr)
   from wenzheng.utils.conf import TEXT_MAX_WORDS
+
+
+layers = tf.keras.layers
+class Embedding(layers.Layer):
+  """An Embedding layer."""
+
+  def __init__(self, vocab_size, embedding_dim=None, embedding=None, trainable=True, **kwargs):
+    super(Embedding, self).__init__(**kwargs)
+    self.vocab_size = vocab_size
+    self.embedding_dim = embedding_dim if embedding_dim else FLAGS.emb_dim
+    self.trainable = trainable
+
+    self.embedding = embedding
+    if embedding is not None:
+      if type(embedding) is str:
+        self.embedding = np.load(embedding)
+      
+  def build(self, _):
+    initializer = 'uniform'
+    if self.embedding is not None:
+      initializer = tf.constant_initializer(self.embedding)
+      logging.info('emb init from numpy pretrain and trainable:', self.trainable)
+    else:
+      if FLAGS.emb_init == 'uniform':
+        init_width = 0.5 / self.embedding_dim
+        logging.info('emb random_uniform init with width:', init_width)
+        initializer = tf.random_uniform_initializer(-init_width, init_width)
+      elif FLAGS.emb_init == 'normal' or FLAGS.emb_init == 'random':
+        stddev = FLAGS.emb_stddev or self.embedding_dim ** -0.5
+        logging.info('emb random_normal init with stddev:', stddev)
+        initializer = tf.random_normal_initializer(mean=0., stddev=stddev)
+
+    self.embedding = self.add_variable(
+        "embedding_kernel",
+        shape=[self.vocab_size, self.embedding_dim],
+        dtype=tf.float32,
+        initializer=initializer,
+        trainable=self.trainable)
+
+  def call(self, x):
+    #print('---------', self.embedding)
+    return tf.nn.embedding_lookup(self.embedding, x)
+
 
 #TODO try l2_regularizer and compare
 #weights = slim.variable('weights',

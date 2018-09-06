@@ -325,13 +325,13 @@ def write_to_txt(data, file):
   out = open(file, 'w')
   out.write('{}'.format(data))
 
-def read_int_from(file, default_value=0):
+def read_int_from(file, default_value=None):
   return int(open(file).readline().strip().split()[0]) if os.path.isfile(file) else default_value
 
-def read_float_from(file, default_value=0):
+def read_float_from(file, default_value=None):
   return float(open(file).readline().strip().split()[0]) if os.path.isfile(file) else default_value
 
-def read_str_from(file, default_value=0):
+def read_str_from(file, default_value=None):
   return open(file).readline().strip() if os.path.isfile(file) else default_value
 
 def img_html(img):

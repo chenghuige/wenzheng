@@ -331,7 +331,7 @@ def gen_train_op_byname(loss, learning_rate, name='adagrad'):
 #but for num_gpus=0 we will not consider multi gpu mode
 #so num_gpus=1 will not use much, just for mlti gpu test purpose
 #from https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py def train()
-def tower(loss_function, num_gpus=1, is_training=True, name=''):
+def tower(loss_function, num_gpus=1, training=True, name=''):
   towers = []
   update_ops = []
   for i in range(num_gpus):
@@ -348,10 +348,10 @@ def tower(loss_function, num_gpus=1, is_training=True, name=''):
             #tf.get_variable_scope().reuse_variables()
             #print(tf.get_variable_scope().reuse)
             # REMIND actually for training other metrics like acc... will only record the last one, I think this is enough!
-            if isinstance(loss, (list, tuple)) and is_training:
+            if isinstance(loss, (list, tuple)) and training:
               loss = loss[0]
             towers.append(loss)
-            if i == 0 and is_training:
+            if i == 0 and training:
               # Only trigger batch_norm moving mean and variance update from
               # the 1st tower. Ideally, we should grab the updates from all
               # towers but these stats accumulate extremely fast so we can
@@ -359,7 +359,7 @@ def tower(loss_function, num_gpus=1, is_training=True, name=''):
               # significant detriment.
               update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS,
                                              name_scope)
-  if is_training:
+  if training:
     return towers, update_ops
   else:
     #return zip(*tower_losses)
@@ -368,7 +368,7 @@ def tower(loss_function, num_gpus=1, is_training=True, name=''):
 tower_losses = tower
 
 # from cifar10_estimator example code
-def split_batch(batch_datas, batch_size, num_shards, is_training=True):
+def split_batch(batch_datas, batch_size, num_shards, training=True):
   with tf.device('/cpu:0'):
     if num_shards <= 1:
       # No GPU available or only 1 GPU.
@@ -390,7 +390,7 @@ def split_batch(batch_datas, batch_size, num_shards, is_training=True):
     assert batch_size == batch_size_per_gpu * num_shards
 
     for i in range(batch_size):
-      idx = i % num_shards if is_training else i // batch_size_per_gpu
+      idx = i % num_shards if training else i // batch_size_per_gpu
       for j in range(len(batch_datas)):
         new_batch_datas[j][idx].append(batch_datas[j][i])
 
@@ -538,6 +538,10 @@ def logging_results(results, names, tag=''):\
     [tag] + ['%s:[%.4f]'%(name, result) for name, result in zip(names, results)]))
       
 def parse_results(results, names=None):
+  if type(results[0]) is str:
+    temp = results 
+    results = names 
+    names = temp
   #only single values in results!
   if names is None:
     return gezi.pretty_floats(results)

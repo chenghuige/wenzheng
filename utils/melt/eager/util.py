@@ -17,12 +17,12 @@ import os
 
 import tensorflow as tf
 
-def grad(model, inputs, loss_fn):
+def grad(model, x, y, loss_fn):
   with tf.GradientTape() as tape:
     try:
-      loss = loss_fn(model, inputs, training=True)
+      loss = loss_fn(model, x, y, training=True)
     except Exception:
-      loss = loss_fn(model, inputs)
+      loss = loss_fn(model, x, y)
   return loss, tape.gradient(loss, model.trainable_variables)
 
 def clip_gradients(grads_and_vars, clip_ratio):

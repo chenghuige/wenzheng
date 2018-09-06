@@ -178,6 +178,7 @@ else:
   
 flags.DEFINE_string('buckets', None, 'empty meaning not use, other wise looks like 5,10,15,30')
 flags.DEFINE_string('batch_sizes', None, '')
+flags.DEFINE_integer('length_index', 1, '')
 
 flags.DEFINE_integer('min_after_dequeue', 0, """by deafualt will be 500, 
                                                 set to large number for production training 

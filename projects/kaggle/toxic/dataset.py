@@ -34,7 +34,6 @@ import prepare.config
 NUM_COMMENT_FEATURES = 7
 
 Input = namedtuple('Input', ['id', 
-                             'classes', 
                              'comment', 
                              'comment_chars', 
                              'comment_ngrams',
@@ -263,19 +262,21 @@ class Dataset(melt.tfrecords.Dataset):
     #   if len(comment_fngrams_list) > 1:
     #     comment_fngrams = tf.concat(comment_fngrams_list, 0)
 
-    ops = [id, classes, 
-          comment, comment_chars, 
-          comment_ngrams, 
-          #comment_fngrams, 
-          simple_chars,
-          #simple_ngrams, 
-          tokens_info, 
-          #comment_info, 
-          pos, tag, ner, 
-          weight, 
-          comment_str, 
-          comment_tokens_str]
+    ops = [id, 
+           comment, 
+           comment_chars, 
+           comment_ngrams, 
+           #comment_fngrams, 
+           simple_chars,
+           #simple_ngrams, 
+           tokens_info, 
+           #comment_info, 
+           pos, tag, ner, 
+           weight, 
+           comment_str, 
+           comment_tokens_str]
 
-    #return ops
-    return Input(*ops)
+    x = Input(*ops)
+    y = classes
+    return x, y
 

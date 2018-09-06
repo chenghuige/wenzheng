@@ -67,6 +67,7 @@ def init(vocab_path_=None, append=None):
   if vocab is None:
     if not FLAGS.vocab_buckets:
       vocab_path = vocab_path_ or FLAGS.vocab or gezi.dirname(FLAGS.model_dir) + '/vocab.txt'
+      FLAGS.vocab = vocab_path
       logging.info('vocab:{}'.format(vocab_path))
       logging.info('NUM_RESERVED_IDS:{}'.format(FLAGS.num_reserved_ids))
       if append is None:

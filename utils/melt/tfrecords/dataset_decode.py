@@ -218,7 +218,11 @@ def inputs(files,
           def example_to_bucket_id(*args, **kw):
             """Return int64 id of the length bucket for this example."""
             assert length_index is not None
-            x = args[length_index]
+            try:
+              x = list(args[0])[length_index]
+            except Exception:
+              x = args[length_index]
+            
             seq_length = tf.reduce_sum(tf.cast(tf.cast(x, tf.bool), tf.int32))
             
             buckets_min = [np.iinfo(np.int32).min] + boundaries
@@ -236,7 +240,7 @@ def inputs(files,
             ## TODO larger window better hsku squad doing this like below, shuffle can be better ?
             ## NOTICE!! shuffle may be slow start fill queue can remove not hurt performance ?
             dataset = dataset.apply(tf.contrib.data.group_by_window(
-                example_to_bucket_id, batching_fn, window_size=5 * batch_size)).shuffle((len(boundaries) + 1) * 25)
+              example_to_bucket_id, batching_fn, window_size=5 * batch_size)).shuffle((len(boundaries) + 1) * 25)
 
             ## tenor2tensor doing this, no shuffle ? also it seems like window_func for different bounds
             ## with different batch_size ?
@@ -247,7 +251,10 @@ def inputs(files,
             # test ok ie buckets[400] batch_sizes[64, 32]
             if not isinstance(bucket_batch_sizes, (list, tuple)):
               bucket_batch_sizes = [int(x) for x in bucket_batch_sizes.split(',') if x.strip()]
+
             logging.info('bucket_batche_sizes', bucket_batch_sizes)
+            assert len(boundaries) + 1 == len(bucket_batch_sizes)
+
             def window_size_fn(bucket_id):
               # window size = batch size
               batch_sizes = tf.constant(bucket_batch_sizes, dtype=tf.int64)
@@ -263,8 +270,8 @@ def inputs(files,
               return grouped_dataset.padded_batch(batch_size, padded_shapes=(shapes))
 
             # shuffle will make start slower might fill
-            dataset = dataset.apply(
-              tf.contrib.data.group_by_window(example_to_bucket_id, batching_fn, None, window_size_fn)).shuffle((len(boundaries) + 1) * 25)      
+            dataset = dataset.apply(tf.contrib.data.group_by_window(
+              example_to_bucket_id, batching_fn, None, window_size_fn)).shuffle((len(boundaries) + 1) * 25)      
       else:
         # no bucket
         if dynamic_pad:

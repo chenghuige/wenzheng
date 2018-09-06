@@ -287,9 +287,9 @@ def tf_train_flow(train_once_fn,
   except Exception:
     pass
   
-  if save_interval_epochs and num_steps_per_epoch and num_steps >= 0:
-    epoch_dir = os.path.join(model_dir, 'epoch')
-    gezi.try_mkdir(epoch_dir)
+  #if save_interval_epochs and num_steps_per_epoch and num_steps >= 0:
+  epoch_dir = os.path.join(model_dir, 'epoch')
+  gezi.try_mkdir(epoch_dir)
   
   coord = tf.train.Coordinator()
   threads = tf.train.start_queue_runners(sess=sess, coord=coord)

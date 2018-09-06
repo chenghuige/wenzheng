@@ -16,7 +16,7 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('input', '/home/gezi/mount/temp/toxic/tfrecords/glove/test/*record,', '')
+flags.DEFINE_string('input', '/home/gezi/mount/temp/kaggle/toxic/tfrecords/glove/test/*record,', '')
 flags.DEFINE_integer('batch_size_', 512, '')
 flags.DEFINE_string('model_dir', None, '')
 flags.DEFINE_string('type', 'train', '')
@@ -41,7 +41,12 @@ def main(_):
   logging.set_logging_path('/home/gezi/tmp/')
   vocab_path = os.path.join(os.path.dirname(os.path.dirname(FLAGS.input)), 'vocab.txt')
   ids2text.init(vocab_path)
-  FLAGS.vocab = '/home/gezi/mount/temp/toxic/tfrecords/glove/vocab.txt'
+  FLAGS.vocab = '/home/gezi/mount/temp/kaggle/toxic/tfrecords/glove/vocab.txt'
+
+  FLAGS.length_index = 2
+  #FLAGS.length_index = 1
+  FLAGS.buckets = '100,400'
+  FLAGS.batch_sizes = '64,64,32'
 
   input_ = FLAGS.input 
   if FLAGS.type == 'test':
@@ -63,7 +68,7 @@ def main(_):
   for i, input in enumerate(dataset):
     if i % 10 == 1:
       #print(i, result)
-      input = Input(*input)
+      #input = Input(*input)
       print(input.classes)
       print(input.comment)
       print(ids2text.ids2text(input.comment[0], sep='|'))

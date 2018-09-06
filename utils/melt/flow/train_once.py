@@ -143,8 +143,8 @@ def train_once(sess,
         eval_names_ = melt.adjust_names(eval_loss, eval_names)
         logging.info2('{} eval_step: {} eval_metrics:{}'.format(epoch_str, step, melt.parse_results(eval_loss, eval_names_)))
         
-        if deal_eval_results_fn is not None:
-          eval_stop = deal_eval_results_fn(eval_results)
+        # if deal_eval_results_fn is not None:
+        #   eval_stop = deal_eval_results_fn(eval_results)
 
         assert len(eval_loss) > 0
         if eval_stop is True:
@@ -189,7 +189,7 @@ def train_once(sess,
           evaluate_results, evaluate_names, evaluate_summaries = l
       except Exception:
         logging.info('Do nothing for metric eval fn with exception:\n', traceback.format_exc())
-
+    
 
     logging.info2('{} valid_step:{} valid_metrics:{}'.format(epoch_str, step, melt.parse_results(evaluate_results, evaluate_names)))
     if learning_rate is not None and (learning_rate_patience and learning_rate_patience > 0):
@@ -410,7 +410,6 @@ def train_once(sess,
     #     info.write('metric_time_ratio:{:.3f} '.format(duration/metric_full_duration))
     # #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, info.getvalue())
     # logging.info2('{} {} {}'.format(epoch_str, 'eval_step: %d'%step, info.getvalue()))
-
     return stop
   elif metric_evaluate:
     summary = tf.Summary()

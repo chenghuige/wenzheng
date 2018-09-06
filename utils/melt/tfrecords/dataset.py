@@ -44,38 +44,44 @@ class Dataset(object):
   def parser(self, example):
     pass
 
-  def make_batch(self, batch_size, filenames=None):
+  def make_batch(self, 
+                 batch_size=None, 
+                 filenames=None,
+                 initializable=True,
+                 repeat=None,
+                 return_iterator=True):
     """Read the images and labels from 'filenames'."""
     #with tf.device('/cpu:0'):
+    batch_size = batch_size or FLAGS.batch_size
     filenames = filenames or self.get_filenames()
     logging.info(self.subset, 'num files', len(filenames))
     assert filenames, self.subset
     min_queue_examples = 20000
-    repeat = False if tf.executing_eagerly() else True
+    if repeat is None:
+      repeat = False if tf.executing_eagerly() else True
+
     if self.subset == 'train':
-      return melt.dataset_decode.inputs(
-        filenames, 
-        decode_fn=self.parser,
-        batch_size=batch_size,
-        num_threads=FLAGS.num_threads,
-        shuffle_files=True,
-        fix_sequence=False,
-        buffer_size=min_queue_examples + 3 * batch_size,
-        initializable=True,
-        repeat=repeat,
-        name=self.subset)
+      shuffle_files=True 
+      fix_sequence = False
     else:
+      shuffle_files = False
+      fix_sequence = True
+    with tf.device('/cpu:0'):
       return melt.dataset_decode.inputs(
         filenames, 
         decode_fn=self.parser,
         batch_size=batch_size,
-        shuffle_files=False,
         num_threads=FLAGS.num_threads,
-        fix_sequence=True,
+        shuffle_files=shuffle_files,
+        fix_sequence=fix_sequence,
         buffer_size=min_queue_examples + 3 * batch_size,
-        initializable=True,
+        initializable=initializable,
         repeat=repeat,
-        name=self.subset)      
+        bucket_boundaries=FLAGS.buckets,
+        bucket_batch_sizes=FLAGS.batch_sizes,
+        length_index=FLAGS.length_index,
+        return_iterator=return_iterator,
+        name=self.subset) 
 
   @staticmethod
   def num_examples_per_epoch(subset='train', dir=None):
