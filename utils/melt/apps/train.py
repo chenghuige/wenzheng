@@ -22,10 +22,14 @@ from __future__ import print_function
 from tensorflow.python import debug as tf_debug
 import tensorflow.contrib.slim as slim
 
+from tqdm import tqdm
+import numpy as np
+
 __pacage__ = None 
 
 import sys 
 import os 
+import inspect
 
 import gezi
 import melt 
@@ -61,6 +65,7 @@ flags.DEFINE_integer('num_epochs', 0, '''Number of epochs to run trainer.
 flags.DEFINE_integer('num_steps', 0, '''Number of steps to run trainer. 0 means run forever, 
                                         -1 means you just want to build graph and save without training(changing model value)''')
 #-------model
+flags.DEFINE_string('model_dir', None, '')
 flags.DEFINE_boolean('save_model', True, '')
 flags.DEFINE_float('save_interval_epochs', 1, 'if 0 will not save, by default 1 epoch 1 model in modeldir/epoch, you can change to 2, 0.1 etc')
 flags.DEFINE_float('save_interval_seconds', 0, 'model/checkpoint save interval by n seconds, if > 0 will use this other wise use save_interval_hours')
@@ -179,6 +184,7 @@ else:
 flags.DEFINE_string('buckets', None, 'empty meaning not use, other wise looks like 5,10,15,30')
 flags.DEFINE_string('batch_sizes', None, '')
 flags.DEFINE_integer('length_index', 1, '')
+flags.DEFINE_string('length_key', None, '')
 
 flags.DEFINE_integer('min_after_dequeue', 0, """by deafualt will be 500, 
                                                 set to large number for production training 
@@ -220,7 +226,7 @@ flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
 inited = None 
 
 def init(): 
-  if FLAGS.use_eager:
+  if FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1:
     tf.enable_eager_execution()
 
   if 'FOLD' in os.environ:
@@ -379,6 +385,7 @@ def init():
     FLAGS.batch_size = int(FLAGS.batch_size / FLAGS.num_gpus)
 
   num_gpus = FLAGS.num_gpus
+  assert num_gpus is not None, 'forget to set CUDA...? to specify the gpus?'
   melt.set_global('num_gpus', max(num_gpus, 1))
 
   melt.set_global('batch_size', FLAGS.batch_size * melt.num_gpus())
@@ -525,6 +532,9 @@ def train_flow(ops,
                variables_to_save=None,
                output_collection_names=None, 
                output_node_names=None,
+               num_steps=None,
+               num_epochs=None,
+               model=None,
                sess=None):
   """
    #variables_to_restore = slim.get_variables_to_restore(exclude=['fc6', 'fc7', 'fc8']) not used much 
@@ -680,8 +690,8 @@ def train_flow(ops,
   metric_eval_interval_steps=FLAGS.metric_eval_interval_steps
   save_model=FLAGS.save_model 
   save_interval_steps = FLAGS.save_interval_steps 
-  num_steps = FLAGS.num_steps
-  num_epochs = FLAGS.num_epochs
+  num_steps = num_steps or FLAGS.num_steps
+  num_epochs = num_epochs or FLAGS.num_epochs
 
   if not save_interval_steps:
     save_interval_steps = 1000000000000
@@ -792,4 +802,278 @@ def train_flow(ops,
              output_collection_names=output_collection_names,
              output_node_names=output_node_names,
              write_during_train=FLAGS.write_during_train,
+             model=model,
              sess=sess)
+
+# TODO make this evaluate , infrence and melt train_flow as standard melt.apps.train 
+def evaluate(ops, iterator, num_steps, num_examples, eval_fn, 
+             model_path=None, names=None, write_fn=None,
+             num_gpus=1, write=False,
+             suffix='.valid', sess=None):
+  ids_list = []  
+  predictions_list = []
+  labels_list = []
+
+  if not sess:
+    sess = melt.get_session()
+  
+  sess.run(iterator.initializer)
+
+  try:
+    for i in range(num_gpus):
+      ops[i][0] = ops[i][0]['id']
+  except Exception:
+    pass
+
+  for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
+    results = sess.run(ops)
+    for i in range(num_gpus):
+      ids, labels, predictions = results[i]
+      ids = gezi.decode(ids)     
+      ids_list.append(ids)   
+      predictions_list.append(predictions)
+      labels_list.append(labels)
+
+  ids = np.concatenate(ids_list)[:num_examples]
+  predicts = np.concatenate(predictions_list)[:num_examples]
+  labels = np.concatenate(labels_list)[:num_examples]
+
+  if model_path and write:
+    ofile = model_path +  suffix
+    with open(ofile, 'w', encoding='UTF-8') as out:
+      if names:
+        print(*names, sep=',', file=out)
+      for id, label, predict in zip(ids, labels, predicts):
+        if write_fn is None:
+          if not gezi.iterable(label):
+            label = [label]
+          if not gezi.iterable(predict):
+            predict = [predict]
+          print(id, *label, *predict, sep=',', file=out)
+        else:
+          write_fn(id, label, predict, out)
+
+  # TODO maybe **kargs better ?
+  if len(inspect.getargspec(eval_fn).args) == 4:
+    return eval_fn(labels, predicts, ids=ids, model_path=model_path)
+  elif len(inspect.getargspec(eval_fn).args) == 3:
+    if 'ids' in inspect.getargspec(eval_fn).args:
+      return eval_fn(labels, predicts, ids)
+    else:
+      return eval_fn(labels, predicts, model_path)
+  else:
+    return eval_fn(labels, predicts)
+
+def inference(ops, iterator, num_steps, num_examples, 
+              model_path, names=None, write_fn=None,
+              num_gpus=1, suffix='.infer', sess=None):
+  ids_list = []  
+  predictions_list = []
+
+  if not sess:
+    sess = melt.get_session()
+  
+  sess.run(iterator.initializer)
+
+  try:
+    for i in range(num_gpus):
+      ops[i][0] = ops[i][0]['id']
+  except Exception:
+    pass
+
+  for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
+    results = sess.run(ops)
+    for i in range(num_gpus):
+      ids, predictions = results[i]
+      ids = gezi.decode(ids)     
+      ids_list.append(ids)   
+      predictions_list.append(predictions)
+
+  ids = np.concatenate(ids_list)[:num_examples]
+  predicts = np.concatenate(predictions_list)[:num_examples]
+
+  ofile = model_path +  suffix
+  with open(ofile, 'w', encoding='UTF-8') as out:
+    if names:
+      print(*names, sep=',', file=out)
+    for id, predict in zip(ids, predicts):
+      if write_fn is None:
+        if not gezi.iterable(predict):
+          predict = [predict]
+        print(id, *predict, sep=',', file=out)
+      else:
+        write_fn(id, predict, out)
+
+def train(Dataset, 
+          model, 
+          loss_fn, 
+          evaluate_fn=None, 
+          inference_fn=None,
+          eval_fn=None,
+          write_valid=False,
+          valid_names=None,
+          infer_names=None,
+          valid_write_fn=None,
+          infer_write_fn=None,
+          valid_suffix='.valid',
+          infer_suffix='.infer'):
+  input_ =  FLAGS.train_input 
+  inputs = gezi.list_files(input_)
+  inputs.sort()
+
+  all_inputs = inputs
+
+  batch_size = melt.batch_size()
+  num_gpus = melt.num_gpus()
+  batch_size_per_gpu = FLAGS.batch_size
+
+  if FLAGS.fold is not None:
+    inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
+
+  logging.info('inputs', inputs)
+
+  dataset = Dataset('train')
+
+  num_examples = dataset.num_examples_per_epoch('train') 
+  num_all_examples = num_examples
+  if num_examples:
+    if FLAGS.fold is not None:
+      num_examples = int(num_examples * (len(inputs) / (len(inputs) + 1)))
+    num_steps_per_epoch = -(-num_examples // batch_size)
+  else:
+    num_steps_per_epoch = None
+
+  if FLAGS.fold is not None:
+    valid_inputs = [x for x in all_inputs if x not in inputs]
+  else:
+    valid_inputs = gezi.list_files(FLAGS.valid_input)
+
+  if valid_inputs:
+    valid_dataset = Dataset('valid')
+  else:
+    valid_dataset = None
+  
+  logging.info('valid_inputs', valid_inputs)
+  if FLAGS.fold is not None:
+    if num_examples:
+      num_valid_examples = int(num_all_examples * (1 / (len(inputs) + 1)))
+      num_valid_steps_per_epoch = -(-num_valid_examples // batch_size)
+    else:
+      num_valid_steps_per_epoch = None
+  else:
+    num_valid_examples = valid_dataset.num_examples_per_epoch('valid')
+    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size) if num_valid_examples else None
+
+  test_inputs = gezi.list_files(FLAGS.test_input)
+  logging.info('test_inputs', test_inputs)
+  
+  if test_inputs:
+    test_dataset = Dataset('test')
+    num_test_examples = test_dataset.num_examples_per_epoch('test')
+    num_test_steps_per_epoch = -(-num_test_examples // batch_size) if num_test_examples else None
+  else:
+    test_dataset = None
+
+  #with tf.variable_scope('model') as scope:
+  iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
+  batch = iter.get_next()
+  x, y = melt.split_batch(batch, batch_size, num_gpus)
+
+  #loss = loss_fn(model, x, y, training=True)
+  loss = melt.tower(lambda i: loss_fn(model, x[i], y[i], training=True), num_gpus)
+  ops = [loss]
+  #scope.reuse_variables()
+  
+  if valid_dataset:
+    valid_iter2 = valid_dataset.make_batch(batch_size, valid_inputs, repeat=True, initializable=False)
+    valid_batch2 = valid_iter2.get_next()
+    valid_x2, valid_y2 = melt.split_batch(valid_batch2, batch_size, num_gpus, training=False)
+    valid_loss = melt.tower(lambda i: loss_fn(model, valid_x2[i], valid_y2[i], training=False), num_gpus, training=False)
+    valid_loss = tf.reduce_mean(valid_loss)
+    eval_ops = [valid_loss]
+
+    valid_iter = valid_dataset.make_batch(batch_size, valid_inputs, repeat=True, initializable=True)
+    valid_batch = valid_iter.get_next()
+    valid_x, valid_y = melt.split_batch(valid_batch, batch_size, num_gpus, training=False)
+
+    def valid_fn(i):
+      valid_predict = model(valid_x[i])
+      return valid_x[i], valid_y[i], valid_predict
+
+    valid_ops = melt.tower(valid_fn, num_gpus, training=False)
+
+    if not valid_names and infer_names:
+      valid_names = [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
+    metric_eval_fn = lambda model_path=None: \
+                                  evaluate(valid_ops, 
+                                           valid_iter,
+                                           num_steps=num_valid_steps_per_epoch,
+                                           num_examples=num_valid_examples,
+                                           eval_fn=eval_fn,
+                                           names=valid_names,
+                                           write_fn=valid_write_fn,
+                                           model_path=model_path,
+                                           write=write_valid,
+                                           num_gpus=num_gpus,
+                                           suffix=valid_suffix)
+  else:
+    eval_ops = None 
+    metric_eval_fn = None
+
+  if test_dataset:
+    test_iter = test_dataset.make_batch(batch_size, test_inputs, repeat=True, initializable=True)
+    test_batch = test_iter.get_next()
+    test_x, test_y = melt.split_batch(test_batch, batch_size, num_gpus, training=False)
+
+    def infer_fn(i):
+      test_predict = model(test_x[i])
+      return test_x[i], test_predict
+
+    test_ops = melt.tower(infer_fn, num_gpus, training=False)
+
+    inference_fn = lambda model_path=None: \
+                                  inference(test_ops, 
+                                            test_iter,
+                                            num_steps=num_test_steps_per_epoch,
+                                            num_examples=num_test_examples,
+                                            names=infer_names,
+                                            write_fn=infer_write_fn,
+                                            model_path=model_path,
+                                            num_gpus=num_gpus,
+                                            suffix=infer_suffix)
+  else:
+    inference_fn = None
+
+  #model.save_weights('./weight')
+
+  # checkpoint = tf.train.Checkpoint(model=model)
+        
+  # ckpt_dir = FLAGS.model_dir + '/ckpt'
+
+  # print('-----------------', ckpt_dir)
+
+  # #TODO FIXME now I just changed tf code so to not by default save only latest 5
+  # # refer to https://github.com/tensorflow/tensorflow/issues/22036
+  #   # manager = tf.contrib.checkpoint.CheckpointManager(
+  # #     checkpoint, directory=ckpt_dir, max_to_keep=5)
+  # # latest_checkpoint = manager.latest_checkpoint
+
+  # latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
+  # status = checkpoint.restore(latest_checkpoint)
+  # checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
+
+  # with melt.get_session() as sess:
+  #   status.initialize_or_restore(sess)
+  #   checkpoint.save(checkpoint_prefix)
+
+  train_flow(ops, 
+             eval_ops=eval_ops,
+             model_dir=FLAGS.model_dir,
+             metric_eval_fn=metric_eval_fn,
+             inference_fn=inference_fn,
+             num_steps_per_epoch=num_steps_per_epoch,
+             model=model)
+
+
+def get_train():
+  return melt.eager.train if tf.executing_eagerly() else melt.apps.train

@@ -1,8 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*-
 # ==============================================================================
-#          \file   __init__.py
+#          \file   gen-content.py
 #        \author   chenghuige  
-#          \date   2016-08-17 10:28:41.619685
+#          \date   2018-09-11 10:37:16.658519
 #   \Description  
 # ==============================================================================
 
@@ -11,7 +12,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-#import melt.apps.train
-from melt.apps.train import *
+import sys 
+import os
 
-import melt.apps.image_processing 
+infile = './mount/data/ai2018/reader/train.json'
+
+import json 
+
+for line in open(infile):
+  m = json.loads(line.rstrip())
+  print(m['query'])
+  print(m['passage'])
+

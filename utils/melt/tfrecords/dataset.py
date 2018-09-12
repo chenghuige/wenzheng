@@ -80,6 +80,7 @@ class Dataset(object):
         bucket_boundaries=FLAGS.buckets,
         bucket_batch_sizes=FLAGS.batch_sizes,
         length_index=FLAGS.length_index,
+        length_key=FLAGS.length_key,
         return_iterator=return_iterator,
         name=self.subset) 
 

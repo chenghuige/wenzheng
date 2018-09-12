@@ -829,6 +829,16 @@ def max_pooling(outputs, sequence_length=None, axis=1, reduce_func=tf.reduce_max
   weighted_output = outputs + weighted_mask
   return reduce_func(weighted_output, axis)
 
+def max_pooling2(outputs, sequence_length, sequence_length2, axis=1, reduce_func=tf.reduce_max):
+  weight = -1e18
+  sequence_mask = tf.expand_dims(1. - tf.to_float(tf.sequence_mask(sequence_length)), -1)
+  sequence_mask2 = tf.expand_dims(1. - tf.to_float(tf.sequence_mask(sequence_length2)), -1)
+
+  sequence_mask = tf.concat([sequence_mask, sequence_mask2], 1)
+  weighted_mask = sequence_mask * weight
+  weighted_output = outputs + weighted_mask
+  return reduce_func(weighted_output, axis)
+
 def argmax_pooling(outputs, sequence_length, axis=1):
   return max_pooling(outputs, sequence_length, axis, reduce_func=tf.argmax)
 
@@ -899,8 +909,8 @@ def slim_batch2(sequence, sequence_length=None, dim=1):
   return sequence, sequence_length  
 
 # from squad of HKUST
-def dropout(args, keep_prob, is_train, mode="recurrent"):
-  if keep_prob < 1.0 and is_train:
+def dropout(args, keep_prob, training, mode="recurrent"):
+  if keep_prob < 1.0 and training:
     noise_shape = None
     scale = 1.0
     shape = tf.shape(args)

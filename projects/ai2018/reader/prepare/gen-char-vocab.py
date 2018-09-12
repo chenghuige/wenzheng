@@ -1,8 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python 
+# -*- coding: utf-8 -*-
 # ==============================================================================
-#          \file   __init__.py
+#          \file   gen-char-vocab.py
 #        \author   chenghuige  
-#          \date   2016-08-17 10:28:41.619685
+#          \date   2018-09-11 20:25:15.703398
 #   \Description  
 # ==============================================================================
 
@@ -11,7 +12,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-#import melt.apps.train
-from melt.apps.train import *
+import sys 
+import os
 
-import melt.apps.image_processing 
+for line in sys.stdin:
+  word, freq = line.rstrip('\n').split('\t')
+  if (word.startswith('<') and word.endswith('>')) or len(word) == 1:
+    print(line, end='')

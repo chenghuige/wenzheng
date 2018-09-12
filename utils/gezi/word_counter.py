@@ -36,9 +36,11 @@ class WordCounter(object):
   def save(self, filename, most_common=None, min_count=None):
     if not most_common:
       most_common = self.most_common
+      if not most_common:
+        most_common = len(self.counter)
     if not min_count:
       min_count = self.min_count
-    
+
     with open(filename, 'w') as out:
       l = []
       total = 0

@@ -331,6 +331,42 @@ def gen_train_op_byname(loss, learning_rate, name='adagrad'):
 #but for num_gpus=0 we will not consider multi gpu mode
 #so num_gpus=1 will not use much, just for mlti gpu test purpose
 #from https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py def train()
+
+# def tower(loss_function, num_gpus=1, training=True, name=''):
+#   towers = []
+#   update_ops = []
+#   for i in range(num_gpus):
+#     with tf.device('/gpu:%d' % i):
+#       #print(tf.get_variable_scope().reuse)
+#       with tf.variable_scope(tf.get_variable_scope(), reuse=bool(i != 0)): 
+#         with tf.name_scope('%s_%d' % ('tower', i)) as name_scope:
+#           if 'i' in inspect.getargspec(loss_function).args:
+#             loss = loss_function(i)
+#           else:
+#             loss = loss_function()
+#           # Reuse variables for the next tower. itersting.. not work.. for cifar10 ._conv...
+#           #print(tf.get_variable_scope().reuse)
+#           #tf.get_variable_scope().reuse_variables()
+#           #print(tf.get_variable_scope().reuse)
+#           # REMIND actually for training other metrics like acc... will only record the last one, I think this is enough!
+#           if isinstance(loss, (list, tuple)) and training:
+#             loss = loss[0]
+#           towers.append(loss)
+#           if i == 0 and training:
+#             # Only trigger batch_norm moving mean and variance update from
+#             # the 1st tower. Ideally, we should grab the updates from all
+#             # towers but these stats accumulate extremely fast so we can
+#             # ignore the other stats from the other towers without
+#             # significant detriment.
+#             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS,
+#                                             name_scope)
+#   if training:
+#     return towers, update_ops
+#   else:
+#     towers = [list(x) if isinstance(x, tuple) else x for x in towers]
+#     return towers
+
+# TODO will this be ok.. ?
 def tower(loss_function, num_gpus=1, training=True, name=''):
   towers = []
   update_ops = []
@@ -338,31 +374,32 @@ def tower(loss_function, num_gpus=1, training=True, name=''):
     with tf.device('/gpu:%d' % i):
       #print(tf.get_variable_scope().reuse)
       with tf.variable_scope(tf.get_variable_scope(), reuse=bool(i != 0)): 
-        with tf.name_scope('%s_%d' % ('tower', i)) as name_scope:
-            if 'i' in inspect.getargspec(loss_function).args:
-              loss = loss_function(i)
-            else:
-              loss = loss_function()
-            # Reuse variables for the next tower. itersting.. not work.. for cifar10 ._conv...
-            #print(tf.get_variable_scope().reuse)
-            #tf.get_variable_scope().reuse_variables()
-            #print(tf.get_variable_scope().reuse)
-            # REMIND actually for training other metrics like acc... will only record the last one, I think this is enough!
-            if isinstance(loss, (list, tuple)) and training:
-              loss = loss[0]
-            towers.append(loss)
-            if i == 0 and training:
-              # Only trigger batch_norm moving mean and variance update from
-              # the 1st tower. Ideally, we should grab the updates from all
-              # towers but these stats accumulate extremely fast so we can
-              # ignore the other stats from the other towers without
-              # significant detriment.
-              update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS,
-                                             name_scope)
+        #with tf.name_scope('%s_%d' % ('tower', i)) as name_scope:
+        if 'i' in inspect.getargspec(loss_function).args:
+          loss = loss_function(i)
+        else:
+          loss = loss_function()
+        # Reuse variables for the next tower. itersting.. not work.. for cifar10 ._conv...
+        #print(tf.get_variable_scope().reuse)
+        #tf.get_variable_scope().reuse_variables()
+        #print(tf.get_variable_scope().reuse)
+        # REMIND actually for training other metrics like acc... will only record the last one, I think this is enough!
+        if isinstance(loss, (list, tuple)) and training:
+          loss = loss[0]
+        towers.append(loss)
+        if i == 0 and training:
+          # Only trigger batch_norm moving mean and variance update from
+          # the 1st tower. Ideally, we should grab the updates from all
+          # towers but these stats accumulate extremely fast so we can
+          # ignore the other stats from the other towers without
+          # significant detriment.
+          # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS,
+          #                                name_scope)
+          update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   if training:
     return towers, update_ops
   else:
-    #return zip(*tower_losses)
+    towers = [list(x) if isinstance(x, tuple) else x for x in towers]
     return towers
 
 tower_losses = tower

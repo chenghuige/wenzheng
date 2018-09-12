@@ -28,4 +28,4 @@ def calc_auc(labels, predicts):
   auc = total_auc / len(CLASSES) 
   vals = [auc] + aucs
   names = ['auc/avg'] + ['auc/%s' % x for x in CLASSES]
-  return names, vals
+  return vals, names

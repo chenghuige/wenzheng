@@ -43,6 +43,7 @@ def inputs(files,
            num_prefetch_batches=None, 
            bucket_boundaries=None,
            length_index=None,
+           length_key=None,
            length_fn=None,
            bucket_batch_sizes=None,
            filter_fn=None,
@@ -217,11 +218,17 @@ def inputs(files,
         with tf.name_scope("bucket_by_seq_length"):
           def example_to_bucket_id(*args, **kw):
             """Return int64 id of the length bucket for this example."""
-            assert length_index is not None
-            try:
-              x = list(args[0])[length_index]
-            except Exception:
-              x = args[length_index]
+            #assert length_index is not None
+            if length_key is None:
+              try:
+                x = list(args[0])[length_index]
+              except Exception:
+                x = args[length_index]
+            else:
+              try:
+                x = args[0][length_key]
+              except Exception:
+                x = args[length_key]      
             
             seq_length = tf.reduce_sum(tf.cast(tf.cast(x, tf.bool), tf.int32))
             

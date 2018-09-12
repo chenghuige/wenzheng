@@ -389,7 +389,17 @@ def train_once(sess,
           melt.add_summary(summary, hours_per_epoch, 'hours_per_epoch')
 
       if metric_evaluate:
-        melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
+        #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
+        prefix = 'step/valid'
+        if model_path:
+          prefix = 'epoch/valid'
+          if not hasattr(train_once, 'epoch_step'):
+            train_once.epoch_step = 1
+          else:
+            train_once.epoch_step += 1
+          step = train_once.epoch_step
+          
+        melt.add_summarys(summary, evaluate_results, evaluate_names, prefix=prefix)
       
       train_once.summary_writer.add_summary(summary, step)
       train_once.summary_writer.flush()
@@ -417,6 +427,15 @@ def train_once(sess,
       train_once.summary_writer.add_summary(summary_str, step)
     #summary.ParseFromString(evaluate_summaries)
     summary_writer = train_once.summary_writer
-    melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
+    prefix = 'step/valid'
+    if model_path:
+      prefix = 'epoch/valid'
+      if not hasattr(train_once, 'epoch_step'):
+        train_once.epoch_step = 1
+      else:
+        train_once.epoch_step += 1
+      step = train_once.epoch_step
+    #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
+    melt.add_summarys(summary, evaluate_results, evaluate_names, prefix=prefix)
     summary_writer.add_summary(summary, step)
     summary_writer.flush()

@@ -16,10 +16,10 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('input', './mount/temp/kaggle/toxic/tfrecords/glove/train/*record,', '')
+flags.DEFINE_string('input', './mount/temp/ai2018/reader/tfrecord/valid/*record,', '')
 flags.DEFINE_integer('batch_size_', 512, '')
-flags.DEFINE_string('model_dir', None, '')
-flags.DEFINE_string('type', 'train', 'dump')
+flags.DEFINE_string('type', 'debug', '')
+flags.DEFINE_string('base', './mount/temp/ai2018/reader/tfrecord/', '')
 #flags.DEFINE_integer('fold', None, '')
 
 import tensorflow as tf
@@ -31,26 +31,44 @@ import pandas as pd
 import numpy as np
 import gezi
 
+
+import pickle
+
 from wenzheng.utils import ids2text
 
 import melt
 logging = melt.logging
 from dataset import Dataset
 
+# TODO by default save all ? so do not need to change the code ? 
+# _asdict() https://stackoverflow.com/questions/26180528/python-named-tuple-to-dictionary
+def deal(dataset, infos):
+  for x, _ in dataset:
+    for key in x:
+      x[key] = x[key].numpy()
+      if type(x[key][0]) == bytes:
+        x[key] = gezi.decode(x[key])
+    ids = x['id']
+    for j in range(len(ids)):
+      infos[ids[j]] = {}
+      for key in x:
+        infos[ids[j]][key] = x[key][j]
+
 def main(_):
+
+  base = FLAGS.base
   logging.set_logging_path('./mount/tmp/')
   vocab_path = os.path.join(os.path.dirname(os.path.dirname(FLAGS.input)), 'vocab.txt')
   ids2text.init(vocab_path)
-  FLAGS.vocab = './mount/temp/kaggle/toxic/tfrecords/glove/vocab.txt'
+  FLAGS.vocab = f'{base}/vocab.txt'
 
-  FLAGS.length_index = 2
-  #FLAGS.length_index = 1
-  FLAGS.buckets = '100,400'
-  FLAGS.batch_sizes = '64,64,32'
+  # FLAGS.length_index = 2
+  # FLAGS.buckets = '100,400'
+  # FLAGS.batch_sizes = '64,64,32'
 
   input_ = FLAGS.input 
   if FLAGS.type == 'test':
-    input_ = input_.replace('train', 'test')
+    input_ = input_.replace('valid', 'test')
 
   inputs = gezi.list_files(input_)
   inputs.sort()
@@ -68,13 +86,35 @@ def main(_):
     timer = gezi.Timer('read record')
     for i, (x, y) in enumerate(dataset):
       if i % 10 == 1:
-        print(y[0])
-        print(x['comment'][0])
-        print(ids2text.ids2text(x['comment'][0], sep='|'))
-        print(x['comment_str'][0])
+        print(x['passage'][0])
+        print(ids2text.ids2text(x['passage'][0], sep='|'))
+        print(x['passage'])
+        print(type(x['id'].numpy()[0]) == bytes)
         break
   else:
-    pass
+    infos = {}
+    inputs = gezi.list_files(f'{base}/valid/*record')
+    dataset = Dataset('valid')
+    dataset = dataset.make_batch(1, inputs)
+    deal(dataset, infos)
+    print('after valid', len(infos))
+    inputs = gezi.list_files(f'{base}/test/*record')
+    dataset = Dataset('test')
+    dataset = dataset.make_batch(1, inputs)
+    deal(dataset, infos)
+    print('after test', len(infos))
+
+    for key in infos:
+      print(infos[key])
+      break
+
+    ofile = f'{base}/info.pkl'
+    with open(ofile, 'wb') as out:
+      pickle.dump(infos, out)    
+
+    
+
+
 
 if __name__ == '__main__':
   tf.app.run()

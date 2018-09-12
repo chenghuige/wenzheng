@@ -22,6 +22,7 @@ import sys
 import os
 from tqdm import tqdm 
 import numpy as np
+import inspect
 
 import gezi
 import melt
@@ -29,40 +30,66 @@ logging = melt.logging
 
 # TODO not support multiple gpu right now!
 
-def evaluate(model, dataset, eval_fn, model_path=None, names=None, num_steps_per_epoch=None, suffix='.valid'):
+def evaluate(model, dataset, eval_fn, model_path=None, 
+             names=None, write_fn=None,
+             num_steps_per_epoch=None, suffix='.valid'):
     predicts_list = []
-    targets_list = []
+    labels_list = []
+    ids_list = []
     ofile = model_path + suffix if model_path else None
-    out = open(ofile, 'w') if ofile else None
+    out = open(ofile, 'w', encoding='UTF-8') if ofile else None
     if out:
       if names is not None:
         print(*names, sep=',', file=out)
     for x, y in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
       predicts = model(x)
       predicts_list.append(predicts)
-      targets_list.append(y)
+      labels_list.append(y)
+      ids = gezi.decode(x['id'].numpy())
+      ids_list.append(ids)
       if out:
-        ids = gezi.decode(x.id.numpy())
-        for id, target, predict in zip(ids, y.numpy(), predicts.numpy()):
-          print(*([id] + list(target) + list(predict)), sep=',', file=out)
+        for id, label, predict in zip(ids, y.numpy(), predicts.numpy()):
+          if write_fn is None:
+            if not gezi.iterable(label):
+              label = [label]
+            if not gezi.iterable(predict):
+             predict = [predict]
+            print(id, *label, *predict, sep=',', file=out)
+          else:
+            write_fn(id, label, predict, out)
 
     predicts = np.concatenate(predicts_list)
-    targets = np.concatenate(targets_list)
+    labels = np.concatenate(labels_list)
+    ids = np.concatenate(ids_list)
     if out:
       out.close()
-    return eval_fn(targets, predicts)
+      
+    if len(inspect.getargspec(eval_fn).args) == 4:
+      return eval_fn(labels, predicts, ids=ids, model_path=model_path)
+    elif len(inspect.getargspec(eval_fn).args) == 3:
+      if 'ids' in inspect.getargspec(eval_fn).args:
+        return eval_fn(labels, predicts, ids)
+    else:
+      return eval_fn(labels, predicts)
 
-def inference(model, dataset, model_path, names=None, num_steps_per_epoch=None, suffix='.infer'):
+def inference(model, dataset, model_path, 
+              names=None, write_fn=None,
+              num_steps_per_epoch=None, suffix='.infer'):
   ofile = model_path + suffix
-  with open(ofile, 'w') as out:
+  with open(ofile, 'w', encoding='UTF-8') as out:
     if names is not None:
       print(*names, sep=',', file=out)
     for (x, _) in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
       predicts = model(x).numpy()
       # here id is str in py3 will be bytes
-      ids = gezi.decode(x.id.numpy())
+      ids = gezi.decode(x['id'].numpy())
       for id, predict in zip(ids, predicts):
-        print(*([id] + list(predict)), sep=',', file=out)
+        if write_fn is None:
+          if not gezi.iterable(predict):
+            predict = [predict]
+          print(id, *predict, sep=',', file=out)
+        else:
+          write_fn(id, predict, out)
 
 def train(Dataset, 
           model, 
@@ -72,7 +99,11 @@ def train(Dataset,
           eval_fn=None,
           write_valid=False,
           valid_names=None,
-          infer_names=None):
+          infer_names=None,
+          valid_write_fn=None,
+          infer_write_fn=None,
+          valid_suffix='.valid',
+          infer_suffix='.infer'):
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
   inputs.sort()
@@ -161,15 +192,33 @@ def train(Dataset,
   checkpoint.restore(latest_checkpoint)
   checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
 
-  logging.info('Latest checkpoint:', latest_checkpoint)
+  # logging.info('Latest checkpoint:', latest_checkpoint)
+
+  #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
+  #model.save('./weight3.hd5')
 
   start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint else 0
-
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs
+  
+  if valid_dataset:
+    if evaluate_fn is not None:
+      vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
+    elif eval_fn:
+      model_path = None if not write_valid else tf.train.latest_checkpoint(ckpt_dir)
+      names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
+
+      vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
+                             names, valid_write_fn, num_valid_steps_per_epoch,
+                             suffix=valid_suffix)
+  
+    logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
+                  ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
+
   for epoch in range(start_epoch, num_epochs):
     epoch_loss_avg = tfe.metrics.Mean()
     epoch_valid_loss_avg = tfe.metrics.Mean()
+
     for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
       #if global_step.numpy() == 0:
       #loss = loss_fn(model, x, y, training=True)
@@ -202,6 +251,15 @@ def train(Dataset,
         with writer_train.as_default(), summary.always_record_summaries():
           summary.scalar('step/loss', epoch_loss_avg.result().numpy())
           writer_train.flush()
+      
+      # if i == 5:
+      #   print(i, '---------------------save')
+      #   print(len(model.trainable_variables))
+      ## TODO FIXME seems save weighs value not ok... not the same as checkpoint save
+      #   model.save_weights(os.path.join(ckpt_dir, 'weights'))
+      #   checkpoint.save(checkpoint_prefix)
+      #   exit(0)
+
 
       global_step.assign_add(1)
       if epoch == start_epoch and i == 0:
@@ -218,12 +276,13 @@ def train(Dataset,
 
     if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:
       if evaluate_fn is not None:
-        names, vals = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
+        vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
       elif eval_fn:
         model_path = None if not write_valid else tf.train.latest_checkpoint(ckpt_dir)
         names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
 
-        names, vals = evaluate(model, valid_dataset, eval_fn, model_path, names, num_valid_steps_per_epoch)
+        vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
+                               names, valid_write_fn, num_valid_steps_per_epoch)
     
     logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
                   ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
@@ -239,6 +298,8 @@ def train(Dataset,
 
     if test_dataset and (epoch + 1) % FLAGS.inference_interval_epochs == 0:
       if inference_fn is None:
-        inference(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), infer_names, num_test_steps_per_epoch)
+        inference(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), 
+                  infer_names, infer_write_fn, num_test_steps_per_epoch,
+                  suffix=infer_suffix)
       else:
          inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)

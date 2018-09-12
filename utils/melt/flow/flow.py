@@ -132,6 +132,7 @@ def tf_train_flow(train_once_fn,
                   learning_rate_patience=None,
                   learning_rate_decay_factor=None,
                   write_during_train=True,
+                  model=None,
                   sess=None):
   """
   similary flow as tf_flow, but add model try reload and save
@@ -142,6 +143,11 @@ def tf_train_flow(train_once_fn,
   logging.info('tf_train_flow start')
   logging.info('max_models_keep:', max_models_keep)
   logging.info('save_interval_seconds:', save_interval_seconds)
+
+  if model:
+    checkpoint = tf.train.Checkpoint(model=model)
+    ckpt_dir = model_dir + '/ckpt'
+    checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
   
   #this is usefull for you use another model with another scope, and just load and restore/save initalize your scope vars!
   #this is not for finetune but mainly for like using another model as in predict like this introducing graph other model scope and ignore here
@@ -217,6 +223,8 @@ def tf_train_flow(train_once_fn,
   # init_op = tf.group(tf.initialize_variables(uninitialized_vars), tf.local_variables_initializer())
 
   timer = gezi.Timer('sess run init_op in melt.tf_train_flow')
+  #model.save('./weights')
+
   # notice 
   sess.run(init_op)
 
@@ -241,6 +249,9 @@ def tf_train_flow(train_once_fn,
     if restore_fn is not None:
       restore_fn(sess)
     loader.restore(sess, model_path)
+    ## not supported
+    #model.save()
+    #model.save_weights('./weights')
     timer.print()
     pre_step = melt.get_model_step(model_path) - 1
     pre_epoch = melt.get_model_epoch(model_path)
@@ -347,7 +358,7 @@ def tf_train_flow(train_once_fn,
       if save_model and step:
         #step 0 is also saved! actually train one step and save
         if step % save_interval_steps == 0:
-          timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path))
+          #timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path))
           model_path_ = _get_checkpoint_path(checkpoint_path, fixed_step, num_steps_per_epoch)
           saver.save(sess, model_path_, global_step=step)
           if freeze_graph:
@@ -357,7 +368,7 @@ def tf_train_flow(train_once_fn,
             command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
             print(command, file=sys.stderr)
             os.system(command)
-          timer.print_elapsed()
+          #timer.print_elapsed()
         #if save_interval_epochs and num_steps_per_epoch and step % (num_steps_per_epoch * save_interval_epochs) == 0:
         #if save_interval_epochs and num_steps_per_epoch and step % num_steps_per_epoch == 0:
         if save_interval_epochs and num_steps_per_epoch and fixed_step % num_steps_per_epoch == 0:
@@ -413,6 +424,11 @@ def tf_train_flow(train_once_fn,
           model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
           model_step_path = model_path_ + '-' + str(step)
           epoch_saver.save(sess, model_path_, global_step=step)
+          
+          if model:
+            #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
+            checkpoint.save(checkpoint_prefix, session=sess)
+            
           if freeze_graph:
             melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
 

@@ -126,6 +126,7 @@ def train_flow(ops,
                output_collection_names=None, 
                output_node_names=None,
                write_during_train=True,
+               model=None,
                sess=None):
   """
   train flow for tr records, with model saving/reload and summary considered
@@ -248,4 +249,5 @@ def train_flow(ops,
                 learning_rate_patience=learning_rate_patience,
                 learning_rate_decay_factor=learning_rate_decay_factor,
                 write_during_train=write_during_train,
+                model=model,
                 sess=sess)

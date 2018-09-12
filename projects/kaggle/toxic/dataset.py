@@ -33,22 +33,6 @@ import prepare.config
 
 NUM_COMMENT_FEATURES = 7
 
-Input = namedtuple('Input', ['id', 
-                             'comment', 
-                             'comment_chars', 
-                             'comment_ngrams',
-                              #'comment_fngrams',
-                             'simple_chars', 
-                             #'simple_ngrams',
-                             'tokens_info',
-                             #'comment_info',
-                             'pos',
-                             'tag',
-                             'ner',
-                             'weight',
-                             'comment_str', 
-                             'comment_tokens_str'])
-
 class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='train'):
     super(Dataset, self).__init__(subset)
@@ -116,14 +100,17 @@ class Dataset(melt.tfrecords.Dataset):
     #if FLAGS.use_word:
     comment = features[comment_key]
     comment = melt.sparse_tensor_to_dense(comment)    
+    features[comment_key] = comment
 
     #if FLAGS.use_char:
-    comment_chars = features["comment_chars"]
+    comment_chars = features['comment_chars']
     comment_chars = melt.sparse_tensor_to_dense(comment_chars)
+    features['comment_chars'] = comment_chars
 
     #if FLAGS.use_token_info:
     tokens_info = features['tokens_info']
     tokens_info = melt.sparse_tensor_to_dense(tokens_info)
+    features['tokens_info'] = tokens_info
 
     #comment_info = features['comment_info']
     #comment_info = melt.sparse_tensor_to_dense(comment_info)
@@ -137,6 +124,7 @@ class Dataset(melt.tfrecords.Dataset):
     #if FLAGS.use_simple_char:
     simple_chars = features['simple_chars']
     simple_chars = melt.sparse_tensor_to_dense(simple_chars)
+    features['simple_chars'] = simple_chars
 
     #simple_ngrams = features['simple_ngrams']
     #simple_ngrams = melt.sparse_tensor_to_dense(simple_ngrams)
@@ -144,15 +132,19 @@ class Dataset(melt.tfrecords.Dataset):
     #if FLAGS.use_pos:
     pos = features['pos']
     pos = melt.sparse_tensor_to_dense(pos)
+    features['pos'] = pos()
 
     tag = features['tag']
     tag = melt.sparse_tensor_to_dense(tag)
+    features['tag'] = tag
 
     ner = features['ner']
     ner = melt.sparse_tensor_to_dense(ner)
+    features['ner'] = ner
 
     comment_ngrams = features['comment_ngrams']
     comment_ngrams = melt.sparse_tensor_to_dense(comment_ngrams)
+    features['comment_ngrams'] = comment_ngrams
 
     # comment_fngrams = features['comment_fngrams']
     # comment_fngrams = melt.sparse_tensor_to_dense(comment_fngrams)
@@ -252,31 +244,13 @@ class Dataset(melt.tfrecords.Dataset):
     if len(simple_chars_list) > 1:
       simple_chars = tf.concat(simple_chars_list, 0)    
 
-    # if FLAGS.use_fngrams:
-    #   comment_fngrams_list = [comment_fngrams]
-    #   if FLAGS.encode_start_mark:
-    #     comment_fngrams_list.insert(0, tf.scatter_nd(tf.constant([[0]]), tf.constant([1], dtype=tf.int64), tf.constant([FLAGS.ngram_limit])))
-    #   if FLAGS.encode_end_mark:
-    #     comment_fngrams_list.append(tf.scatter_nd(tf.constant([[0]]), tf.constant([2], dtype=tf.int64), tf.constant([FLAGS.ngram_limit])))
-      
-    #   if len(comment_fngrams_list) > 1:
-    #     comment_fngrams = tf.concat(comment_fngrams_list, 0)
 
-    ops = [id, 
-           comment, 
-           comment_chars, 
-           comment_ngrams, 
-           #comment_fngrams, 
-           simple_chars,
-           #simple_ngrams, 
-           tokens_info, 
-           #comment_info, 
-           pos, tag, ner, 
-           weight, 
-           comment_str, 
-           comment_tokens_str]
+    features[comment_key] = comment
+    features['comment_chars'] = comment_chars
+    features['simple_chars'] = simple_chars
+    features['comment_ngrams'] = comment_ngrams
 
-    x = Input(*ops)
+    x = features
     y = classes
     return x, y
 
