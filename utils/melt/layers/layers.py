@@ -309,6 +309,10 @@ def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, co
     else:
       raise ValueError(combiner)
 
+# TODO -------------------------
+# just use below really layers!
+# TODO batch_dim to batch_axis
+
 keras = tf.keras
 layers = tf.keras.layers
 class MaxPooling(keras.layers.Layer):
@@ -448,6 +452,7 @@ class CudnnRnn(keras.Model):
 
     if self.train_init_state:
       # well TODO! add_variable not allowed in keras.Model but using keras.layers.Layer you should not use other layers otherwise not save them
+      # TODO name is not very ok... without scope ...
       self.init_fw_layer = InitState(num_layers, num_units, 'init_fw')
       self.init_bw_layer = InitState(num_layers, num_units, 'init_bw')
 
@@ -531,7 +536,7 @@ class CudnnRnn(keras.Model):
             mask_bw = self.dropout_mask_bw[layer]
 
       inputs_bw = tf.reverse_sequence(
-          outputs[-1] * mask_bw, seq_lengths=seq_len, seq_dim=1, batch_dim=0)
+          outputs[-1] * mask_bw, seq_lengths=seq_len, seq_axis=1, batch_axis=0)
       
       if self.train_init_state:
         #init_bw = tf.tile(self.init_bw[layer], [batch_size, 1])
@@ -542,7 +547,7 @@ class CudnnRnn(keras.Model):
 
       out_bw, state_bw = gru_bw(inputs_bw, init_bw)
       out_bw = tf.reverse_sequence(
-          out_bw, seq_lengths=seq_len, seq_dim=1, batch_dim=0)
+          out_bw, seq_lengths=seq_len, seq_axis=1, batch_axis=0)
 
       outputs.append(tf.concat([out_fw, out_bw], axis=2))
 
@@ -597,9 +602,9 @@ class CudnnRnn2(CudnnRnn):
 
       mask_bw = mask_bws[layer]
       inputs_bw = tf.reverse_sequence(
-          outputs[-1] * mask_bw, seq_lengths=seq_len, seq_dim=1, batch_dim=0)
+          outputs[-1] * mask_bw, seq_lengths=seq_len, seq_axis=1, batch_axis=0)
       inputs_bw2 = tf.reverse_sequence(
-          outputs2[-1] * mask_bw, seq_lengths=seq_len2, seq_dim=1, batch_dim=0)
+          outputs2[-1] * mask_bw, seq_lengths=seq_len2, seq_axis=1, batch_axis=0)
       
       if self.train_init_state:
         init_bw = self.init_bw_layer(layer, batch_size)
@@ -625,61 +630,106 @@ class CudnnRnn2(CudnnRnn):
 
     self.state = (state_fw2, state_bw2)
     return res
+
+class Gate(keras.Model):
+  def __init__(self,
+               keep_prob=1.0,
+               **kwargs):
+    super(Gate, self).__init__(**kwargs)
+    self.keep_prob = keep_prob
+    self.step = -1
+
+  def call(self, inputs, outputs, training=False):
+    self.step += 1
+    #with tf.variable_scope(self.scope):
+    res = tf.concat([inputs, outputs], axis=2)
+    dim = melt.get_shape(res, -1)
+    d_res = dropout(res, keep_prob=self.keep_prob, training=training)
+    if self.step == 0:
+      self.dense = layers.Dense(dim, use_bias=False, activation=tf.nn.sigmoid)
+    gate = self.dense(d_res)
+    return res * gate
+
+class SemanticFusion(keras.Model):
+  def __init__(self,
+               keep_prob=1.0,
+               **kwargs):
+    super(SemanticFusion, self).__init__(**kwargs)
+    self.keep_prob = keep_prob
+    self.step = -1
+
+  def call(self, input_vector, fusion_vectors, training=False):
+    self.step += 1
+    assert len(fusion_vectors) > 0
+    vectors = tf.concat([input_vector] + fusion_vectors, axis=-1) # size = [batch_size, ..., input_dim * (len(fusion_vectors) + 1)]
+    dim = melt.get_shape(input_vector, -1)
+    dv = dropout(vectors, keep_prob=self.keep_prob, training=training)
+    if self.step == 0:
+      self.composition_dense = layers.Dense(dim, use_bias=True, activation=tf.nn.tanh, name='compostion_dense')
+      self.gate_dense = layers.Dense(dim, use_bias=True, activation=tf.nn.sigmoid, name='gate_dense')
+    r = self.composition_dense(dv)
+    g = self.gate_dense(dv)
+    return g * r + (1 - g) * input_vector     
+
+class SemanticFusionCombine(keras.Model):
+  def __init__(self,
+                keep_prob=1.0,
+                **kwargs):
+      super(SemanticFusionCombine, self).__init__(**kwargs)
+      self.keep_prob = keep_prob
+      self.sfu = SemanticFusion(keep_prob=keep_prob)
+      self.step = -1
+
+  def call(self, x, y, training=False):
+    self.step += 1
+    if melt.get_shape(x, -1) != melt.get_shape(y, -1):
+      if step == 0:
+        self.dense = layers.Dense(melt.get_shape(x, -1), activation=None, name='sfu_dense')
+      y = self.dense(x)
+    return self.sfu(x, [y, x * y, x - y], training=training)
   
 class DotAttention(keras.Model):
   def __init__(self,
                hidden,
                keep_prob=1.0,
                combiner='gate',
-               scope='dot_attention',  
                **kwargs):
     super(DotAttention, self).__init__(**kwargs)
     self.hidden = hidden
     self.keep_prob = keep_prob
     self.combiner = combiner
-    self.scope = scope
 
-    self.inputs_dense = keras.layers.Dense(hidden, use_bias=False, activation=tf.nn.relu)
-    self.memory_dense = keras.layers.Dense(hidden, use_bias=False, activation=tf.nn.relu)
+    self.inputs_dense = layers.Dense(hidden, use_bias=False, activation=tf.nn.relu, name='inputs_dense')
+    self.memory_dense = layers.Dense(hidden, use_bias=False, activation=tf.nn.relu, name='memory_dense')
 
-    self.step = -1
+    self.gate = Gate(keep_prob=keep_prob)
+    self.sfu = SemanticFusionCombine(keep_prob=keep_prob)
 
   def call(self, inputs, memory, mask, training=False):
-    self.step += 1
     combiner = self.combiner
-    with tf.variable_scope(self.scope):
-      d_inputs = dropout(inputs, keep_prob=self.keep_prob, training=training)
-      d_memory = dropout(memory, keep_prob=self.keep_prob, training=training)
-      JX = tf.shape(inputs)[1]
-      
-      with tf.variable_scope("attention"):
-        inputs_ = self.inputs_dense(d_inputs)
-        memory_ = self.memory_dense(d_memory)
+    # DotAttention already convert to dot_attention
+    #with tf.variable_scope(self.scope):
+    d_inputs = dropout(inputs, keep_prob=self.keep_prob, training=training)
+    d_memory = dropout(memory, keep_prob=self.keep_prob, training=training)
+    JX = tf.shape(inputs)[1]
+    
+    with tf.variable_scope("attention"):
+      inputs_ = self.inputs_dense(d_inputs)
+      memory_ = self.memory_dense(d_memory)
 
-        outputs = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
-        if mask is not None:
-          mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
-          logits = tf.nn.softmax(softmax_mask(outputs, mask))
-        else:
-          logits = tf.nn.softmax(outputs)
-
-        outputs = tf.matmul(logits, memory)
-
-      if combiner == 'gate':
-        res = tf.concat([inputs, outputs], axis=2)
-        with tf.variable_scope("gate"):
-          dim = melt.get_shape(res, -1)
-          d_res = dropout(res, keep_prob=self.keep_prob, training=training)
-          if self.step == 0:
-            self.gate_dense = keras.layers.Dense(dim, use_bias=False, activation=tf.nn.sigmoid)
-          gate = self.gate_dense(d_res)
-          return res * gate
-      elif combiner == 'sfu' or combiner == 'dsfu':
-        if melt.get_shape(outputs, -1) !=  melt.get_shape(inputs, -1):
-          if self.step == 0:
-            self.sfu_dense = keras.layers.Dense(melt.get_shape(inputs, -1), use_bias=False, activation=None)
-          outputs = self.sfu_dense(outputs)
-        return melt.dsemantic_fusion_combine(inputs, outputs, keep_prob, training)
+      outputs = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
+      if mask is not None:
+        mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
+        logits = tf.nn.softmax(softmax_mask(outputs, mask))
       else:
-        raise ValueError(combiner)
+        logits = tf.nn.softmax(outputs)
+
+      outputs = tf.matmul(logits, memory)
+
+    if combiner == 'gate':
+      return self.gate(inputs, outputs, training=training)
+    elif combiner == 'sfu' or combiner == 'dsfu':
+      return self.sfu(inputs, outputs, training=training)
+    else:
+      raise ValueError(combiner)
       

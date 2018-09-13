@@ -225,9 +225,16 @@ flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
 
 inited = None 
 
-def init(): 
-  if FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1:
+def init():
+  if 'MODE' in os.environ:
+    FLAGS.mode = os.environ['MODE']
+  
+  if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1:
+    logging.info('Run eager mode!')
     tf.enable_eager_execution()
+
+  if 'MODEL_DIR' in os.environ:
+    FLAGS.model_dir = os.environ['MODEL_DIR']
 
   if 'FOLD' in os.environ:
     try:
@@ -717,17 +724,21 @@ def train_flow(ops,
     eval_interval_steps = 1
     metric_eval_interval_steps /= FLAGS.eval_interval_steps
     save_model = False
-  elif FLAGS.work_mode.startswith('metric') or FLAGS.work_mode.startswith('eval') or gezi.env_has('METRIC'):
+  elif FLAGS.work_mode.startswith('metric') or FLAGS.work_mode.startswith('eval') or FLAGS.work_mode.startswith('valid') or gezi.env_has('METRIC'):
     #TODO name is a bit cofusing for work_mode, eval or metric means using metric evaluation
     #test above means using eval_loss(valid_loss) as composed to train_loss for evaluation
     ops = None 
     eval_ops = None
-    logging.info('running metric eval only mode')
+    if FLAGS.work_mode == 'valid+test':
+      logging.info('runing valid and test only mode')
+    else:
+      logging.info('running metric eval only mode')
     interval_steps = 0 
     eval_interval_steps = 1
     metric_eval_interval_steps /= FLAGS.eval_interval_steps    
     save_model = False
     assert metric_eval_fn is not None 
+
   
   if FLAGS.work_mode.endswith('once'):
     num_epochs = -1 #hack to make only do one step!
@@ -809,7 +820,7 @@ def train_flow(ops,
 def evaluate(ops, iterator, num_steps, num_examples, eval_fn, 
              model_path=None, names=None, write_fn=None,
              num_gpus=1, write=False,
-             suffix='.valid', sess=None):
+             suffix='.valid', sep='\t', sess=None):
   ids_list = []  
   predictions_list = []
   labels_list = []
@@ -825,14 +836,17 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
   except Exception:
     pass
 
-  for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
-    results = sess.run(ops)
-    for i in range(num_gpus):
-      ids, labels, predictions = results[i]
-      ids = gezi.decode(ids)     
-      ids_list.append(ids)   
-      predictions_list.append(predictions)
-      labels_list.append(labels)
+  try:
+    for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
+      results = sess.run(ops)
+      for i in range(num_gpus):
+        ids, labels, predictions = results[i]
+        ids = gezi.decode(ids)     
+        ids_list.append(ids)   
+        predictions_list.append(predictions)
+        labels_list.append(labels)
+  except tf.errors.OutOfRangeError:
+    pass
 
   ids = np.concatenate(ids_list)[:num_examples]
   predicts = np.concatenate(predictions_list)[:num_examples]
@@ -840,16 +854,16 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
 
   if model_path and write:
     ofile = model_path +  suffix
-    with open(ofile, 'w', encoding='UTF-8') as out:
+    with open(ofile, 'w') as out:
       if names:
-        print(*names, sep=',', file=out)
+        print(*names, sep=sep, file=out)
       for id, label, predict in zip(ids, labels, predicts):
         if write_fn is None:
           if not gezi.iterable(label):
             label = [label]
           if not gezi.iterable(predict):
             predict = [predict]
-          print(id, *label, *predict, sep=',', file=out)
+          print(id, *label, *predict, sep=sep, file=out)
         else:
           write_fn(id, label, predict, out)
 
@@ -865,8 +879,9 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     return eval_fn(labels, predicts)
 
 def inference(ops, iterator, num_steps, num_examples, 
-              model_path, names=None, write_fn=None,
-              num_gpus=1, suffix='.infer', sess=None):
+              model_path, names=None, debug_names=None,
+              write_fn=None, num_gpus=1, 
+              suffix='.infer', sep='\t', sess=None):
   ids_list = []  
   predictions_list = []
 
@@ -881,28 +896,40 @@ def inference(ops, iterator, num_steps, num_examples,
   except Exception:
     pass
 
-  for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
-    results = sess.run(ops)
-    for i in range(num_gpus):
-      ids, predictions = results[i]
-      ids = gezi.decode(ids)     
-      ids_list.append(ids)   
-      predictions_list.append(predictions)
+  try:
+    for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
+      results = sess.run(ops)
+      for i in range(num_gpus):
+        ids, predictions = results[i]
+        ids = gezi.decode(ids)     
+        ids_list.append(ids)   
+        predictions_list.append(predictions)
+  except tf.errors.OutOfRangeError:
+    pass
 
   ids = np.concatenate(ids_list)[:num_examples]
   predicts = np.concatenate(predictions_list)[:num_examples]
 
   ofile = model_path +  suffix
-  with open(ofile, 'w', encoding='UTF-8') as out:
+  if write_fn and len(inspect.getargspec(write_fn).args) == 4:
+    out_debug = open(model_path + '.infer.debug', 'w')
+  else:
+    out_debug = None
+  with open(ofile, 'w') as out:
     if names:
-      print(*names, sep=',', file=out)
+      print(*names, sep=sep, file=out)
+    if debug_names and out_debug:
+      print(*debug_names, sep=',', file=out_debug)
     for id, predict in zip(ids, predicts):
       if write_fn is None:
         if not gezi.iterable(predict):
           predict = [predict]
-        print(id, *predict, sep=',', file=out)
+        print(id, *predict, sep=sep, file=out)
       else:
-        write_fn(id, predict, out)
+        if out_debug:
+          write_fn(id, predict, out, out_debug)
+        else:
+          write_fn(id, predict, out)
 
 def train(Dataset, 
           model, 
@@ -913,10 +940,12 @@ def train(Dataset,
           write_valid=False,
           valid_names=None,
           infer_names=None,
+          infer_debug_names=None,
           valid_write_fn=None,
           infer_write_fn=None,
           valid_suffix='.valid',
-          infer_suffix='.infer'):
+          infer_suffix='.infer',
+          sep='\t'):
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
   inputs.sort()
@@ -926,6 +955,13 @@ def train(Dataset,
   batch_size = melt.batch_size()
   num_gpus = melt.num_gpus()
   batch_size_per_gpu = FLAGS.batch_size
+
+  if num_gpus > 1:
+    assert not FLAGS.batch_sizes, 'Not support batch sizes for num gpus > 1'
+
+  # NOTICE if FLAGS.batch_sizes then num_gpus 1
+
+  batch_size_ = batch_size if not FLAGS.batch_sizes else int(FLAGS.batch_sizes.split(',')[-1])
 
   if FLAGS.fold is not None:
     inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
@@ -957,12 +993,12 @@ def train(Dataset,
   if FLAGS.fold is not None:
     if num_examples:
       num_valid_examples = int(num_all_examples * (1 / (len(inputs) + 1)))
-      num_valid_steps_per_epoch = -(-num_valid_examples // batch_size)
+      num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
     else:
       num_valid_steps_per_epoch = None
   else:
     num_valid_examples = valid_dataset.num_examples_per_epoch('valid')
-    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size) if num_valid_examples else None
+    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None
 
   test_inputs = gezi.list_files(FLAGS.test_input)
   logging.info('test_inputs', test_inputs)
@@ -970,7 +1006,7 @@ def train(Dataset,
   if test_inputs:
     test_dataset = Dataset('test')
     num_test_examples = test_dataset.num_examples_per_epoch('test')
-    num_test_steps_per_epoch = -(-num_test_examples // batch_size) if num_test_examples else None
+    num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
   else:
     test_dataset = None
 
@@ -985,16 +1021,16 @@ def train(Dataset,
   #scope.reuse_variables()
   
   if valid_dataset:
-    valid_iter2 = valid_dataset.make_batch(batch_size, valid_inputs, repeat=True, initializable=False)
+    valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
     valid_batch2 = valid_iter2.get_next()
-    valid_x2, valid_y2 = melt.split_batch(valid_batch2, batch_size, num_gpus, training=False)
+    valid_x2, valid_y2 = melt.split_batch(valid_batch2, batch_size_, num_gpus, training=False)
     valid_loss = melt.tower(lambda i: loss_fn(model, valid_x2[i], valid_y2[i], training=False), num_gpus, training=False)
     valid_loss = tf.reduce_mean(valid_loss)
     eval_ops = [valid_loss]
 
-    valid_iter = valid_dataset.make_batch(batch_size, valid_inputs, repeat=True, initializable=True)
+    valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
     valid_batch = valid_iter.get_next()
-    valid_x, valid_y = melt.split_batch(valid_batch, batch_size, num_gpus, training=False)
+    valid_x, valid_y = melt.split_batch(valid_batch, batch_size_, num_gpus, training=False)
 
     def valid_fn(i):
       valid_predict = model(valid_x[i])
@@ -1015,15 +1051,16 @@ def train(Dataset,
                                            model_path=model_path,
                                            write=write_valid,
                                            num_gpus=num_gpus,
-                                           suffix=valid_suffix)
+                                           suffix=valid_suffix,
+                                           sep=sep)
   else:
     eval_ops = None 
     metric_eval_fn = None
 
   if test_dataset:
-    test_iter = test_dataset.make_batch(batch_size, test_inputs, repeat=True, initializable=True)
+    test_iter = test_dataset.make_batch(batch_size_, test_inputs)
     test_batch = test_iter.get_next()
-    test_x, test_y = melt.split_batch(test_batch, batch_size, num_gpus, training=False)
+    test_x, test_y = melt.split_batch(test_batch, batch_size_, num_gpus, training=False)
 
     def infer_fn(i):
       test_predict = model(test_x[i])
@@ -1037,10 +1074,12 @@ def train(Dataset,
                                             num_steps=num_test_steps_per_epoch,
                                             num_examples=num_test_examples,
                                             names=infer_names,
+                                            debug_names=infer_debug_names,
                                             write_fn=infer_write_fn,
                                             model_path=model_path,
                                             num_gpus=num_gpus,
-                                            suffix=infer_suffix)
+                                            suffix=infer_suffix,
+                                            sep=sep)
   else:
     inference_fn = None
 

@@ -33,7 +33,7 @@ import evaluate as ev
 
 def main(_):
   melt.apps.init()
-
+  
   model = getattr(base, FLAGS.model)()
 
   train = melt.apps.get_train()
@@ -47,8 +47,9 @@ def main(_):
         valid_write_fn=ev.valid_write,
         infer_write_fn=ev.infer_write,
         write_valid=True,
-        valid_names=['id', 'label', 'predict', 'query', 'passage'],
+        valid_names=ev.valid_names,
         valid_suffix='.valid.csv',
+        infer_debug_names=ev.valid_names,
         infer_suffix='.infer.txt')   
 
 if __name__ == '__main__':

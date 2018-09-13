@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/rnet.1layer.keep07/
+model_dir=$base/temp/ai2018/reader/model/qcatt.sfu.1layer.keep07/
 num_epochs=10
 
 mkdir -p $model_dir/epoch 
@@ -33,7 +33,8 @@ fi
 
 
 python $exe \
-        --model=Rnet \
+        --model=QCAttention \
+        --att_combiner=sfu \
         --rcontent=1 \
         --use_type=1 \
         --vocab $dir/vocab.txt \
@@ -44,9 +45,6 @@ python $exe \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
         --batch_size 32 \
-        --buckets 400 \
-        --batch_sizes 32,16 \
-        --length_key passage \
         --encoder_type=rnn \
         --keep_prob=0.7 \
         --num_layers=1 \

@@ -79,6 +79,9 @@ class Model(keras.Model):
     return x
 
 class Model2(keras.Model):
+  """
+  same as Model but with bi encode separately for passage and query
+  """
   def __init__(self):
     super(Model2, self).__init__()
     vocabulary.init()
@@ -134,9 +137,9 @@ class Model2(keras.Model):
     
     return x
 
-class QCAttentionModel(keras.Model):
+class QCAttention(keras.Model):
   def __init__(self):
-    super(QCAttentionModel, self).__init__()
+    super(QCAttention, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
 
@@ -149,10 +152,10 @@ class QCAttentionModel(keras.Model):
 
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    self.encode2 = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+    self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
 
 
-    self.dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob)
+    self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
     self.pooling = melt.layers.MaxPooling()
 
     self.logits = keras.layers.Dense(NUM_CLASSES, activation=None)
@@ -177,12 +180,12 @@ class QCAttentionModel(keras.Model):
     c = self.encode(c_emb, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
     q = self.encode(q_emb, q_len, mask_fws=mask_fws, mask_bws=mask_bws)
 
-    qc_att = self.dot_attention(c, q, mask=q_mask, training=training)
+    qc_att = self.att_dot_attention(c, q, mask=q_mask, training=training)
 
     num_units = [melt.get_shape(qc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
     mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    x = self.encode2(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
+    x = self.att_encode(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
 
     x = self.pooling(x, c_len)
 
@@ -198,9 +201,9 @@ class QCAttentionModel(keras.Model):
     
     return x
 
-class RnetModel(keras.Model):
+class Rnet(keras.Model):
   def __init__(self):
-    super(RnetModel, self).__init__()
+    super(Rnet, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
 
@@ -213,11 +216,16 @@ class RnetModel(keras.Model):
 
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    self.encode2 = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+    # TODO seems not work like layers.Dense... name in graph mode in eager mode will name as att_encode, match_encode 
+    # in graph mode just cudnn_rnn, cudnn_rnn_1 so all ignore name=.. not like layers.Dense.. TODO
+    self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    self.encode3 = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+    self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    self.dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob)
+    # seems share att and match attention is fine a bit improve ? but just follow squad to use diffent dot attention 
+    self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
+    self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
+
     self.pooling = melt.layers.MaxPooling()
 
     self.logits = keras.layers.Dense(NUM_CLASSES, activation=None)
@@ -243,19 +251,19 @@ class RnetModel(keras.Model):
     c = self.encode(c_emb, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
     q = self.encode(q_emb, q_len, mask_fws=mask_fws, mask_bws=mask_bws)
 
-    qc_att = self.dot_attention(c, q, mask=q_mask, training=training)
+    qc_att = self.att_dot_attention(c, q, mask=q_mask, training=training)
 
     num_units = [melt.get_shape(qc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
     mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    att = self.encode2(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
+    att = self.att_encode(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
 
-    self_att = self.dot_attention(att, att, mask=c_mask, training=training)
+    self_att = self.match_dot_attention(att, att, mask=c_mask, training=training)
 
     num_units = [melt.get_shape(self_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
     mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    x = self.encode3(self_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
+    x = self.match_encode(self_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
 
     x = self.pooling(x, c_len)
 
@@ -267,7 +275,8 @@ class RnetModel(keras.Model):
     else:
       x1 = self.logits(x)
       x2 = self.logits2(x)
-      x = tf.cond(tf.cast(input['type'] == 0, tf.bool), lambda: (x1 + x2) / 2., lambda: x2)
+      #x = tf.cond(tf.cast(input['type'] == 0, tf.bool), lambda: (x1 + x2) / 2., lambda: x2)
+      x = tf.cond(tf.cast(input['type'] == 0, tf.bool), lambda: x1, lambda: x2)
     
     return x
 

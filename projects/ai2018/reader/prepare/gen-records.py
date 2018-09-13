@@ -113,7 +113,9 @@ def sort_alternatives(alternatives, query):
   # TODO "alternatives": "不能|无法确定" if only 2 possbiles now make another as 无法确定 but might just set to '' and
   # when inference only consider prob of 不能 and 无法确定 mask '' to 0 prob
   if len(l) == 1:
-    if l[0].startswith('不') or l[0].startswith('无'):
+    if l[0].strip().startswith('不') or l[0].strip().startswith('无') \
+      or l[0].strip().startswith('假') \
+      or l[0].strip().startswith('坏'):
       candidates[0] = l[0]
       candidates[1] = candidates[-1]
     else:
@@ -122,11 +124,25 @@ def sort_alternatives(alternatives, query):
 
     return candidates, type
 
-  if l[0] == '是' and l[1] == '否' or l[0] == '否' and l[1] == '是':
-    candidates[0] = '否'
-    candidates[1] = '是'
+  if l[0].strip() == '是' and l[1].strip() == '否':
+    candidates[0] = l[1]
+    candidates[1] = l[0]
+    return candidates, type
+  
+  if l[0].strip() == '否' and l[1].strip() == '是':
+    candidates[0] = l[0]
+    candidates[1] = l[1]
     return candidates, type
 
+  if l[0].strip().startswith('真') and l[1].strip().startswith('假') or l[0].strip().startswith('好') and l[1].strip().startswith('坏'):
+    candidates[0] = l[1]
+    candidates[1] = l[0]
+    return candidates, type
+
+  if l[0].strip().startswith('假') and l[1].strip().startswith('真') or l[0].strip().startswith('坏') and l[1].strip().startswith('好'):
+    candidates[0] = l[0]
+    candidates[1] = l[1]
+    return candidates, type
 
   if l[0] in l[1]:
     candidates[0] = l[1]
@@ -164,7 +180,17 @@ def sort_alternatives(alternatives, query):
 
   type = 1
   # TODO not ok for like  跑步好，慢走好  跑步和慢走哪个好？
-  if query.find(l[0]) <= query.find(l[1]):
+  pos1 = query.lower().find(l[0].strip().lower())
+  if pos1 < 0:
+    pos1 = query.lower().find(l[0][:-1].strip().lower())
+  pos2 = query.lower().find(l[1].strip().lower())
+  if pos2 < 0:
+    pos2 = query.lower().find(l[1][:-1].strip().lower())
+  if pos1 < 0:
+    pos1 = 10000
+  if pos2 < 0:
+    pos2 = 10000
+  if pos1 <= pos2:
     # candidates[0] = l[0]
     # candidates[1] = l[1]
     candidates[0] = l[1]

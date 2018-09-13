@@ -33,7 +33,7 @@ fi
 
 
 python $exe \
-        --model=QCAttentionModel \
+        --model=QCAttention \
         --rcontent=1 \
         --use_type=1 \
         --vocab $dir/vocab.txt \

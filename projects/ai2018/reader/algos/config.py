@@ -41,7 +41,6 @@ flags.DEFINE_bool('use_bias', False, '')
 
 flags.DEFINE_bool('use_image_info', False, '')
 
-
 flags.DEFINE_string('image_combiner', 'rnn', 'rnn, concat, sum, sfu')
 flags.DEFINE_string('user_combiner', 'concat', 'rnn, concat, sum, sfu')
 

@@ -112,9 +112,6 @@ def main(_):
     with open(ofile, 'wb') as out:
       pickle.dump(infos, out)    
 
-    
-
-
 
 if __name__ == '__main__':
   tf.app.run()

@@ -58,7 +58,13 @@ class Dataset(object):
     assert filenames, self.subset
     min_queue_examples = 20000
     if repeat is None:
-      repeat = False if tf.executing_eagerly() else True
+      if tf.executing_eagerly():
+        repeat = False 
+      else:
+        if self.subset == 'train' or melt.num_gpus() > 1:
+          repeat = True
+        else:
+          repeat = False
 
     if self.subset == 'train':
       shuffle_files=True 
@@ -66,6 +72,7 @@ class Dataset(object):
     else:
       shuffle_files = False
       fix_sequence = True
+
     with tf.device('/cpu:0'):
       return melt.dataset_decode.inputs(
         filenames, 

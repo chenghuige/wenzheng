@@ -17,9 +17,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('info_path', None, '')
 
-from tensorboard import summary as summary_lib
-
-from collections import defaultdict
+#from sklearn.utils.extmath import softmax
 
 from melt.utils.weight_decay import WeightDecay
 
@@ -28,6 +26,8 @@ import gezi
 import melt 
 logging = melt.logging
 
+from wenzheng.utils import ids2text
+
 import pickle
 
 infos = {}
@@ -35,7 +35,9 @@ def init():
   global infos 
   with open(FLAGS.info_path, 'rb') as f:
     infos = pickle.load(f)
-  
+
+  ids2text.init()
+
 decay = None
 
 def calc_acc(labels, predicts, ids, model_path):
@@ -76,17 +78,23 @@ def calc_acc(labels, predicts, ids, model_path):
 valid_write = None
 infer_write = None 
 
-def infer_write(id, predict, out):
+valid_names = ['id', 'label', 'predict', 'score', 'candidates', 'type', 'query', 'passage', 'query_seg', 'passage_seg']
+
+def write(id, label, predict, out, out2=None, is_infer=False):
   info = infos[id]
+  score = gezi.softmax(predict)
   predict = np.argmax(predict)
   candidates = info['candidates'].split('|')
+  if label is not None:
+    label = candidates[label]
   predict = candidates[predict]
-  print(id, predict, sep='\t', file=out)
+  print(id, label, predict, score, candidates, info['type'], info['query_str'], info['passage_str'],
+        ids2text.ids2text(info['query'], sep='|'), ids2text.ids2text(info['passage'], sep='|'), sep='\t', file=out)
+  if is_infer:
+    print(id, predict, sep='\t', file=out2)
 
 def valid_write(id, label, predict, out):
-  info = infos[id]
-  predict = np.argmax(predict)
-  candidates = info['candidates'].split('|')
-  label = candidates[label]
-  predict = candidates[predict]
-  print(id, label, predict, info['query_str'], info['passage_str'], sep=',', file=out)
+  return write(id, label, predict, out)
+
+def infer_write(id, predict, out, out_debug):
+  return write(id, None, predict, out_debug, out, is_infer=True)

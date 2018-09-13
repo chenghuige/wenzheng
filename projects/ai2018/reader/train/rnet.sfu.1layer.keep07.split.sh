@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/rnet.1layer.keep07/
+model_dir=$base/temp/ai2018/reader/model/rnet.sfu.1layer.keep07.split/
 num_epochs=10
 
 mkdir -p $model_dir/epoch 
@@ -34,6 +34,8 @@ fi
 
 python $exe \
         --model=Rnet \
+        --att_combiner=sfu \
+        --split_type=1 \
         --rcontent=1 \
         --use_type=1 \
         --vocab $dir/vocab.txt \
