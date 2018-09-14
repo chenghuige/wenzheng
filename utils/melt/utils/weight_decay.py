@@ -38,7 +38,8 @@ class WeightDecay(object):
                min_weight=None,
                sess=None):
     import melt.utils.logging as logging
-    self.sess = sess or melt.get_session()
+    if not tf.executing_eagerly():
+      self.sess = sess or melt.get_session()
     if isinstance(weight_op, str):
       self.weight_op = tf.get_collection(weight_op)[-1]
       self.name = weight_op
@@ -67,7 +68,11 @@ class WeightDecay(object):
 
   def add(self, score):
     import melt.utils.logging as logging
-    weight = self.sess.run(self.weight_op)
+
+    if not tf.executing_eagerly():
+      weight = self.sess.run(self.weight_op)
+    else:
+      weight = self.weight_op
     #print(weight, score, self.score, self.patience)
     
     if (not self.cmp) and self.score:
@@ -98,15 +103,21 @@ class WeightDecay(object):
           decay = weight / pre_weight
 
         logging.info('!decay count:', self.count, self.name, 'now:', weight)
-        self.sess.run(tf.assign(self.weight_op, tf.constant(weight, dtype=tf.float32)))
+        if not tf.executing_eagerly():
+          self.sess.run(tf.assign(self.weight_op, tf.constant(weight, dtype=tf.float32)))
+        else:
+          self.weight_op = weight
         if 'learning_rate' in self.name:
-          melt.multiply_learning_rate(tf.constant(decay, dtype=tf.float32), self.sess)
+          if not tf.executing_eagerly():
+            melt.multiply_learning_rate(tf.constant(decay, dtype=tf.float32), self.sess)
+          else:
+            tf.get_collection('learning_rate')[-1] *= decay
     return weight
 
 
 class WeightsDecay(object):
   def __init__(self, 
-               weights_op, 
+               weights_op='learning_rate_weight', 
                patience=3, 
                decay=0.8, 
                cmp=None,
@@ -115,7 +126,8 @@ class WeightsDecay(object):
                min_weights=None,
                sess=None):
     import melt.utils.logging as logging
-    self.sess = sess or melt.get_session()
+    if not tf.executing_eagerly():
+      self.sess = sess or melt.get_session()
     if num_weights is None:
       assert names
       num_weights = len(names)
@@ -152,7 +164,10 @@ class WeightsDecay(object):
     scores = np.array(scores)
     logging.info('diff:', list(zip(self.names, scores - self.scores)))
 
-    weights = self.sess.run(self.weights_op)
+    if not tf.executing_eagerly():
+      weights = self.sess.run(self.weights_op)
+    else:
+      weights = self.weights_op
 
     if (not self.cmp) and self.scores:
       if scores[0] > self.scores[0]:
@@ -179,7 +194,10 @@ class WeightsDecay(object):
               weights[i] = self.min_weights[i]
 
           logging.info('!%s decay count:%d decay ratio:%f lr ratios now:%f' % (self.names[i], self.count[i], self.decay, weights[i]))
-          self.sess.run(tf.assign(self.weights_op, tf.constant(weights, dtype=tf.float32)))
+          if not tf.executing_eagerly():
+            self.sess.run(tf.assign(self.weights_op, tf.constant(weights, dtype=tf.float32)))
+          else:
+            self.weights_op = weights
 
     return weights
           

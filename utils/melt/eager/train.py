@@ -31,17 +31,22 @@ logging = melt.logging
 # TODO not support multiple gpu right now!
 
 def evaluate(model, dataset, eval_fn, model_path=None, 
-             names=None, write_fn=None,
+             names=None, write_fn=None, write_streaming=False,
              num_steps_per_epoch=None, 
-             suffix='.valid', sep='\t'):
+             suffix='.valid', sep=','):
+    if not write_fn:
+      write_streaming = True
     predicts_list = []
     labels_list = []
     ids_list = []
     ofile = model_path + suffix if model_path else None
-    out = open(ofile, 'w') if ofile else None
-    if out:
-      if names is not None:
-        print(*names, sep=sep, file=out)
+    if write_streaming:
+      out = open(ofile, 'w') if ofile else None
+      if out:
+        if names is not None:
+          print(*names, sep=sep, file=out)
+    else:
+      out = None
     for x, y in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
       predicts = model(x)
       predicts_list.append(predicts)
@@ -62,8 +67,12 @@ def evaluate(model, dataset, eval_fn, model_path=None,
     predicts = np.concatenate(predicts_list)
     labels = np.concatenate(labels_list)
     ids = np.concatenate(ids_list)
+    
     if out:
       out.close()
+    
+    if not write_streaming and ofile:
+      write_fn(ids, labels, predicts, ofile)
       
     if len(inspect.getargspec(eval_fn).args) == 4:
       return eval_fn(labels, predicts, ids=ids, model_path=model_path)
@@ -75,23 +84,40 @@ def evaluate(model, dataset, eval_fn, model_path=None,
 
 def inference(model, dataset, model_path, 
               names=None, debug_names=None, 
-              write_fn=None,
+              write_fn=None, write_streaming=False,
               num_steps_per_epoch=None, 
-              suffix='.infer', sep='\t'):
+              suffix='.infer', sep=','):
+  if not write_fn:
+    write_streaming = True
   ofile = model_path + suffix
-  if write_fn and len(inspect.getargspec(write_fn).args) == 4:
-    out_debug = open(model_path + '.infer.debug', 'w')
+  ofile2 = ofile + '.debug'
+  if write_streaming:
+    if write_fn and len(inspect.getargspec(write_fn).args) == 4:
+      out_debug = open(ofile2, 'w')
+    else:
+      out_debug = None
+    out = open(ofile, 'w') 
   else:
+    out = None
     out_debug = None
-  with open(ofile, 'w') as out:
+  
+  if write_streaming:
     if names is not None:
       print(*names, sep=sep, file=out)
     if debug_names and out_debug:
       print(*debug_names, sep=sep, file=out_debug)
-    for (x, _) in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
-      predicts = model(x).numpy()
-      # here id is str in py3 will be bytes
-      ids = gezi.decode(x['id'].numpy())
+
+  predicts_list = []
+  ids_list = []
+  for (x, _) in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
+    predicts = model(x).numpy()
+    # here id is str in py3 will be bytes
+    ids = gezi.decode(x['id'].numpy())
+
+    if not write_streaming:
+      predicts_list.append(predicts)
+      ids_list.append(ids)
+    else:
       for id, predict in zip(ids, predicts):
         if write_fn is None:
           if not gezi.iterable(predict):
@@ -102,14 +128,28 @@ def inference(model, dataset, model_path,
             write_fn(id, predict, out, out_debug)
           else:
             write_fn(id, predict, out)
+  
+  if out:
+    out.close()
+  if out_debug:
+    out_debug.close()
 
+  if not write_streaming:
+    predicts = np.concatenate(predicts_list)
+    ids = np.concatenate(ids_list)
+
+    if len(inspect.getargspec(write_fn).args) == 4:
+      write_fn(ids, predicts, ofile, ofile2)
+    else:
+      write_fn(ids, predicts, ofile)
+ 
 def train(Dataset, 
           model, 
           loss_fn, 
           evaluate_fn=None, 
           inference_fn=None,
           eval_fn=None,
-          write_valid=False,
+          write_valid=True,
           valid_names=None,
           infer_names=None,
           infer_debug_names=None,
@@ -117,7 +157,8 @@ def train(Dataset,
           infer_write_fn=None,
           valid_suffix='.valid',
           infer_suffix='.infer',
-          sep='\t'):
+          write_streaming=False,
+          sep=','):
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
   inputs.sort()
@@ -231,11 +272,12 @@ def train(Dataset,
       vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
     elif eval_fn:
       model_path = None if not write_valid else latest_checkpoint
-      names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
+      names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:] if infer_names else None
 
       print('model_path:', model_path)
       vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
-                             names, valid_write_fn, num_valid_steps_per_epoch,
+                             names, valid_write_fn, write_streaming,
+                             num_valid_steps_per_epoch,
                              suffix=valid_suffix, sep=sep)
   
     logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
@@ -249,8 +291,8 @@ def train(Dataset,
     if test_dataset:
       if inference_fn is None:
         inference(model, test_dataset, latest_checkpoint, 
-                  infer_names, infer_debug_names, infer_write_fn, num_test_steps_per_epoch,
-                  suffix=infer_suffix)
+                  infer_names, infer_debug_names, infer_write_fn, write_streaming,
+                  num_test_steps_per_epoch, suffix=infer_suffix)
     else:
         inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
     exit(0)
@@ -322,7 +364,8 @@ def train(Dataset,
         names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
 
         vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
-                               names, valid_write_fn, num_valid_steps_per_epoch, sep=sep)
+                               names, valid_write_fn, write_streaming,
+                               num_valid_steps_per_epoch, sep=sep)
     
     logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
                   ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
@@ -339,7 +382,7 @@ def train(Dataset,
     if test_dataset and (epoch + 1) % FLAGS.inference_interval_epochs == 0:
       if inference_fn is None:
         inference(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), 
-                  infer_names, infer_debug_names, infer_write_fn, num_test_steps_per_epoch,
-                  suffix=infer_suffix, sep=sep)
+                  infer_names, infer_debug_names, infer_write_fn, write_streaming,
+                  num_test_steps_per_epoch, suffix=infer_suffix, sep=sep)
       else:
          inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)

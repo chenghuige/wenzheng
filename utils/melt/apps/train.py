@@ -818,9 +818,11 @@ def train_flow(ops,
 
 # TODO make this evaluate , infrence and melt train_flow as standard melt.apps.train 
 def evaluate(ops, iterator, num_steps, num_examples, eval_fn, 
-             model_path=None, names=None, write_fn=None,
+             model_path=None, names=None, write_fn=None, write_streaming=False,
              num_gpus=1, write=False,
-             suffix='.valid', sep='\t', sess=None):
+             suffix='.valid', sep=',', sess=None):
+  if not write_fn:
+    write_streaming = True
   ids_list = []  
   predictions_list = []
   labels_list = []
@@ -854,18 +856,21 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
 
   if model_path and write:
     ofile = model_path +  suffix
-    with open(ofile, 'w') as out:
-      if names:
-        print(*names, sep=sep, file=out)
-      for id, label, predict in zip(ids, labels, predicts):
-        if write_fn is None:
-          if not gezi.iterable(label):
-            label = [label]
-          if not gezi.iterable(predict):
-            predict = [predict]
-          print(id, *label, *predict, sep=sep, file=out)
-        else:
-          write_fn(id, label, predict, out)
+    if write_streaming:
+      with open(ofile, 'w') as out:
+        if names:
+          print(*names, sep=sep, file=out)
+        for id, label, predict in zip(ids, labels, predicts):
+          if write_fn is None:
+            if not gezi.iterable(label):
+              label = [label]
+            if not gezi.iterable(predict):
+              predict = [predict]
+            print(id, *label, *predict, sep=sep, file=out)
+          else:
+            write_fn(id, label, predict, out)
+    else:
+      write_fn(ids, labels, predicts, ofile)
 
   # TODO maybe **kargs better ?
   if len(inspect.getargspec(eval_fn).args) == 4:
@@ -880,8 +885,10 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
 
 def inference(ops, iterator, num_steps, num_examples, 
               model_path, names=None, debug_names=None,
-              write_fn=None, num_gpus=1, 
-              suffix='.infer', sep='\t', sess=None):
+              write_fn=None, write_streaming=False, num_gpus=1, 
+              suffix='.infer', sep=',', sess=None):
+  if not write_fn:
+    write_streaming = True
   ids_list = []  
   predictions_list = []
 
@@ -911,25 +918,33 @@ def inference(ops, iterator, num_steps, num_examples,
   predicts = np.concatenate(predictions_list)[:num_examples]
 
   ofile = model_path +  suffix
-  if write_fn and len(inspect.getargspec(write_fn).args) == 4:
-    out_debug = open(model_path + '.infer.debug', 'w')
-  else:
-    out_debug = None
-  with open(ofile, 'w') as out:
-    if names:
-      print(*names, sep=sep, file=out)
-    if debug_names and out_debug:
-      print(*debug_names, sep=',', file=out_debug)
-    for id, predict in zip(ids, predicts):
-      if write_fn is None:
-        if not gezi.iterable(predict):
-          predict = [predict]
-        print(id, *predict, sep=sep, file=out)
-      else:
-        if out_debug:
-          write_fn(id, predict, out, out_debug)
+  ofile2 = ofile + '.debug'
+
+  if write_streaming:
+    if write_fn and len(inspect.getargspec(write_fn).args) == 4:
+      out_debug = open(ofile2, 'w')
+    else:
+      out_debug = None
+    with open(ofile, 'w') as out:
+      if names:
+        print(*names, sep=sep, file=out)
+      if debug_names and out_debug:
+        print(*debug_names, sep=',', file=out_debug)
+      for id, predict in zip(ids, predicts):
+        if write_fn is None:
+          if not gezi.iterable(predict):
+            predict = [predict]
+          print(id, *predict, sep=sep, file=out)
         else:
-          write_fn(id, predict, out)
+          if out_debug:
+            write_fn(id, predict, out, out_debug)
+          else:
+            write_fn(id, predict, out)
+  else:
+    if len(inspect.getargspec(write_fn).args) == 4:
+      write_fn(ids, predicts, ofile, ofile2)
+    else:
+      write_fn(ids, predicts, ofile)
 
 def train(Dataset, 
           model, 
@@ -937,7 +952,7 @@ def train(Dataset,
           evaluate_fn=None, 
           inference_fn=None,
           eval_fn=None,
-          write_valid=False,
+          write_valid=True,
           valid_names=None,
           infer_names=None,
           infer_debug_names=None,
@@ -945,7 +960,8 @@ def train(Dataset,
           infer_write_fn=None,
           valid_suffix='.valid',
           infer_suffix='.infer',
-          sep='\t'):
+          write_streaming=False,
+          sep=','):
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
   inputs.sort()
@@ -1052,6 +1068,7 @@ def train(Dataset,
                                            write=write_valid,
                                            num_gpus=num_gpus,
                                            suffix=valid_suffix,
+                                           write_streaming=write_streaming,
                                            sep=sep)
   else:
     eval_ops = None 
@@ -1079,6 +1096,7 @@ def train(Dataset,
                                             model_path=model_path,
                                             num_gpus=num_gpus,
                                             suffix=infer_suffix,
+                                            write_streaming=write_streaming,
                                             sep=sep)
   else:
     inference_fn = None

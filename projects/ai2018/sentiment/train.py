@@ -43,14 +43,11 @@ def main(_):
   train(Dataset,
         model,  
         criterion,
-        eval_fn=ev.calc_acc, 
+        eval_fn=ev.calc_f1, 
         valid_write_fn=ev.valid_write,
         infer_write_fn=ev.infer_write,
-        valid_names=ev.valid_names,
         valid_suffix='.valid.csv',
-        infer_debug_names=ev.valid_names,
-        infer_suffix='.infer.txt',
-        write_streaming=True)   
+        infer_suffix='.infer.csv')   
 
 if __name__ == '__main__':
   tf.app.run()  

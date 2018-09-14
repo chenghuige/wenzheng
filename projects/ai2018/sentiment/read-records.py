@@ -16,10 +16,10 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('input', './mount/temp/ai2018/reader/tfrecord/valid/*record,', '')
+flags.DEFINE_string('input', './mount/temp/ai2018/sentiment/tfrecord/valid/*record,', '')
 flags.DEFINE_integer('batch_size_', 512, '')
 flags.DEFINE_string('type', 'debug', '')
-flags.DEFINE_string('base', './mount/temp/ai2018/reader/tfrecord/', '')
+flags.DEFINE_string('base', './mount/temp/ai2018/sentiment/tfrecord/', '')
 #flags.DEFINE_integer('fold', None, '')
 
 import tensorflow as tf
@@ -55,6 +55,7 @@ def deal(dataset, infos):
         infos[ids[j]][key] = x[key][j]
 
 def main(_):
+
   base = FLAGS.base
   logging.set_logging_path('./mount/tmp/')
   vocab_path = os.path.join(os.path.dirname(os.path.dirname(FLAGS.input)), 'vocab.txt')
@@ -110,6 +111,7 @@ def main(_):
     ofile = f'{base}/info.pkl'
     with open(ofile, 'wb') as out:
       pickle.dump(infos, out)    
+
 
 if __name__ == '__main__':
   tf.app.run()

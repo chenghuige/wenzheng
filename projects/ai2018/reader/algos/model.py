@@ -44,8 +44,8 @@ class Model(keras.Model):
 
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    #self.pooling = melt.layers.MaxPooling()
-    self.pooling = keras.layers.GlobalMaxPool1D()
+    self.pooling = melt.layers.MaxPooling()
+    #self.pooling = keras.layers.GlobalMaxPool1D()
 
     self.logits = keras.layers.Dense(NUM_CLASSES, activation=None)
     self.logits2 = keras.layers.Dense(NUM_CLASSES, activation=None)

@@ -61,12 +61,6 @@ def get_mode(path):
     return 'pm'
   return 'train'
 
-def get_id(key_, vocab):
-  if vocab.has(key_):
-    return vocab.id(key_)
-  else:
-    return vocab.unk_id()
-
 
 def is_negative(candidate):
   negs = ['不', '无', '没']

@@ -26,6 +26,11 @@ import re
 
 import gezi
 
+def csv(s):
+  s = s.replace("\"", "\"\"") 
+  s = "\"" + s + "\""
+  return s
+
 def get_weights(weights):
   if isinstance(weights, str):
     weights = map(float, weights.split(','))

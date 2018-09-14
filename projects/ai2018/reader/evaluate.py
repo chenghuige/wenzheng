@@ -61,7 +61,7 @@ def calc_acc(labels, predicts, ids, model_path):
   if model_path is None:
     if tf.executing_eagerly():
       logging.info('eager mode not support decay right now')
-    else:
+    elif FLAGS.decay_target:
       global decay
       decay_target = FLAGS.decay_target
       if not decay:
@@ -88,10 +88,10 @@ def write(id, label, predict, out, out2=None, is_infer=False):
   if label is not None:
     label = candidates[label]
   predict = candidates[predict]
-  print(id, label, predict, score, candidates, info['type'], info['query_str'], info['passage_str'],
-        ids2text.ids2text(info['query'], sep='|'), ids2text.ids2text(info['passage'], sep='|'), sep='\t', file=out)
+  print(id, label, predict, score, gezi.csv(info['candidates']), info['type'], gezi.csv(info['query_str']), gezi.csv(info['passage_str']),
+        gezi.csv(ids2text.ids2text(info['query'], sep='|')), gezi.csv(ids2text.ids2text(info['passage'], sep='|')), sep=',', file=out)
   if is_infer:
-    print(id, predict, sep='\t', file=out2)
+    print(id, predict, sep=',', file=out2)
 
 def valid_write(id, label, predict, out):
   return write(id, label, predict, out)
