@@ -9,8 +9,8 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/gru.emb/
-num_epochs=15
+model_dir=$base/temp/ai2018/sentiment/model/gru.emb.finetune.later/
+num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
@@ -40,7 +40,7 @@ python $exe \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --word_embedding_file=$dir/emb.npy \
-        --finetune_word_embedding=0 \
+        --finetune_word_embedding=1 \
         --emb_dim 300 \
         --batch_size 32 \
         --encoder_type=rnn \

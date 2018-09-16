@@ -4,7 +4,7 @@
 #          \file   to_flickr_caption.py
 #        \author   chenghuige  
 #          \date   2016-07-11 16:29:27.084402
-#   \Description   seg using dureader corpus /home/gezi/data/dureader/raw/trainset/*.json
+#   \Description   seg using dianping corpus /home/gezi/data/ai2018/sentiment/dianping/ratings.csv 
 # ==============================================================================
 
   
@@ -17,7 +17,7 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('seg_method', 'basic', '')
+flags.DEFINE_string('seg_method', 'char', '')
 flags.DEFINE_integer("max_lines", 0, "")
 
 assert FLAGS.seg_method
@@ -31,36 +31,34 @@ segmentor = Segmentor()
 
 import gezi
 
-import json
+import pandas as pd
 
 START_WORD = '<S>'
 END_WORD = '</S>'
 
 print('seg_method:', FLAGS.seg_method, file=sys.stderr)
 
-def seg(text):
+def seg(text, out):
   words = segmentor.Segment(text, FLAGS.seg_method)
   words = [x.strip() for x in words if x.strip()]
-  print(' '.join(words))
+  if words:
+    print(' '.join(words), file=out)
 
-num = 0
-for line in sys.stdin:
-  if num % 10000 == 0:
-    print(num, file=sys.stderr)
-  line = line.rstrip()
-  m = json.loads(line)
-  question = m['question']
-  seg(question)
-  answers = m['answers']
-  for answer in answers:
-    seg(answer)
-  docs = m['documents']
-  for doc in docs:
-    title = doc['title']
-    seg(title)
-    for paragrah in doc['paragraphs']:
-      seg(paragrah)
-  num += 1
-  if num == FLAGS.max_lines:
-    break
+ifile = '/home/gezi/data/ai2018/sentiment/dianping/ratings.csv'
+df = pd.read_csv(ifile)
+
+ofile = '/home/gezi/data/ai2018/sentiment/dianping/seg.char.txt'
+
+with open(ofile, 'w') as out:
+  num = 0
+  for comment in df['comment']:
+    if num % 10000 == 0:
+      print(num, file=sys.stderr)
+    try:
+      seg(comment, out)
+    except Exception:
+      continue
+    num += 1
+    if num == FLAGS.max_lines:
+      break
 

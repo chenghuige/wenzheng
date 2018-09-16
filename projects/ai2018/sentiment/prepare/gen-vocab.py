@@ -27,7 +27,7 @@ flags.DEFINE_integer("min_count", 0, "if > 0 then cut by min_count")
 flags.DEFINE_integer("max_lines", 0, "")
 flags.DEFINE_boolean("add_unknown", True, "treat ignored words as unknow")
 flags.DEFINE_boolean("save_count_info", True, "save count info to bin")
-flags.DEFINE_string("out_dir", './mount/temp/ai2018/reader/', "save count info to bin")
+flags.DEFINE_string("out_dir", './mount/temp/ai2018/sentiment/', "save count info to bin")
 flags.DEFINE_string("vocab_name", None, "")
 flags.DEFINE_string('seg_method', 'basic_single', '')
 

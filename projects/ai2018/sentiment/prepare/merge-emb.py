@@ -20,20 +20,23 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 
-flags.DEFINE_string('dir', './mount/temp/ai2018/reader/tfrecord/', '')
-flags.DEFINE_string('emb', './mount/temp/ai2018/reader/vectors.txt', '')
+flags.DEFINE_string('input_vocab', './mount/temp/ai2018/sentiment/tfrecord/vocab.ori.txt', '')
+flags.DEFINE_string('dir', './mount/temp/ai2018/sentiment/tfrecord/', '')
+flags.DEFINE_string('emb', './mount/temp/ai2018/sentiment/vectors.txt', '')
 flags.DEFINE_integer('min_count', 10, '')
+flags.DEFINE_integer('most_common', None, '')
 flags.DEFINE_integer('emb_dim', 300, '')
 flags.DEFINE_string('out_name', 'emb.npy', '')
 flags.DEFINE_string('type', 'normal', '''normal try merge all in glove, and add not in glove ones which with min train count,
-                                       scratch add all with min train count and try merge glove,
-                                       only only merge all glove and not consider train count''')
+                                         scratch add all with min train count and try merge glove,
+                                         only only merge all glove and not consider train count''')
 
 from tqdm import tqdm
 import numpy as np
 
 def main(_):
-  input_vocab = os.path.join(FLAGS.dir, 'vocab.full.txt')
+  print('emb', FLAGS.emb)
+  input_vocab = FLAGS.input_vocab
   lines = open(input_vocab).readlines()
 
   ori_words_counts = [x.rstrip('\n').split('\t') for x in lines]

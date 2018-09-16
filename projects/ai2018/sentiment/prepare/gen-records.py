@@ -24,10 +24,11 @@ flags.DEFINE_string('input', './mount/data/ai2018/sentiment/valid.csv', '')
 flags.DEFINE_string('vocab_', './mount/temp/ai2018/sentiment/tfrecord/vocab.txt', 'vocabulary txt file')
 #flags.DEFINE_string('seg_method', 'basic', '') 
 flags.DEFINE_bool('binary', False, '')
-flags.DEFINE_integer('limit', 1000, '')
+flags.DEFINE_integer('limit', 5000, '')
 flags.DEFINE_bool('feed_single_en', True, '')
 flags.DEFINE_bool('to_lower', True, '')
 flags.DEFINE_integer('threads', None, '')
+flags.DEFINE_integer('num_records_', 7, '10 or 5?')
 
 import traceback
 from sklearn.utils import shuffle
@@ -39,10 +40,15 @@ import pandas as pd
 from gezi import Vocabulary
 import gezi
 import melt
-from deepiu.util import text2ids
+from wenzheng.utils import text2ids 
+import filter
 
+import multiprocessing
 from multiprocessing import Value, Manager
-counter = Value('i', 0) 
+counter = Value('i', 0)
+total_words = Value('i', 0)
+
+df = None
 
 def _text2ids(text):
   return text2ids.text2ids(text, seg_method=FLAGS.seg_method, 
@@ -62,29 +68,35 @@ def get_mode(path):
     return 'pm'
   return 'train'
 
-def build_features(file_):
+def build_features(index):
   mode = get_mode(FLAGS.input)
-  out_file = os.path.dirname(FLAGS.vocab_) + '/{0}/{1}_{2}.tfrecord'.format(mode, os.path.basename(os.path.dirname(file_)), os.path.basename(file_))
-  os.system('mkdir -p %s' % os.path.dirname(out_file))
-  print('infile', file_, 'out_file', out_file)
 
-  df = pd.read_csv(file_)
-  
+  out_file = os.path.dirname(FLAGS.vocab) + '/{0}/{1}.record'.format(mode, index)
+  os.system('mkdir -p %s' % os.path.dirname(out_file))
+  print('---out_file', out_file)
+  # TODO now only gen one tfrecord file 
+
+  total = len(df)
+  num_records = FLAGS.num_records_ if mode is 'train' else 1
+  start, end = gezi.get_fold(total, num_records, index)
+
+  print('infile', FLAGS.input, 'out_file', out_file)
+
   num = 0
-  num_whether = 0
   with melt.tfrecords.Writer(out_file) as writer:
-    for i in range(len(df)):
+    for i in range(start, end):
       try:
         row = df.iloc[i]
         id = row[0]
-        content = row[1]
+        content = row[1] 
+        content = filter.filter(content)
         label = list(row[2:])
         #num_labels = len(label)
 
-        limit = 5000
+        limit = FLAGS.limit
         content = content[:limit]
         content_ids = _text2ids(content)
-
+        
         feature = {
                     'id': melt.bytes_feature(str(id)),
                     'label': melt.int64_feature(label),
@@ -103,6 +115,9 @@ def build_features(file_):
         global counter
         with counter.get_lock():
           counter.value += 1
+        global total_words
+        with total_words.get_lock():
+          total_words.value += len(content_ids)
       except Exception:
         print(traceback.format_exc(), file=sys.stderr)
 
@@ -112,16 +127,30 @@ def main(_):
   print('to_lower:', FLAGS.to_lower, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
   print(text2ids.ids2text(_text2ids('傻逼脑残B')))
   print(text2ids.ids2text(_text2ids('喜欢玩孙尚香的加我好友：2948291976')))
+
+  global df
+  df = pd.read_csv(FLAGS.input)
+
+  mode = get_mode(FLAGS.input)
+
   
-  build_features(FLAGS.input)
+  pool = multiprocessing.Pool()
+
+  FLAGS.num_records_ = FLAGS.num_records_ if mode is 'train' else 1
+  pool.map(build_features, range(FLAGS.num_records_))
+  pool.close()
+  pool.join()
+
+  #build_features(FLAGS.input)
 
   # for safe some machine might not use cpu count as default ...
   print('num_records:', counter.value)
-  mode = get_mode(FLAGS.input)
 
   os.system('mkdir -p %s/%s' % (os.path.dirname(FLAGS.vocab_), mode))
   out_file = os.path.dirname(FLAGS.vocab_) + '/{0}/num_records.txt'.format(mode)
   gezi.write_to_txt(counter.value, out_file)
+
+  print('mean words:', total_words.value / counter.value)
 
 if __name__ == '__main__':
   tf.app.run()

@@ -10,7 +10,7 @@ if [ $FOLD ];
 fi 
 
 model_dir=$base/temp/ai2018/sentiment/model/gru/
-num_epochs=12
+num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir

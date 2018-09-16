@@ -28,7 +28,7 @@ import melt
 logging = melt.logging
 
 from wenzheng.utils import ids2text
-from algos.config import ATTRIBUTES
+from algos.config import ATTRIBUTES, NUM_ATTRIBUTES, NUM_CLASSES
 
 import pickle
 import pandas as pd
@@ -43,7 +43,7 @@ def init():
 
   ids2text.init()
 
-def calc_f1(labels, predicts, ids, model_path):
+def calc_f1(labels, predicts, ids=None, model_path=None):
   names = ['mean'] + ATTRIBUTES
   names = ['f1/' + x for x in names]
   # TODO show all 20 * 4 ? not only show 20 f1
@@ -65,7 +65,8 @@ def calc_f1(labels, predicts, ids, model_path):
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                             decay=FLAGS.decay_factor, 
                             cmp=cmp,
-                            min_weight=0.00001)
+                            #min_weight=0.00001,
+                            min_learning_rate=0.00001)
       decay.add(f1)
   
   return [f1] + f1_list, names
@@ -83,7 +84,11 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
       df[ATTRIBUTES[i] + '_y'] = labels[:,i]
   for i in range(len(ATTRIBUTES)):
     df[ATTRIBUTES[i]] = np.argmax(predicts[:,i], 1) - 2
-  df.to_csv(ofile, index=False, encoding="utf_8_sig")
+  if is_infer:
+    df.to_csv(ofile, index=False, encoding="utf_8_sig")
+  df['score'] = [list(x) for x in np.reshape(predicts, [-1, NUM_ATTRIBUTES * NUM_CLASSES])]
+  if not is_infer:
+    df.to_csv(ofile, index=False, encoding="utf_8_sig")
   if is_infer:
     df2 = df
     df2['seg'] = [ids2text.ids2text(infos[id]['content'], sep='|') for id in ids]

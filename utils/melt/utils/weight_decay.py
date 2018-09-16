@@ -36,6 +36,8 @@ class WeightDecay(object):
                decay=0.8,  
                cmp=None,
                min_weight=None,
+               min_learning_rate=None,
+               initial_learning_rate = None,
                sess=None):
     import melt.utils.logging as logging
     if not tf.executing_eagerly():
@@ -60,6 +62,9 @@ class WeightDecay(object):
     self.patience = 0
     self.count = 0
     self.min_weight = min_weight
+
+    if not self.min_weight:
+      self.min_weight = min_learning_rate / (initial_learning_rate or FLAGS.learning_rate)
 
     # This is done in melt.flow
     # weight = self.sess.run(self.weight_op)
@@ -101,16 +106,22 @@ class WeightDecay(object):
         if self.min_weight and weight < self.min_weight:
           weight = self.min_weight
           decay = weight / pre_weight
+          if decay >  1.:
+            decay = 1.
 
         logging.info('!decay count:', self.count, self.name, 'now:', weight)
         if not tf.executing_eagerly():
           self.sess.run(tf.assign(self.weight_op, tf.constant(weight, dtype=tf.float32)))
         else:
           self.weight_op = weight
+        
         if 'learning_rate' in self.name:
           if not tf.executing_eagerly():
             melt.multiply_learning_rate(tf.constant(decay, dtype=tf.float32), self.sess)
           else:
+            # TODO need to test eager mode
+            #learning_rate =  tf.get_collection('learning_rate')[-1]
+            #if learning_rate * decay > self.min_learning_rate:
             tf.get_collection('learning_rate')[-1] *= decay
     return weight
 

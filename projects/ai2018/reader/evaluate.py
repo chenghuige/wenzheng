@@ -70,7 +70,8 @@ def calc_acc(labels, predicts, ids, model_path):
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                             decay=FLAGS.decay_factor, 
                             cmp=cmp,
-                            min_weight=0.00001)
+                            #min_weight=0.00001,
+                            min_learning_rate=0.00001)
       decay.add(acc)
 
   return [acc, acc_if, acc_whether], names
