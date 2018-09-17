@@ -24,9 +24,12 @@ import wenzheng
 from wenzheng.utils import vocabulary, embedding
 
 from algos.config import NUM_CLASSES, NUM_ATTRIBUTES
+from algos.weights import *
 
 import melt
-    
+logging = melt.logging
+import numpy as np
+
 class Model(keras.Model):
   def __init__(self):
     super(Model, self).__init__()
@@ -44,7 +47,8 @@ class Model(keras.Model):
 
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    self.pooling = melt.layers.MaxPooling()
+    logging.info('encoder_output_method:', FLAGS.encoder_output_method, 'topk:', FLAGS.top_k)
+    self.pooling = melt.layers.Pooling(FLAGS.encoder_output_method, top_k=FLAGS.top_k)
     #self.pooling = keras.layers.GlobalMaxPool1D()
 
     self.logits = keras.layers.Dense(NUM_ATTRIBUTES * NUM_CLASSES, activation=None)
@@ -67,11 +71,43 @@ class Model(keras.Model):
 
     x = self.logits(x)
 
+    if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES * NUM_CLASSES:
+      x = melt.adjust_lrs(x)
+
     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, NUM_CLASSES])
     
     return x
 
+
 def criterion(model, x, y, training=False):
   y_ = model(x, training=training)
-  y += 2 
-  return tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y) 
+  y += 2
+  weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
+  
+  #print(y_, y, weights)
+  if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
+    assert FLAGS.loss == 'cross'
+    loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE)
+    loss = melt.adjust_lrs(loss)
+    loss = tf.reduce_mean(loss)
+  else: 
+    if FLAGS.loss == 'cross':
+      loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights) 
+    elif FLAGS.loss == 'focal':
+      loss = melt.losses.focal_loss(y_, y)
+
+  if FLAGS.na_ratio > 0.:
+    y_ = tf.concat([y_[:,:,0:1], tf.reduce_sum(y_[:,:,1:], -1, keepdims=True)], -1)
+    y = tf.one_hot(tf.to_int64(y > 0), 2)
+    if no_weights():
+      bloss = tf.losses.sigmoid_cross_entropy(y, y_)
+    else:
+      bloss = tf.losses.sigmoid_cross_entropy(y, y_, reduction=tf.losses.Reduction.NONE)
+      bloss = tf.reduce_sum(bloss * tf.expand_dims(weights, -1), -1)
+      bloss = tf.reduce_mean(bloss)
+    if FLAGS.na_ratio_add:
+      loss = loss + FLAGS.na_ratio * bloss
+    else:
+      loss = (1 - FLAGS.na_ratio) * loss + FLAGS.na_ratio * bloss
+
+  return loss

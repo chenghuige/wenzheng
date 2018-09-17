@@ -37,6 +37,14 @@ def exists_model(model_dir):
 from tensorflow.python.platform import gfile
 from tensorflow.python.framework.graph_util import convert_variables_to_constants
 
+def adjust_lrs(x, ratio=None, name='learning_rate_weights'):
+  if ratio is None:
+    ratios = tf.get_collection(name)[-1]
+    x = x * ratios + tf.stop_gradient(x) * (1 - ratios)
+  else:
+    x = x * ratio + tf.stop_gradient(x) * (1 - ratio)
+  return x
+
 def try_convert_images(images):
   if not isinstance(images, (list, tuple, np.ndarray)):
     images = [images]

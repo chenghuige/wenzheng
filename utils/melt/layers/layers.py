@@ -134,41 +134,41 @@ def mlp_nobias(x, hidden_size, output_size, activation=tf.nn.relu, scope=None):
     return  melt.mlp_forward_nobias(x, w_h, w_o, activation)
 
 
-#def self_attention(outputs, seq_len, hidden_size, activation=tf.nn.tanh, scope='self_attention'):
-def self_attention(outputs, seq_len, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
+#def self_attention(outputs, sequence_length, hidden_size, activation=tf.nn.tanh, scope='self_attention'):
+def self_attention(outputs, sequence_length, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
   with tf.variable_scope('self_attention'):
     hidden_layer = tf.layers.dense(outputs, hidden_size, activation=activation)
     logits = tf.layers.dense(hidden_layer, 1, activation=None)
-    alphas = melt.masked_softmax(logits, seq_len)
+    alphas = melt.masked_softmax(logits, sequence_length)
     encoding = tf.reduce_sum(outputs * alphas, 1)
-    # [batch_size, seq_len, 1] -> [batch_size, seq_len]
+    # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
     alphas = tf.squeeze(alphas) 
     return encoding, alphas
 
-def self_attention_outputs(outputs, seq_len, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
+def self_attention_outputs(outputs, sequence_length, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
   with tf.variable_scope('self_attention'):
     hidden_layer = tf.layers.dense(outputs, hidden_size, activation=activation)
     logits = tf.layers.dense(hidden_layer, 1, activation=None)
-    alphas = melt.masked_softmax(logits, seq_len)
+    alphas = melt.masked_softmax(logits, sequence_length)
     outputs = outputs * alphas
     return outputs
 
-#def self_attention(outputs, seq_len, hidden_size, activation=tf.nn.tanh, scope='self_attention'):
-def attention_layer(outputs, seq_len, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
+#def self_attention(outputs, sequence_length, hidden_size, activation=tf.nn.tanh, scope='self_attention'):
+def attention_layer(outputs, sequence_length, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
   with tf.variable_scope('self_attention'):
     hidden_layer = tf.layers.dense(outputs, hidden_size, activation=activation)
     logits = tf.layers.dense(hidden_layer, 1, activation=None)
-    alphas = melt.masked_softmax(logits, seq_len)
+    alphas = melt.masked_softmax(logits, sequence_length)
     encoding = tf.reduce_sum(outputs * alphas, 1)
-    # [batch_size, seq_len, 1] -> [batch_size, seq_len]
+    # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
     alphas = tf.squeeze(alphas) 
     return encoding, alphas
 
-def attention_outputs(outputs, seq_len, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
+def attention_outputs(outputs, sequence_length, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
   with tf.variable_scope('self_attention'):
     hidden_layer = tf.layers.dense(outputs, hidden_size, activation=activation)
     logits = tf.layers.dense(hidden_layer, 1, activation=None)
-    alphas = melt.masked_softmax(logits, seq_len)
+    alphas = melt.masked_softmax(logits, sequence_length)
     outputs = outputs * alphas
     return outputs
 
@@ -315,13 +315,92 @@ def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, co
 
 keras = tf.keras
 layers = tf.keras.layers
-class MaxPooling(keras.layers.Layer):
+Layer = layers.Layer
+
+class MaxPooling(Layer):
   def call(self, outputs, sequence_length=None, axis=1, reduce_func=tf.reduce_max):
     return melt.max_pooling(outputs, sequence_length, axis, reduce_func)
 
-class MaxPooling2(keras.layers.Layer):
+class MaxPooling2(Layer):
   def call(self, outputs, sequence_length, sequence_length2, axis=1, reduce_func=tf.reduce_max):
     return melt.max_pooling2(outputs, sequence_length, sequence_length2, axis, reduce_func)
+
+class MeanPooling(Layer):
+  def call(self, outputs, sequence_length=None, axis=1):
+    return melt.mean_pooling(outputs, sequence_length, axis)
+
+class TopKPooling(Layer):
+  def __init__(self,  
+               top_k,
+               **kwargs):
+    super(TopKPooling, self).__init__(**kwargs)
+    self.top_k = top_k
+
+  # def compute_output_shape(self, input_shape):
+  #   return (input_shape[0], (input_shape[2] * self.top_k))
+  
+  def call(self, outputs, sequence_length=None, axis=1):
+    x = melt.top_k_pooling(outputs, self.top_k, sequence_length, axis).values  
+    #return tf.reshape(x, [melt.get_shape(outputs, 0), -1])
+    return tf.reshape(x, [-1, melt.get_shape(outputs, -1) * self.top_k])
+
+def attention_layer(outputs, sequence_length, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
+  with tf.variable_scope('self_attention'):
+    hidden_layer = tf.layers.dense(outputs, hidden_size, activation=activation)
+    logits = tf.layers.dense(hidden_layer, 1, activation=None)
+    alphas = melt.masked_softmax(logits, sequence_length)
+    encoding = tf.reduce_sum(outputs * alphas, 1)
+    # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
+    alphas = tf.squeeze(alphas) 
+    return encoding, alphas
+
+class AttentionPooling(Layer):
+  def __init__(self,  
+               hidden_size=128,
+               activation=tf.nn.relu,
+               **kwargs):
+    super(AttentionPooling, self).__init__(**kwargs)
+    self.activation = activation
+    if hidden_size is not None:
+      self.dense = layers.Dense(hidden_size, activation=activation)
+    else:
+      self.dense = None
+    self.logits = layers.Dense(1, activation=None)
+    self.step = -1
+
+  def call(self, outputs, sequence_length=None, axis=1):
+    self.step += 1
+    if self.step == 0 and self.dense is None:
+      self.dense = layers.Dense(melt.get_shape(outputs, -1), activation=self.activation)
+    x = self.dense(outputs)
+    logits = self.logits(x)
+    alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
+    encoding = tf.reduce_sum(outputs * alphas, 1)
+    # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
+    self.alphas = tf.squeeze(alphas)     
+    return encoding
+
+class Pooling(keras.Model):
+  def __init__(self,  
+               name,
+               top_k=2,
+               **kwargs):
+    super(Pooling, self).__init__(**kwargs)
+    if name == 'max':
+      self.pooling = MaxPooling()
+    elif name == 'mean':
+      self.pooling = MeanPooling()
+    elif name == 'attention':
+      self.pooling = AttentionPooling()
+    elif name == 'attention2':
+      self.pooling = AttentionPooling(hidden_size=None)
+    elif name == 'topk':
+      self.pooling = TopKPooling(top_k)
+    else:
+      raise f'Unsupport pooling now:{name}'
+  
+  def call(self, outputs, sequence_length=None, axis=1):
+    return self.pooling(outputs, sequence_length, axis)
 
 from melt import dropout
 from melt.rnn import OutputMethod, encode_outputs
@@ -396,9 +475,9 @@ class CudnnRnn(keras.Model):
 
     # for share dropout between like context and question in squad (machine reading task)
     # rnn = gru(num_layers=FLAGS.num_layers, num_units=d, keep_prob=keep_prob, is_train=self.is_training)
-    # c = rnn(c_emb, seq_len=c_len)
+    # c = rnn(c_emb, sequence_length=c_len)
     # scope.reuse_variables()
-    # q = rnn(q_emb, seq_len=q_len)
+    # q = rnn(q_emb, sequence_length=q_len)
     self.share_dropout = share_dropout
     
 
@@ -476,7 +555,7 @@ class CudnnRnn(keras.Model):
 
   def call(self, 
            inputs, 
-           seq_len, 
+           sequence_length, 
            emb=None, 
            mask_fws = None,
            mask_bws = None,
@@ -536,7 +615,7 @@ class CudnnRnn(keras.Model):
             mask_bw = self.dropout_mask_bw[layer]
 
       inputs_bw = tf.reverse_sequence(
-          outputs[-1] * mask_bw, seq_lengths=seq_len, seq_axis=1, batch_axis=0)
+          outputs[-1] * mask_bw, seq_lengths=sequence_length, seq_axis=1, batch_axis=0)
       
       if self.train_init_state:
         #init_bw = tf.tile(self.init_bw[layer], [batch_size, 1])
@@ -547,7 +626,7 @@ class CudnnRnn(keras.Model):
 
       out_bw, state_bw = gru_bw(inputs_bw, init_bw)
       out_bw = tf.reverse_sequence(
-          out_bw, seq_lengths=seq_len, seq_axis=1, batch_axis=0)
+          out_bw, seq_lengths=sequence_length, seq_axis=1, batch_axis=0)
 
       outputs.append(tf.concat([out_fw, out_bw], axis=2))
 
@@ -556,7 +635,7 @@ class CudnnRnn(keras.Model):
     else:
       res = outputs[-1]
 
-    res = encode_outputs(res, output_method=output_method, sequence_length=seq_len)
+    res = encode_outputs(res, output_method=output_method, sequence_length=sequence_length)
 
     self.state = (state_fw, state_bw)
 
@@ -569,9 +648,9 @@ class CudnnRnn2(CudnnRnn):
     
   def call(self, 
            inputs, 
-           seq_len,
+           sequence_length,
            inputs2,
-           seq_len2, 
+           sequence_length2, 
            mask_fws,
            mask_bws,
            concat_layers=True, 
@@ -602,9 +681,9 @@ class CudnnRnn2(CudnnRnn):
 
       mask_bw = mask_bws[layer]
       inputs_bw = tf.reverse_sequence(
-          outputs[-1] * mask_bw, seq_lengths=seq_len, seq_axis=1, batch_axis=0)
+          outputs[-1] * mask_bw, sequence_lengthgths=sequence_length, seq_axis=1, batch_axis=0)
       inputs_bw2 = tf.reverse_sequence(
-          outputs2[-1] * mask_bw, seq_lengths=seq_len2, seq_axis=1, batch_axis=0)
+          outputs2[-1] * mask_bw, sequence_lengthgths=sequence_length2, seq_axis=1, batch_axis=0)
       
       if self.train_init_state:
         init_bw = self.init_bw_layer(layer, batch_size)
@@ -626,7 +705,7 @@ class CudnnRnn2(CudnnRnn):
 
     res = tf.concat([res, res2], axis=1)
 
-    res = encode_outputs(res, output_method=output_method, sequence_length=seq_len)
+    res = encode_outputs(res, output_method=output_method, sequence_length=sequence_length)
 
     self.state = (state_fw2, state_bw2)
     return res

@@ -7,5 +7,5 @@ or just sh prepare.sh to do above, be sure you use correct tfrecord folder (usin
 
 if you want just to verify records, python ./read-records.py --type=any.. other then dump  
 # training 
-python ./train.py  # train using graph
-EAGER=1 python ./train.py # train using eager mode  
+python ./train.py  # train using graph  
+EAGER=1 python ./train.py # train using eager mode   

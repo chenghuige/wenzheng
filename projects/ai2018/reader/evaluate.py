@@ -31,18 +31,53 @@ from wenzheng.utils import ids2text
 import pickle
 
 infos = {}
+decay = None
+wnames = []
+
 def init():
   global infos 
+  global wnames
   with open(FLAGS.info_path, 'rb') as f:
     infos = pickle.load(f)
 
   ids2text.init()
 
-decay = None
+  if FLAGS.decay_target:
+    global decay
+    decay_target = FLAGS.decay_target
+    cmp = 'less' if decay_target == 'loss' else 'greater'
+    if not decay:
+      logging.info('Weight decay target:', decay_target)
+      if FLAGS.num_learning_rate_weights == 1:
+        decay = WeightDecay(patience=FLAGS.decay_patience, 
+                      decay=FLAGS.decay_factor, 
+                      cmp=cmp,
+                      #min_weight=0.00001,
+                      min_learning_rate=0.00001)
+      else:
+        wnames = ['if', 'whether']
+        decay = WeightsDecay(patience=FLAGS.decay_patience, 
+                      decay=FLAGS.decay_factor, 
+                      cmp=cmp,
+                      #min_weight=0.00001,
+                      min_learning_rate=0.00001,
+                      names=wnames)  
+
+## worse then just simply argmax
+# def to_predict(logits):
+#   predicts = np.zeros([len(logits)])
+#   probs = gezi.softmax(logits, 1) 
+#   for i, prob in enumerate(probs):
+#     if prob[2] > 0.4:
+#       predicts[i] = 2
+#     else:
+#       predicts[i] = np.argmax(prob[:-1])
+#   return predicts
 
 def calc_acc(labels, predicts, ids, model_path):
   names = ['acc', 'acc_if', 'acc_whether'] 
   predicts = np.argmax(predicts, 1)
+  #predicts = to_predict(predicts)
   acc = np.mean(np.equal(labels, predicts))
 
   predicts1, predicts2, labels1, labels2 = [], [], [], []
@@ -57,24 +92,16 @@ def calc_acc(labels, predicts, ids, model_path):
     
   acc_if = np.mean(np.equal(labels1, predicts1))
   acc_whether = np.mean(np.equal(labels2, predicts2))
-
+  vals = [acc, acc_if, acc_whether]
   if model_path is None:
-    if tf.executing_eagerly():
-      logging.info('eager mode not support decay right now')
-    elif FLAGS.decay_target:
-      global decay
-      decay_target = FLAGS.decay_target
-      if not decay:
-        logging.info('decay_target:', decay_target)
-        cmp = 'less' if decay_target == 'loss' else 'greater'
-        decay = WeightDecay(patience=FLAGS.decay_patience, 
-                            decay=FLAGS.decay_factor, 
-                            cmp=cmp,
-                            #min_weight=0.00001,
-                            min_learning_rate=0.00001)
-      decay.add(acc)
+    if FLAGS.decay_target:
+      target = acc if FLAGS.num_learning_rate_weights == 1 else [acc_if, acc_whether]
+      weights = decay.add(target)
+      if FLAGS.num_learning_rate_weights > 1:
+        vals += list(weights)
+        names += [f'weights/{name}' for name in wnames]
 
-  return [acc, acc_if, acc_whether], names
+  return vals, names
   
 valid_write = None
 infer_write = None 
@@ -92,7 +119,8 @@ def write(id, label, predict, out, out2=None, is_infer=False):
   print(id, label, predict, score, gezi.csv(info['candidates']), info['type'], gezi.csv(info['query_str']), gezi.csv(info['passage_str']),
         gezi.csv(ids2text.ids2text(info['query'], sep='|')), gezi.csv(ids2text.ids2text(info['passage'], sep='|')), sep=',', file=out)
   if is_infer:
-    print(id, predict, sep=',', file=out2)
+    #for contest
+    print(id, predict, sep='\t', file=out2)
 
 def valid_write(id, label, predict, out):
   return write(id, label, predict, out)

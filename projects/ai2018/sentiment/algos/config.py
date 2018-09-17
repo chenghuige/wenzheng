@@ -16,6 +16,7 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
+CLASSES = ['na', 'neg', 'neu', 'pos']
 ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_district', 'location_easy_to_find',
               'service_wait_time', 'service_waiters_attitude', 'service_parking_convenience', 'service_serving_speed', 
               'price_level', 'price_cost_effective', 'price_discount', 
@@ -24,11 +25,25 @@ ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_d
               'others_overall_experience', 'others_willing_to_consume_again']
 
 NUM_ATTRIBUTES = len(ATTRIBUTES)
+ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
 flags.DEFINE_string('model', 'Model', '')
+
+flags.DEFINE_string('loss', 'cross', '')
+
+flags.DEFINE_float('na_ratio', 0., '')
+flags.DEFINE_bool('na_ratio_add', True, '')
+
+flags.DEFINE_string('aspect', 'all', 'location, service, price, enviroment, dis, others')
+flags.DEFINE_integer('attr_index', None, '')
+#flags.DEFINE_string('weights', None, '') 
+flags.DEFINE_float('init_weight', 1., '')
+
+flags.DEFINE_integer('top_k', 2, '')
+
 
 flags.DEFINE_bool('use_type', False, '')
 flags.DEFINE_bool('use_type_emb', False, '')

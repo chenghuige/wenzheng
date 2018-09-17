@@ -40,7 +40,7 @@ class Model(keras.Model):
     #self.abc = self.add_variable("abc", [1, 3], initializer=tf.ones_initializer(dtype=tf.float32))
     #self.encode = keras.layers.Dense(5, activation=None)
     
-    #self.abc = tfe.Variable(tf.ones([1, 3], dtype=tf.float32), name='abc')
+    self.abc = tfe.Variable(tf.ones([1, 3], dtype=tf.float32), name='abc')
     #self.abc = self.abc * 5
     #self.abc = Layer()
 

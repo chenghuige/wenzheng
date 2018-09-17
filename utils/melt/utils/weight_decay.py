@@ -16,6 +16,8 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
+tfe = tf.contrib.eager
+
 #import sys, os
 import melt
 #logging = melt.utils.logging
@@ -37,22 +39,35 @@ class WeightDecay(object):
                cmp=None,
                min_weight=None,
                min_learning_rate=None,
-               initial_learning_rate = None,
+               initial_learning_rate=None,
                sess=None):
     import melt.utils.logging as logging
     if not tf.executing_eagerly():
       self.sess = sess or melt.get_session()
     if isinstance(weight_op, str):
-      self.weight_op = tf.get_collection(weight_op)[-1]
-      self.name = weight_op
+      try:
+        # by default melt.apps.train will generate weight op Var named 'learning_rate_weight' TODO may be hold it just here
+        # so currently graph model will go here
+        self.weight_op = tf.get_collection(weight_op)[-1]
+        self.name = weight_op
+      except Exception:
+        raise 'TODO..'
+        # print('-------------------------Weight Decay change!')
+        # so currently eager mode will go here
+        #learning_rate_weight = tf.get_variable('learning_rate_weight', initializer= tf.ones(shape=(), dtype=tf.float32))
+        #learning_rate_weight = tf.Variable(tf.ones(shape=(), dtype=tf.float32), name='learning_rate_weight')
+        # TODO tfe.Var should only be used in keras.Model init ? notice eager mode can not use tf.Variable
+        # learning_rate_weight = tfe.Variable(tf.ones(shape=(), dtype=tf.float32), name='learning_rate_weight')
+        # tf.add_to_collection('learning_rate_weight', learning_rate_weight)
+        # self.weight_op = learning_rate_weight
     else:
       self.weight_op = weight_op
       self.name = 'weight'
 
     if cmp == 'less':
-      self.cmp = lambda x, y: x < y
+      self.cmp = lambda x, y: x <= y
     elif cmp== 'greater':
-      self.cmp = lambda x, y: x > y  
+      self.cmp = lambda x, y: x >= y  
     else:
       self.cmp = cmp
     self.score = None
@@ -82,9 +97,9 @@ class WeightDecay(object):
     
     if (not self.cmp) and self.score:
       if score > self.score:
-        self.cmp = lambda x, y: x > y  
+        self.cmp = lambda x, y: x >= y  
       else:
-        self.cmp = lambda x, y: x < y
+        self.cmp = lambda x, y: x <= y
       logging.info('decay cmp:', self.cmp)
 
     if not self.score or self.cmp(score, self.score):
@@ -100,7 +115,8 @@ class WeightDecay(object):
         self.score = score
         decay = self.decay
         pre_weight = weight
-        weight *= decay
+        #weight *= decay
+        weight = weight * decay
         
         # decay
         if self.min_weight and weight < self.min_weight:
@@ -122,43 +138,50 @@ class WeightDecay(object):
             # TODO need to test eager mode
             #learning_rate =  tf.get_collection('learning_rate')[-1]
             #if learning_rate * decay > self.min_learning_rate:
-            tf.get_collection('learning_rate')[-1] *= decay
+
+            #tf.get_collection('learning_rate')[-1] *= decay
+            tf.get_collection('learning_rate')[-1].assign(tf.get_collection('learning_rate')[-1] * decay)
+
     return weight
 
 
 class WeightsDecay(object):
   def __init__(self, 
-               weights_op='learning_rate_weight', 
+               weights_op='learning_rate_weights', 
                patience=3, 
                decay=0.8, 
                cmp=None,
                names=None,
                num_weights=None, 
-               min_weights=None,
+               min_weight=None,
+               min_learning_rate=None,
+               initial_learning_rate=None,
+               initial_score=None,
                sess=None):
     import melt.utils.logging as logging
     if not tf.executing_eagerly():
       self.sess = sess or melt.get_session()
+
     if num_weights is None:
       assert names
       num_weights = len(names)
-
-    if isinstance(weights_op, str):
-      self.weights_op = tf.get_collection(weights_op)[-1]
-    else:
-      self.weights_op = weights_op
 
     logging.info('decay:', decay, 'cmp:', cmp)
     assert cmp == 'less' or cmp == 'greater'
 
     if cmp == 'less':
-      self.cmp = lambda x, y: x < y
+      self.cmp = lambda x, y: x <= y
+      self.scores = np.ones([num_weights]) * 1e10
     elif cmp == 'greater':
-      self.cmp = lambda x, y: x > y  
+      self.cmp = lambda x, y: x >= y  
+      self.scores = np.ones([num_weights]) * -1e10
     else:
+      # TODO...
       self.cmp = cmp
+      assert initial_score
+      self.scores = [initial_score] * num_weights
 
-    self.scores = None
+    #self.scores = None
 
     self.max_patience = patience
     self.decay = decay
@@ -168,27 +191,44 @@ class WeightsDecay(object):
     self.count = [0] * num_weights
     self.names = names or list(map(str, range(num_weights)))
 
-    self.min_weights = min_weights
+    self.min_weight = min_weight
+
+    if not self.min_weight:
+      self.min_weight = min_learning_rate / (initial_learning_rate or FLAGS.learning_rate)
+
+    if isinstance(weights_op, str):
+      try:
+        self.weights_op = tf.get_collection(weights_op)[-1]
+      except Exception:
+        #self.weights_op = tf.get_variable('lr_ratios', initializer=tf.ones([num_classes], dtype=tf.float32))
+        #tf.add_to_collection('lr_ratios', lr_ratios)
+        raise 'TODO..'
+    else:
+      self.weights_op = weights_op
 
   def add(self, scores):
     import melt.utils.logging as logging
     scores = np.array(scores)
+
+    #print(scores.shape, self.scores.shape, len(self.names))
     logging.info('diff:', list(zip(self.names, scores - self.scores)))
 
     if not tf.executing_eagerly():
       weights = self.sess.run(self.weights_op)
+      weights_ = weights
     else:
       weights = self.weights_op
+      weights_ = weights.numpy()
 
     if (not self.cmp) and self.scores:
       if scores[0] > self.scores[0]:
-        self.cmp = lambda x, y: x > y  
+        self.cmp = lambda x, y: x >= y  
       else:
-        self.cmp = lambda x, y: x < y
+        self.cmp = lambda x, y: x <= y
       logging.info('decay cmp:', self.cmp)
 
     for i, score in enumerate(scores):
-      if not self.scores or self.cmp(score, self.scores[i]):
+      if self.scores is None or self.cmp(score, self.scores[i]):
         self.scores[i] = score 
         self.patience[i] = 0
       else:
@@ -198,17 +238,19 @@ class WeightsDecay(object):
           self.count[i] += 1
           self.patience[i] = 0
           self.scores[i] = score
-          weights[i] *= self.decay if not isinstance(self.decay, (list, tuple)) else self.decay[i]
           
-          if not self.min_weights:
-            if weights[i] < self.min_weights[i]:
-              weights[i] = self.min_weights[i]
+          decay = self.decay if not isinstance(self.decay, (list, tuple)) else self.decay[i]
+          weights_[i] *= decay
 
-          logging.info('!%s decay count:%d decay ratio:%f lr ratios now:%f' % (self.names[i], self.count[i], self.decay, weights[i]))
+          if not self.min_weight:
+            if weights_[i] < self.min_weight:
+              weights_[i] = self.min_weight
+
+          #logging.info('!%s decay count:%d decay ratio:%f lr ratios now:%f' % (self.names[i], self.count[i], self.decay, weights[i]))
           if not tf.executing_eagerly():
-            self.sess.run(tf.assign(self.weights_op, tf.constant(weights, dtype=tf.float32)))
+            self.sess.run(tf.assign(self.weights_op, tf.constant(weights_, dtype=tf.float32)))
           else:
-            self.weights_op = weights
+            self.weights_op.assign(weights_)
 
-    return weights
+    return weights_
           

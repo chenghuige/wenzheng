@@ -34,12 +34,12 @@ import evaluate as ev
 def main(_):
   melt.apps.init()
   
+  ev.init()
+
   model = getattr(base, FLAGS.model)()
 
   train = melt.apps.get_train()
 
-  ev.init()
-  
   train(Dataset,
         model,  
         criterion,

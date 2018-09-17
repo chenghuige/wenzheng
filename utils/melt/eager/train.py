@@ -23,6 +23,7 @@ import os
 from tqdm import tqdm 
 import numpy as np
 import inspect
+import traceback
 
 import gezi
 import melt
@@ -228,16 +229,26 @@ def train(Dataset,
     test_dataset = None
 
   learning_rate = tfe.Variable(FLAGS.learning_rate, name="learning_rate")
+  tf.add_to_collection('learning_rate', learning_rate)
+
+  learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
+  learning_rate_weights = tf.get_collection('learning_rate_weights')[-1]
+
   optimizer = melt.get_optimizer(FLAGS.optimizer)(learning_rate)
   
   summary = tf.contrib.summary
-  writer = summary.create_file_writer(FLAGS.model_dir + '/epoch')
-  writer_train = summary.create_file_writer(FLAGS.model_dir + '/train')
-  writer_valid = summary.create_file_writer(FLAGS.model_dir + '/valid')
+  # writer = summary.create_file_writer(FLAGS.model_dir + '/epoch')
+  # writer_train = summary.create_file_writer(FLAGS.model_dir + '/train')
+  # writer_valid = summary.create_file_writer(FLAGS.model_dir + '/valid')
+  writer = summary.create_file_writer(FLAGS.model_dir)
+  writer_train = summary.create_file_writer(FLAGS.model_dir)
+  writer_valid = summary.create_file_writer(FLAGS.model_dir)
   global_step = tf.train.get_or_create_global_step()
 
   checkpoint = tf.train.Checkpoint(
         learning_rate=learning_rate, 
+        learning_rate_weight=learning_rate_weight,
+        learning_rate_weights=learning_rate_weights,
         model=model,
         optimizer=optimizer,
         global_step=global_step)
@@ -308,6 +319,8 @@ def train(Dataset,
       optimizer.apply_gradients(zip(grads, model.variables))
       epoch_loss_avg(loss)  # add current batch loss
 
+      batch_size_ = list(x.values())[0].shape[0] if type(x) == type({}) else x[0].shape[0]
+
       if global_step.numpy() % FLAGS.interval_steps == 0:
         #checkpoint.save(checkpoint_prefix)
         if valid_dataset2:
@@ -317,22 +330,42 @@ def train(Dataset,
 
           logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
-                      'batch_size:%d' % x[0].shape[0],
-                      'learning_rate:%.3f' % learning_rate.numpy(),
+                      'batch_size:%d' % batch_size_,
+                      'learning_rate:%.5f' % learning_rate.numpy(),
                       'train_loss:%.4f' % epoch_loss_avg.result().numpy(),
-                      'valid_loss::%.4f' % epoch_valid_loss_avg.result().numpy())
+                      'valid_loss:%.4f' % epoch_valid_loss_avg.result().numpy())
           with writer_valid.as_default(), summary.always_record_summaries():
-            summary.scalar('step/loss', epoch_valid_loss_avg.result().numpy())
+            #summary.scalar('step/loss', epoch_valid_loss_avg.result().numpy())
+            summary.scalar('loss/eval', epoch_valid_loss_avg.result().numpy())
             writer_valid.flush()
         else:
           logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
-                      'batch_size:%d' % batch_size,
+                      'batch_size:%d' % batch_size_,
                       'learning_rate:%.3f' % learning_rate.numpy(),
-                      'train_loss:%.4f' % epoch_loss_avg.result().numpy())                
+                      'train_loss:%.4f' % epoch_loss_avg.result().numpy())       
+
         with writer_train.as_default(), summary.always_record_summaries():
-          summary.scalar('step/loss', epoch_loss_avg.result().numpy())
+          #summary.scalar('step/loss', epoch_loss_avg.result().numpy())
+          summary.scalar('loss/train_avg', epoch_loss_avg.result().numpy())
           writer_train.flush()
+      
+      if valid_dataset and FLAGS.metric_eval_interval_steps and global_step.numpy() and global_step.numpy() % FLAGS.metric_eval_interval_steps == 0:
+        if evaluate_fn is not None:
+          vals, names = evaluate_fn(model, valid_dataset, None, num_valid_steps_per_epoch)
+        elif eval_fn:
+          names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:] if infer_names else None
+          vals, names = evaluate(model, valid_dataset, eval_fn, None, 
+                                names, valid_write_fn, write_streaming,
+                                num_valid_steps_per_epoch, sep=sep)
+          with writer_valid.as_default(), summary.always_record_summaries():
+            for name, val in zip(names, vals):
+              summary.scalar(f'step/valid/{name}', val)
+            writer_valid.flush()
+      
+        logging.info2('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs),  
+                      'step:%d' % global_step.numpy(),
+                      ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
       
       # if i == 5:
       #   print(i, '---------------------save')
@@ -345,7 +378,11 @@ def train(Dataset,
 
       global_step.assign_add(1)
       if epoch == start_epoch and i == 0:
-        logging.info(model.summary())
+        try:
+          logging.info(model.summary())
+        except Exception:
+          traceback.print_exc()
+          logging.info('Fail to do model.summary() may be you have layer define in init but not used in call')
 
     logging.info('epoch:%d/%d' % (epoch + 1, num_epochs), 
                  'step:%d' % global_step.numpy(), 
@@ -361,14 +398,14 @@ def train(Dataset,
         vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
       elif eval_fn:
         model_path = None if not write_valid else tf.train.latest_checkpoint(ckpt_dir)
-        names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
+        names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:] if infer_names else None
 
         vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
                                names, valid_write_fn, write_streaming,
                                num_valid_steps_per_epoch, sep=sep)
     
-    logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
-                  ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
+      logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
+                    ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
 
     with writer.as_default(), summary.always_record_summaries():
       temp = global_step.value()
