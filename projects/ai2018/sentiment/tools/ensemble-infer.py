@@ -32,7 +32,7 @@ def to_predict(logits):
   logits = np.reshape(logits, [-1, num_attrs, 4])
   probs = gezi.softmax(logits, -1)
   probs = np.reshape(probs, [-1, 4])
-  result = np.zeros([len(probs)])
+  result = np.zeros([len(probs)], dtype=np.int32)
   for i, prob in enumerate(probs):
     if prob[0] >= 0.6:
       result[i] = -2

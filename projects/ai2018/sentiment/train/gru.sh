@@ -17,20 +17,19 @@ cp $dir/vocab* $model_dir
 cp $dir/vocab* $model_dir/epoch
 
 exe=./train.py 
-if [ "$TEST" = "1"  ]; 
-  then echo "TEST MODE" 
-  exe=./test.py 
+if [ "$INFER" = "1"  ]; 
+  then echo "INFER MODE" 
+  exe=./infer.py 
   model_dir=$1
   fold=0
 fi
 
-if [ "$TEST" = "2"  ]; 
+if [ "$INFER" = "2"  ]; 
   then echo "VALID MODE" 
-  exe=./test.py 
+  exe=./infer.py 
   model_dir=$1
   fold=0
 fi
-
 
 python $exe \
         --vocab $dir/vocab.txt \

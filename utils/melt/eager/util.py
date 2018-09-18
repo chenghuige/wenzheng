@@ -16,6 +16,9 @@ import sys
 import os
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+
 import melt 
 logging = melt.logging
 
