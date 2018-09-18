@@ -277,7 +277,7 @@ def train(Dataset,
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs
   
-  if valid_dataset and not FLAGS.mode == 'test':
+  if valid_dataset and not FLAGS.mode == 'test' and not 'SHOWMODEL' in os.environ:
     logging.info('valid')
     if evaluate_fn is not None:
       vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
@@ -380,6 +380,8 @@ def train(Dataset,
       if epoch == start_epoch and i == 0:
         try:
           logging.info(model.summary())
+          if 'SHOWMODEL' in os.environ:
+            exit(0)
         except Exception:
           traceback.print_exc()
           logging.info('Fail to do model.summary() may be you have layer define in init but not used in call')

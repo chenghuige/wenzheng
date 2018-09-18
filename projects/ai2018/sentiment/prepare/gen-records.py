@@ -25,8 +25,6 @@ flags.DEFINE_string('vocab_', './mount/temp/ai2018/sentiment/tfrecord/vocab.txt'
 #flags.DEFINE_string('seg_method', 'basic', '') 
 flags.DEFINE_bool('binary', False, '')
 flags.DEFINE_integer('limit', 5000, '')
-flags.DEFINE_bool('feed_single_en', True, '')
-flags.DEFINE_bool('to_lower', True, '')
 flags.DEFINE_integer('threads', None, '')
 flags.DEFINE_integer('num_records_', 7, '10 or 5?')
 
@@ -40,8 +38,7 @@ import pandas as pd
 from gezi import Vocabulary
 import gezi
 import melt
-from wenzheng.utils import text2ids 
-import filter
+from text2ids import text2ids
 
 import multiprocessing
 from multiprocessing import Value, Manager
@@ -50,12 +47,6 @@ total_words = Value('i', 0)
 
 df = None
 
-def _text2ids(text):
-  return text2ids.text2ids(text, seg_method=FLAGS.seg_method, 
-                           feed_single_en=FLAGS.feed_single_en,
-                           to_lower=FLAGS.to_lower,
-                           norm_digit=False,
-                           pad=False)
 
 def get_mode(path):
   if 'train' in path:
@@ -89,13 +80,12 @@ def build_features(index):
         row = df.iloc[i]
         id = row[0]
         content = row[1] 
-        content = filter.filter(content)
         label = list(row[2:])
         #num_labels = len(label)
 
         limit = FLAGS.limit
         content = content[:limit]
-        content_ids = _text2ids(content)
+        content_ids = text2ids(content)
         
         feature = {
                     'id': melt.bytes_feature(str(id)),

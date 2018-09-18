@@ -329,6 +329,10 @@ class MeanPooling(Layer):
   def call(self, outputs, sequence_length=None, axis=1):
     return melt.mean_pooling(outputs, sequence_length, axis)
 
+class HierEncode(Layer):
+  def call(self, outputs, sequence_length=None, window_size=3, axis=1):
+    return melt.hier_encode(outputs, sequence_length, window_size=3, axis=1)
+
 class TopKPooling(Layer):
   def __init__(self,  
                top_k,
@@ -354,10 +358,13 @@ def attention_layer(outputs, sequence_length, hidden_size=128, activation=tf.nn.
     alphas = tf.squeeze(alphas) 
     return encoding, alphas
 
+# TODO check which is better tf.nn.tanh or tf.nn.relu, by paper default should be tanh
+# TODO check your topk,att cases before use relu.. seems tanh worse then relu, almost eqaul but relu a bit better and stable
 class AttentionPooling(Layer):
   def __init__(self,  
                hidden_size=128,
-               activation=tf.nn.relu,
+               #activation=tf.nn.tanh,  
+               activation=tf.nn.relu,  
                **kwargs):
     super(AttentionPooling, self).__init__(**kwargs)
     self.activation = activation
@@ -377,7 +384,8 @@ class AttentionPooling(Layer):
     alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
     encoding = tf.reduce_sum(outputs * alphas, 1)
     # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
-    self.alphas = tf.squeeze(alphas)     
+    self.alphas = tf.squeeze(alphas)    
+    tf.add_to_collection('self_attention', self.alphas) 
     return encoding
 
 class Pooling(keras.Model):

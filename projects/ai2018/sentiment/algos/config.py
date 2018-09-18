@@ -47,6 +47,9 @@ flags.DEFINE_integer('top_k', 2, '')
 
 flags.DEFINE_float('mlp_ratio', 0., '')
 
+
+flags.DEFINE_bool('use_hier_encode', False, '')
+
 flags.DEFINE_bool('use_type', False, '')
 flags.DEFINE_bool('use_type_emb', False, '')
 flags.DEFINE_integer('type_emb_dim', 100, '')

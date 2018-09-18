@@ -16,6 +16,8 @@ import sys
 import os
 
 import tensorflow as tf
+import melt 
+logging = melt.logging
 
 def grad(model, x, y, loss_fn):
   with tf.GradientTape() as tape:
@@ -29,3 +31,19 @@ def clip_gradients(grads_and_vars, clip_ratio):
   gradients, variables = zip(*grads_and_vars)
   clipped, _ = tf.clip_by_global_norm(gradients, clip_ratio)
   return zip(clipped, variables)
+
+def restore(model, ckpt_dir=None):
+  if not ckpt_dir:
+    ckpt_dir = FLAGS.model_dir + '/ckpt'
+  
+  if os.path.exists(ckpt_dir + '.index'):
+    latest_checkpoint = ckpt_dir
+  else:
+    latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
+
+  logging.info('Latest checkpoint:', latest_checkpoint)
+
+  checkpoint = tf.train.Checkpoint(model=model)      
+  
+  # TODO check return value, verify if it is restore ok ?
+  checkpoint.restore(latest_checkpoint)

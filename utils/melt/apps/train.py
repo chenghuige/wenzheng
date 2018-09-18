@@ -240,7 +240,7 @@ def init():
   if 'MODE' in os.environ:
     FLAGS.mode = os.environ['MODE']
   
-  if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1:
+  if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOWMODEL' in os.environ:
     logging.info('Run eager mode!')
     tf.enable_eager_execution()
 
@@ -265,8 +265,9 @@ def init():
     #else:
     FLAGS.log_dir = FLAGS.model_dir
 
-  if os.path.isfile(FLAGS.model_dir + '.index'):
-    FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
+  if FLAGS.model_dir:
+    if os.path.isfile(FLAGS.model_dir + '.index'):
+      FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
 
   assert FLAGS.log_dir, 'you need to set log_dir or model_dir'
   print('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir, file=sys.stderr)

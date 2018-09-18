@@ -52,7 +52,10 @@ class Model(keras.Model):
 
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    # top-k best, max,att can benfit ensemble(better then max, worse then topk-3)
+    # hier a bit worse
+    self.hier_encode = melt.layers.HierEncode() if FLAGS.use_hier_encode else None
+    
+    # top-k best, max,att can benfit ensemble(better then max, worse then topk-3), topk,att now best with 2layers
     logging.info('encoder_output_method:', FLAGS.encoder_output_method)
     logging.info('topk:', FLAGS.top_k)
     self.pooling = melt.layers.Pooling(FLAGS.encoder_output_method, top_k=FLAGS.top_k)
@@ -75,7 +78,8 @@ class Model(keras.Model):
     self.logits = keras.layers.Dense(NUM_ATTRIBUTES * NUM_CLASSES, activation=None)
 
   def call(self, input, training=False):
-    x = input['content']
+    x = input['content'] 
+
     batch_size = melt.get_shape(x, 0)
     length = melt.length(x)
     #with tf.device('/cpu:0'):
@@ -87,6 +91,10 @@ class Model(keras.Model):
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
     x = self.encode(x, length, mask_fws=mask_fws, mask_bws=mask_bws)
     #x = self.encode(x)
+
+    if self.hier_encode is not None:
+      x = self.hier_encode(x, length)
+
     x = self.pooling(x, length)
     #x = self.pooling(x)
     

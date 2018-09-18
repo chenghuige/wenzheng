@@ -9,3 +9,5 @@ if you want just to verify records, python ./read-records.py --type=any.. other 
 # training 
 python ./train.py  # train using graph  
 EAGER=1 python ./train.py # train using eager mode   
+MODE=valid,test sh ./train/*.sh  just valid and test using eager mode  
+SHOWMODEL=1 sh ./train/*.sh just show model arch in eager mode  

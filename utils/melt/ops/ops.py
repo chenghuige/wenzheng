@@ -819,6 +819,13 @@ def get_shape(x, dim):
 def get_dims(x):
   return len(x.get_shape())
 
+def get_weighted_outputs(outputs, sequence_length):
+  weight = -1e18
+  sequence_mask = tf.expand_dims(1. - tf.to_float(tf.sequence_mask(sequence_length, tf.shape(outputs)[1])), -1)
+  weighted_mask = sequence_mask * weight
+  weighted_outputs = outputs + weighted_mask  
+  return weighted_outputs
+
 # default axis might be -2
 def max_pooling(outputs, sequence_length=None, axis=1, reduce_func=tf.reduce_max):
   if sequence_length is None:
@@ -868,6 +875,20 @@ def sum_pooling(outputs, sequence_length=None, axis=1):
   outputs = outputs * sequence_mask
   return tf.reduce_sum(outputs, axis) 
 
+def hier_encode(outputs, sequence_length, window_size=3, axis=1):
+  #weight = -1e18
+  #sequence_mask = tf.expand_dims(1. - tf.to_float(tf.sequence_mask(sequence_length, tf.shape(outputs)[1])), -1)
+  #weighted_mask = sequence_mask * weight
+  #print('before mask', outputs)
+  #outputs = outputs + weighted_mask
+  #print('before_pool', outputs)
+  sequence_mask = tf.to_float(tf.expand_dims(tf.sequence_mask(sequence_length), -1))
+  outputs = outputs * sequence_mask
+  #outputs = get_weighted_outputs(outputs, sequence_length)
+  outputs = tf.nn.pool(outputs, [window_size], 'AVG', 'SAME')
+  return outputs
+
+
 def hier_pooling(outputs, sequence_length, window_size=3, axis=1):
   #weight = -1e18
   #sequence_mask = tf.expand_dims(1. - tf.to_float(tf.sequence_mask(sequence_length, tf.shape(outputs)[1])), -1)
@@ -877,7 +898,9 @@ def hier_pooling(outputs, sequence_length, window_size=3, axis=1):
   #print('before_pool', outputs)
   sequence_mask = tf.to_float(tf.expand_dims(tf.sequence_mask(sequence_length), -1))
   outputs = outputs * sequence_mask
+  #outputs = get_weighted_outputs(outputs, sequence_length)
   outputs = tf.nn.pool(outputs, [window_size], 'AVG', 'SAME')
+  outputs = get_weighted_outpus(outputs, sequence_length)
   #print('------------outputs', outputs)
   outputs = tf.reduce_max(outputs, axis)
   return outputs
@@ -946,3 +969,12 @@ def masked_softmax(values, lengths):
 def softmax_mask(val, mask):
   INF = 1e30
   return -INF * (1 - tf.cast(mask, tf.float32)) + val
+
+def get_words_importance(outputs=None, sequence_length=None, method='max'):
+  if method.endswith('max'):
+    words_scores = maxpooling_importance(outputs, seq_len)
+  elif method.endswith('attention'):
+    words_scores = tf.get_collection('self_attention')[-1]
+  else:
+    raise ValueError(f'unsupported method {method}')
+  return words_scores

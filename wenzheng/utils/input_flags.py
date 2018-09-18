@@ -167,7 +167,7 @@ flags.DEFINE_string('image_encoder', 'ShowAndTell', '')
 flags.DEFINE_string('text_encoder', None, '')
 flags.DEFINE_string('mlp_dims', None, 'like 512 128,32')
 flags.DEFINE_float('mlp_keep_prob', 1., '')
-flags.DEFINE_string('encoder_output_method', None, '')
+flags.DEFINE_string('encoder_output_method', 'max', '')
 
 #----- cnn  TODO
 flags.DEFINE_integer('num_filters', 128, '')

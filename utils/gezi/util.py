@@ -17,6 +17,7 @@ import sys, os
 import six
 
 import collections
+from collections import namedtuple
 import numpy as np
 
 import glob 
@@ -25,6 +26,21 @@ import math
 import re
 
 import gezi
+
+def dict2namedtuple(thedict, name):
+  thenametuple = namedtuple(name, [])
+  for key, val in thedict.items():
+    if not isinstance(key, str):
+      msg = 'dict keys must be strings not {}'
+      raise ValueError(msg.format(key.__class__))
+
+    if not isinstance(val, dict):
+      setattr(thenametuple, key, val)
+    else:
+      newname = dict2namedtuple(val, key)
+      setattr(thenametuple, key, newname)
+
+  return thenametuple
 
 def csv(s):
   s = s.replace("\"", "\"\"") 
