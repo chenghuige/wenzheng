@@ -161,7 +161,7 @@ def attention_layer(outputs, sequence_length, hidden_size=128, activation=tf.nn.
     alphas = melt.masked_softmax(logits, sequence_length)
     encoding = tf.reduce_sum(outputs * alphas, 1)
     # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
-    alphas = tf.squeeze(alphas) 
+    #alphas = tf.squeeze(alphas) 
     return encoding, alphas
 
 def attention_outputs(outputs, sequence_length, hidden_size=128, activation=tf.nn.relu, scope='self_attention'):
@@ -384,7 +384,8 @@ class AttentionPooling(Layer):
     alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
     encoding = tf.reduce_sum(outputs * alphas, 1)
     # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
-    self.alphas = tf.squeeze(alphas)    
+    self.alphas = tf.squeeze(alphas, -1)    
+    #self.alphas = alphas
     tf.add_to_collection('self_attention', self.alphas) 
     return encoding
 
@@ -394,6 +395,8 @@ class Pooling(keras.Model):
                top_k=2,
                **kwargs):
     super(Pooling, self).__init__(**kwargs)
+
+    self.top_k = top_k
 
     self.poolings = []
     def get_pooling(name):
@@ -405,19 +408,22 @@ class Pooling(keras.Model):
         return AttentionPooling()
       elif name == 'attention2' or name == 'att2':
         return AttentionPooling(hidden_size=None)
-      elif name == 'topk':
+      elif name == 'topk' or name == 'top_k':
         return TopKPooling(top_k)
       else:
         raise f'Unsupport pooling now:{name}'
 
-    names = name.split(',')
-    for name in names:
+    self.names = name.split(',')
+    for name in self.names:
       self.poolings.append(get_pooling(name))
   
-  def call(self, outputs, sequence_length=None, axis=1):
+  def call(self, outputs, sequence_length=None, axis=1, calc_word_scores=False):
     results = []
-    for pooling in self.poolings:
-     results.append(pooling(outputs, sequence_length, axis))
+    self.word_scores = []
+    for i, pooling in enumerate(self.poolings):
+      results.append(pooling(outputs, sequence_length, axis))
+      if calc_word_scores:
+        self.word_scores.append(melt.get_words_importance(outputs, sequence_length, top_k=self.top_k, method=self.names[i]))
     
     return tf.concat(results, -1)
 
@@ -842,6 +848,7 @@ class DotAttention(keras.Model):
       else:
         logits = tf.nn.softmax(outputs)
 
+      self.logits = logits
       outputs = tf.matmul(logits, memory)
 
     if combiner == 'gate':

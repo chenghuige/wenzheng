@@ -17,16 +17,16 @@ cp $dir/vocab* $model_dir
 cp $dir/vocab* $model_dir/epoch
 
 exe=./train.py 
-if [ "$TEST" = "1"  ]; 
-  then echo "TEST MODE" 
-  exe=./test.py 
+if [ "$INFER" = "1"  ]; 
+  then echo "INFER MODE" 
+  exe=./infer.py 
   model_dir=$1
   fold=0
 fi
 
-if [ "$TEST" = "2"  ]; 
+if [ "$INFER" = "2"  ]; 
   then echo "VALID MODE" 
-  exe=./test.py 
+  exe=./infer.py 
   model_dir=$1
   fold=0
 fi
@@ -66,6 +66,6 @@ python $exe \
         --learning_rate=0.001 \
         --decay_target=acc \
         --decay_patience=1 \
-        --decay_factor=0.8 \
+        -decay_factor=0.8 \
         --num_epochs=$num_epochs \
 

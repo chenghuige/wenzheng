@@ -28,6 +28,15 @@ import melt
 
 logging = melt.logging
 
+keras = tf.keras
+
+class Model(keras.Model):
+  def __init__(self,  
+               **kwargs):
+    super(Model, self).__init__(**kwargs)
+    self.debug = False
+    self.step = -1
+
 # def reset_global_step(global_step):
 #   new_global_step = tf.train.get_global_step().assign(global_step)
 

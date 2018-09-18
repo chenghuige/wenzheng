@@ -56,12 +56,20 @@ class Dataset(melt.tfrecords.Dataset):
     query = melt.sparse_tensor_to_dense(query)
     passage = melt.sparse_tensor_to_dense(passage)
 
+    if FLAGS.add_start_end:
+      query = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), query, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
     features['query'] = query
-    #features['query'] = tf.concat([query, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
+
+    if FLAGS.add_start_end:
+      passage = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), passage, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
     features['passage'] = passage
 
-    features['content'] = tf.concat([passage, tf.constant([vocabulary.end_id()], dtype=tf.int64), query], 0)
-    features['rcontent'] = tf.concat([query, tf.constant([vocabulary.end_id()], dtype=tf.int64), passage], 0)
+    if not FLAGS.add_start_end:
+      features['content'] = tf.concat([passage, tf.constant([vocabulary.end_id()], dtype=tf.int64), query], 0)
+      features['rcontent'] = tf.concat([query, tf.constant([vocabulary.end_id()], dtype=tf.int64), passage], 0)
+    else:
+        features['content'] = tf.concat([passage, query[1:]], 0)
+        features['rcontent'] = tf.concat([query, passage[1:]], 0)    
 
     answer = features['answer']
 

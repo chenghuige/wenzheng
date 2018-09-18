@@ -54,8 +54,8 @@ for file_ in glob.glob('%s/*.infer.csv.debug' % idir):
   scores = df['score']
   for i, score in enumerate(scores):
     score = parse(score)
-    #score = gezi.softmax(np.reshape(score, [num_attrs, 4]), -1)
-    #score = np.reshape(score, [-1])
+    score = gezi.softmax(np.reshape(score, [num_attrs, 4]), -1)
+    score = np.reshape(score, [-1])
     results[i] += score 
 
 #results = np.reshape(results, [-1, num_attrs, 4]) 

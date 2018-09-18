@@ -26,8 +26,9 @@ from wenzheng.utils import vocabulary, embedding
 from algos.config import NUM_CLASSES
 
 import melt
+logging = melt.logging
     
-class Model(keras.Model):
+class Model(melt.Model):
   def __init__(self):
     super(Model, self).__init__()
     vocabulary.init()
@@ -78,7 +79,7 @@ class Model(keras.Model):
     
     return x
 
-class Model2(keras.Model):
+class Model2(melt.Model):
   """
   same as Model but with bi encode separately for passage and query
   """
@@ -137,7 +138,7 @@ class Model2(keras.Model):
     
     return x
 
-class QCAttention(keras.Model):
+class QCAttention(melt.Model):
   def __init__(self):
     super(QCAttention, self).__init__()
     vocabulary.init()
@@ -201,7 +202,7 @@ class QCAttention(keras.Model):
     
     return x
 
-class Rnet(keras.Model):
+class Rnet(melt.Model):
   def __init__(self):
     super(Rnet, self).__init__()
     vocabulary.init()
@@ -213,6 +214,10 @@ class Rnet(keras.Model):
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
+
+    logging.info('num_layers:', self.num_layers)
+    logging.info('num_unints:', self.num_units)
+    logging.info('keep_prob:', self.keep_prob)
 
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
@@ -226,10 +231,13 @@ class Rnet(keras.Model):
     self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
     self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
 
-    self.pooling = melt.layers.MaxPooling()
+    logging.info('encoder_output_method:', FLAGS.encoder_output_method)
+    logging.info('topk:', FLAGS.top_k)
+    self.pooling = melt.layers.Pooling(FLAGS.encoder_output_method, top_k=FLAGS.top_k)
 
     self.logits = keras.layers.Dense(NUM_CLASSES, activation=None)
-    self.logits2 = keras.layers.Dense(NUM_CLASSES, activation=None)
+    if FLAGS.split_type:
+      self.logits2 = keras.layers.Dense(NUM_CLASSES, activation=None)
 
   def call(self, input, training=False):
     q = input['query']
@@ -265,7 +273,7 @@ class Rnet(keras.Model):
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
     x = self.match_encode(self_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
 
-    x = self.pooling(x, c_len)
+    x = self.pooling(x, c_len, calc_word_scores=self.debug)
 
     if FLAGS.use_type:
       x = tf.concat([x, tf.expand_dims(tf.to_float(input['type']), 1)], 1)

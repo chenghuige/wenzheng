@@ -38,7 +38,7 @@ from prepare.text2ids import text2ids
 from wenzheng.utils import ids2text
 import numpy as np
 
-from algos.config import ATTRIBUTES
+from algos.config import CLASSES
 
 
 def main(_):
@@ -54,34 +54,42 @@ def main(_):
   ids2text.init()
   vocab = ids2text.vocab
 
-  content = '这是一个很好的餐馆，菜很不好吃，我还想再去'
-  content = '这是一个很差的餐馆，菜很不好吃，我不想再去'
-  content = '这是一个很好的餐馆，菜很好吃，我还想再去'
-  content = '这是一个很好的餐馆，只是菜很难吃，我还想再去'
-  content = '这是一个很好的餐馆，只是菜很不好吃，我还想再去'
+  # query = '阿里和腾讯谁更流氓'
+  # passage = '腾讯比阿里流氓'
 
-  cids = text2ids(content)
-  words = [vocab.key(cid) for cid in cids]
-  print(cids)
-  print(ids2text.ids2text(cids))
-  x = {'content': [cids]}
+  # query = 'c罗和梅西谁踢球更好'
+  # passage = '梅西比c罗踢的好'
+  query = '青光眼遗传吗'
+  passage = '青光眼有遗传因素的，所以如果是您的父亲是青光眼的话，那我们在这里就强烈建议您，自己早期到医院里面去做一个筛查，测一下，看看眼，尤其是检查一下视野，然后视网膜的那个情况，都做一个早期的检查。'
+  
+  qids = text2ids(query)
+  qwords = [vocab.key(qid) for qid in qids]
+  print(qids)
+  print(ids2text.ids2text(qids))
+  pids = text2ids(passage)
+  pwords = [vocab.key(pid) for pid in pids]
+  print(pids)
+  print(ids2text.ids2text(pids))
+
+  x = {
+        'query': [qids], 
+        'passage':  [pids],
+        'type': [0],
+      }
+
   logits = model(x)[0]
-  probs = gezi.softmax(logits, 1)
+  probs = gezi.softmax(logits)
   print(probs)
-  print(list(zip(ATTRIBUTES, [list(x) for x in probs])))
+  print(list(zip(CLASSES, [x for x in probs])))
 
-  predicts = np.argmax(logits, -1) - 2
-  print('predicts ', predicts)
-  print(list(zip(ATTRIBUTES, predicts)))
-  adjusted_predicts = ev.to_predict(logits)
-  print('apredicts', adjusted_predicts)
-  print(list(zip(ATTRIBUTES, adjusted_predicts)))
+  predict = np.argmax(logits, -1) 
+  print('predict', predict, CLASSES[predict])
 
   # print words importance scores
   word_scores_list = model.pooling.word_scores
 
   for word_scores in word_scores_list:
-    print(list(zip(words, word_scores[0].numpy())))
+    print(list(zip(pwords, word_scores[0].numpy())))
 
 
 if __name__ == '__main__':

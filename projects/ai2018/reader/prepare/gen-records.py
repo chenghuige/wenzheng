@@ -25,8 +25,6 @@ flags.DEFINE_string('vocab_', './mount/temp/ai2018/reader/tfrecord/vocab.txt', '
 #flags.DEFINE_string('seg_method', 'basic', '') 
 flags.DEFINE_bool('binary', False, '')
 flags.DEFINE_integer('limit', 5000, '')
-flags.DEFINE_bool('feed_single_en', True, '')
-flags.DEFINE_bool('to_lower', True, '')
 flags.DEFINE_integer('threads', None, '')
 
 import traceback
@@ -39,7 +37,7 @@ import json
 from gezi import Vocabulary
 import gezi
 import melt
-from wenzheng.utils import text2ids
+from text2ids import text2ids
 
 from multiprocessing import Value, Manager
 counter = Value('i', 0) 
@@ -239,8 +237,8 @@ def build_features(file_):
         assert candidates is not None
         candidates = '|'.join(candidates)
 
-        query_ids = _text2ids(query)
-        passage_ids = _text2ids(passage)
+        query_ids = text2ids(query)
+        passage_ids = text2ids(passage)
 
         assert len(query_ids), line
         assert len(passage_ids), line

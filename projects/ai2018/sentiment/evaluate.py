@@ -140,6 +140,7 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
   df['score'] = [list(x) for x in np.reshape(predicts, [-1, NUM_ATTRIBUTES * NUM_CLASSES])]
   if not is_infer:
+    df['seg'] = [ids2text.ids2text(infos[id]['content'], sep='|') for id in ids]
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
   if is_infer:
     df2 = df

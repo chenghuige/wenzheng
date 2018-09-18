@@ -54,6 +54,7 @@ def to_predict(logits):
 
 idx = 2
 results = None
+results2 = None
 for file_ in glob.glob('%s/*.valid.csv' % idir):
   df = pd.read_csv(file_)
   labels = df.iloc[:,idx:idx+num_attrs].values
@@ -63,10 +64,12 @@ for file_ in glob.glob('%s/*.valid.csv' % idir):
   print(file_, calc_f1(labels, predicts), calc_f1(labels, to_predict(scores)))
   if results is None:
     results = np.zeros([len(df), num_attrs * 4])
+    results2 = np.zeros([len(df), num_attrs * 4])
   for i, score in enumerate(scores):
-    #score = gezi.softmax(np.reshape(score, [num_attrs, 4]), -1)
-    #score = np.reshape(score, [-1])
     results[i] += score 
+    score = gezi.softmax(np.reshape(score, [num_attrs, 4]), -1)
+    score = np.reshape(score, [-1])
+    results2[i] += score
 
 adjusted_f1 = calc_f1(labels, to_predict(results))
 results = np.reshape(results, [-1, num_attrs, 4]) 
@@ -76,3 +79,10 @@ f1 = calc_f1(labels, predicts)
 print('f1:', f1)
 print('adjusted f1:', adjusted_f1)
 
+adjusted_f1_prob = calc_f1(labels, to_predict(results2))
+results2 = np.reshape(results2, [-1, num_attrs, 4]) 
+predicts2 = np.argmax(results2, -1) - 2
+f1_prob = calc_f1(labels, predicts2)
+
+print('f1_prob:', f1_prob)
+print('adjusted f1_prob:', adjusted_f1_prob)

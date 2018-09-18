@@ -48,6 +48,8 @@ class Dataset(melt.tfrecords.Dataset):
 
     content = features['content']
     content = melt.sparse_tensor_to_dense(content)
+    if FLAGS.add_start_end:
+      content = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), content, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
     features['content'] = content
     label = features['label']
 

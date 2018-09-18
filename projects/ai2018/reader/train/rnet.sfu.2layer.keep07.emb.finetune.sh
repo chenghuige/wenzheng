@@ -9,8 +9,8 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/rcontent.keep07/
-num_epochs=5
+model_dir=$base/temp/ai2018/reader/model/rnet.sfu.2layer.keep07.emb.finetune/
+num_epochs=10
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
@@ -33,6 +33,8 @@ fi
 
 
 python $exe \
+        --model=Rnet \
+        --att_combiner=sfu \
         --rcontent=1 \
         --use_type=1 \
         --vocab $dir/vocab.txt \
@@ -41,8 +43,13 @@ python $exe \
         --valid_input=$dir/valid/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
+        --word_embedding_file=$dir/emb.npy \
+        --finetune_word_embedding=1 \
         --emb_dim 300 \
         --batch_size 32 \
+        --buckets 400 \
+        --batch_sizes 32,16 \
+        --length_key passage \
         --encoder_type=rnn \
         --keep_prob=0.7 \
         --num_layers=2 \
@@ -59,6 +66,6 @@ python $exe \
         --learning_rate=0.001 \
         --decay_target=acc \
         --decay_patience=1 \
-        --decay_factor=0.8 \
+        -decay_factor=0.8 \
         --num_epochs=$num_epochs \
 

@@ -846,6 +846,7 @@ def max_pooling2(outputs, sequence_length, sequence_length2, axis=1, reduce_func
   weighted_output = outputs + weighted_mask
   return reduce_func(weighted_output, axis)
 
+# not to use it directly!
 def top_k_pooling(outputs, top_k, sequence_length=None, axis=1):
   if sequence_length is None:
     return reduce_func(outputs, axis)
@@ -857,6 +858,11 @@ def top_k_pooling(outputs, top_k, sequence_length=None, axis=1):
   shifted_output = tf.transpose(weighted_output, [0, 2, 1])
   return tf.nn.top_k(shifted_output, top_k)
 
+import melt
+def argtopk_pooling(outputs, top_k, sequence_length=None, axis=1):
+  x = top_k_pooling(outputs, top_k, sequence_length, axis).indices
+  #return tf.reshape(x, [melt.get_shape(outputs, 0), -1])
+  return tf.reshape(x, [-1, melt.get_shape(outputs, -1) * top_k])
 
 def argmax_pooling(outputs, sequence_length, axis=1):
   return max_pooling(outputs, sequence_length, axis, reduce_func=tf.argmax)
@@ -919,6 +925,10 @@ def maxpooling_importance(outputs, sequence_length=None, axis=1):
   argmax_values = argmax_pooling(outputs, sequence_length, axis)
   return argmax_importance(argmax_values, [tf.shape(outputs)[0], tf.shape(outputs)[1]])
 
+def topkpooling_importance(outputs, top_k, sequence_length=None, axis=1):
+  argtopk_values = argtopk_pooling(outputs, top_k, sequence_length, axis)
+  return argmax_importance(argtopk_values, [tf.shape(outputs)[0], tf.shape(outputs)[1] * top_k])
+
 
 # TODO like tf change from dim to axis
 def slim_batch(sequence, sequence_length=None, dim=1):
@@ -970,11 +980,16 @@ def softmax_mask(val, mask):
   INF = 1e30
   return -INF * (1 - tf.cast(mask, tf.float32)) + val
 
-def get_words_importance(outputs=None, sequence_length=None, method='max'):
-  if method.endswith('max'):
-    words_scores = maxpooling_importance(outputs, seq_len)
-  elif method.endswith('attention'):
-    words_scores = tf.get_collection('self_attention')[-1]
+def get_words_importance(outputs=None, sequence_length=None, top_k=None, method='max'):
+  if method == 'max':
+    words_scores = maxpooling_importance(outputs, sequence_length) 
+    words_scores = tf.to_float(words_scores / tf.reduce_sum(words_scores, -1)) * tf.to_float(sequence_length)
+  elif method == 'attention' or method =='att':
+    words_scores = tf.get_collection('self_attention')[-1] * tf.to_float(sequence_length)
+  elif method == 'top_k' or method == 'topk':
+    words_scores = topkpooling_importance(outputs, top_k, sequence_length) 
+    words_scores = tf.to_float(words_scores / tf.reduce_sum(words_scores, -1)) * tf.to_float(sequence_length)
   else:
-    raise ValueError(f'unsupported method {method}')
+    #raise ValueError(f'unsupported method {method}')
+    words_scores = []
   return words_scores

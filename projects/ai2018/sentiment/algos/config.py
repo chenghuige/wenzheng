@@ -43,8 +43,6 @@ flags.DEFINE_integer('attr_index', None, '')
 #flags.DEFINE_string('weights', None, '') 
 flags.DEFINE_float('init_weight', 1., '')
 
-flags.DEFINE_integer('top_k', 2, '')
-
 flags.DEFINE_float('mlp_ratio', 0., '')
 
 

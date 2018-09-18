@@ -169,6 +169,11 @@ flags.DEFINE_string('mlp_dims', None, 'like 512 128,32')
 flags.DEFINE_float('mlp_keep_prob', 1., '')
 flags.DEFINE_string('encoder_output_method', 'max', '')
 
+flags.DEFINE_integer('top_k', 2, '')
+
+# text
+flags.DEFINE_bool('add_start_end', False, '')
+
 #----- cnn  TODO
 flags.DEFINE_integer('num_filters', 128, '')
 

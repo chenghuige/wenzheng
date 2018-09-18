@@ -30,7 +30,7 @@ import melt
 logging = melt.logging
 import numpy as np
 
-class Model(keras.Model):
+class Model(melt.Model):
   def __init__(self):
     super(Model, self).__init__()
     vocabulary.init()
@@ -76,7 +76,7 @@ class Model(keras.Model):
       self.dense = None
 
     self.logits = keras.layers.Dense(NUM_ATTRIBUTES * NUM_CLASSES, activation=None)
-
+    
   def call(self, input, training=False):
     x = input['content'] 
 
@@ -95,9 +95,9 @@ class Model(keras.Model):
     if self.hier_encode is not None:
       x = self.hier_encode(x, length)
 
-    x = self.pooling(x, length)
+    x = self.pooling(x, length, calc_word_scores=self.debug)
     #x = self.pooling(x)
-    
+
     # not help much
     if self.dense is not None:
       x = self.dense(x)

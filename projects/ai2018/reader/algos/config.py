@@ -16,6 +16,7 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
+CLASSES = ['neg', 'pos', 'na']
 NUM_CLASSES = 3
 
 flags.DEFINE_string('model', 'Model', '')

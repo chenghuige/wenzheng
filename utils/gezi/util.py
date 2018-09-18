@@ -27,6 +27,9 @@ import re
 
 import gezi
 
+# def parse_list_str(input, sep=','):
+#   return np.array([float(x.strip()) for x in input[1:-1].split(sep) if x.strip()])
+
 def dict2namedtuple(thedict, name):
   thenametuple = namedtuple(name, [])
   for key, val in thedict.items():
