@@ -34,8 +34,9 @@ flags.DEFINE_string('model', 'Model', '')
 
 flags.DEFINE_string('loss', 'cross', '')
 
-flags.DEFINE_float('na_ratio', 0., '')
-flags.DEFINE_bool('na_ratio_add', True, '')
+flags.DEFINE_float('na_loss_ratio', 0., '')
+flags.DEFINE_bool('na_loss_ratio_add', True, '')
+flags.DEFINE_float('earth_mover_loss_ratio', 0, '')
 
 flags.DEFINE_string('aspect', 'all', 'location, service, price, enviroment, dis, others')
 flags.DEFINE_integer('attr_index', None, '')
@@ -44,6 +45,7 @@ flags.DEFINE_float('init_weight', 1., '')
 
 flags.DEFINE_integer('top_k', 2, '')
 
+flags.DEFINE_float('mlp_ratio', 0., '')
 
 flags.DEFINE_bool('use_type', False, '')
 flags.DEFINE_bool('use_type_emb', False, '')

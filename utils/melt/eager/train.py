@@ -391,7 +391,10 @@ def train(Dataset,
                  'train_loss:%.4f' % epoch_loss_avg.result().numpy(),
                  'valid_loss::%.4f' % epoch_valid_loss_avg.result().numpy())
 
+    timer = gezi.Timer(f'save model to {checkpoint_prefix}', False)
     checkpoint.save(checkpoint_prefix)
+    timer.print_elapsed()
+    
 
     if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:
       if evaluate_fn is not None:

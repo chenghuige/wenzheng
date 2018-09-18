@@ -26,7 +26,8 @@ import traceback
 
 from wenzheng.utils import input_flags 
 
-from algos.model import *
+#from algos.model import *
+from algos.loss import criterion
 import algos.model as base
 from dataset import Dataset
 import evaluate as ev

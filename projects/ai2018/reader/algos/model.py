@@ -280,6 +280,3 @@ class Rnet(keras.Model):
     
     return x
 
-def criterion(model, x, y, training=False):
-  y_ = model(x, training=training)
-  return tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y) 

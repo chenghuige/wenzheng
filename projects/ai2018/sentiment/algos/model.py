@@ -35,6 +35,7 @@ class Model(keras.Model):
     super(Model, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
+    logging.info('vocab_size:', vocab_size)
 
     ## adadelta adagrad will need cpu, so just use adam..
     #with tf.device('/cpu:0'):
@@ -45,11 +46,31 @@ class Model(keras.Model):
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
 
+    logging.info('num_layers:', self.num_layers)
+    logging.info('num_unints:', self.num_units)
+    logging.info('keep_prob:', self.keep_prob)
+
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    logging.info('encoder_output_method:', FLAGS.encoder_output_method, 'topk:', FLAGS.top_k)
+    # top-k best, max,att can benfit ensemble(better then max, worse then topk-3)
+    logging.info('encoder_output_method:', FLAGS.encoder_output_method)
+    logging.info('topk:', FLAGS.top_k)
     self.pooling = melt.layers.Pooling(FLAGS.encoder_output_method, top_k=FLAGS.top_k)
     #self.pooling = keras.layers.GlobalMaxPool1D()
+
+    # mlp not help much!
+    if FLAGS.mlp_ratio != 0:
+      self.dropout = keras.layers.Dropout(0.3)
+      if FLAGS.mlp_ratio < 0:
+        # here activation hurt perf!
+        #self.dense = keras.layers.Dense(NUM_ATTRIBUTES * NUM_CLASSES * 2, activation=tf.nn.relu)
+        self.dense = keras.layers.Dense(NUM_ATTRIBUTES * NUM_CLASSES * 2)
+      elif FLAGS.mlp_ratio <= 1:
+        self.dense = melt.layers.DynamicDense(FLAGS.mlp_ratio)
+      else:
+        self.dense = kears.layers.Dense(int(FLAGS.mlp_ratio))
+    else:
+      self.dense = None
 
     self.logits = keras.layers.Dense(NUM_ATTRIBUTES * NUM_CLASSES, activation=None)
 
@@ -68,46 +89,18 @@ class Model(keras.Model):
     #x = self.encode(x)
     x = self.pooling(x, length)
     #x = self.pooling(x)
+    
+    # not help much
+    if self.dense is not None:
+      x = self.dense(x)
+      x = self.dropout(x)
 
     x = self.logits(x)
 
+    # No help match
     if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES * NUM_CLASSES:
       x = melt.adjust_lrs(x)
 
     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, NUM_CLASSES])
     
     return x
-
-
-def criterion(model, x, y, training=False):
-  y_ = model(x, training=training)
-  y += 2
-  weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
-  
-  #print(y_, y, weights)
-  if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
-    assert FLAGS.loss == 'cross'
-    loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE)
-    loss = melt.adjust_lrs(loss)
-    loss = tf.reduce_mean(loss)
-  else: 
-    if FLAGS.loss == 'cross':
-      loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights) 
-    elif FLAGS.loss == 'focal':
-      loss = melt.losses.focal_loss(y_, y)
-
-  if FLAGS.na_ratio > 0.:
-    y_ = tf.concat([y_[:,:,0:1], tf.reduce_sum(y_[:,:,1:], -1, keepdims=True)], -1)
-    y = tf.one_hot(tf.to_int64(y > 0), 2)
-    if no_weights():
-      bloss = tf.losses.sigmoid_cross_entropy(y, y_)
-    else:
-      bloss = tf.losses.sigmoid_cross_entropy(y, y_, reduction=tf.losses.Reduction.NONE)
-      bloss = tf.reduce_sum(bloss * tf.expand_dims(weights, -1), -1)
-      bloss = tf.reduce_mean(bloss)
-    if FLAGS.na_ratio_add:
-      loss = loss + FLAGS.na_ratio * bloss
-    else:
-      loss = (1 - FLAGS.na_ratio) * loss + FLAGS.na_ratio * bloss
-
-  return loss

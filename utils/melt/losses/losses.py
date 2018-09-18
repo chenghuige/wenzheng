@@ -209,7 +209,7 @@ def roc_auc_scores(y_pred, y_true):
 # https://github.com/ailias/Focal-Loss-implement-on-Tensorflow/blob/master/focal_loss.py
 
 from tensorflow.python.ops import array_ops
-def focal_loss(prediction_tensor, target_tensor, weights=None, alpha=0.25, gamma=2):
+def focal_loss(target_tensor, prediction_tensor, weights=None, alpha=0.25, gamma=2):
     r"""Compute focal loss for predictions.
         Multi-labels Focal loss formula:
             FL = -alpha * (z-p)^gamma * log(p) -(1-alpha) * p^gamma * log(1-p)
@@ -242,3 +242,12 @@ def focal_loss(prediction_tensor, target_tensor, weights=None, alpha=0.25, gamma
                           - (1 - alpha) * (neg_p_sub ** gamma) * tf.log(tf.clip_by_value(1.0 - sigmoid_p, 1e-8, 1.0))
     #return tf.reduce_sum(per_entry_cross_ent)
     return tf.reduce_mean(per_entry_cross_ent)
+
+
+def earth_mover_loss(y_true, y_pred):	
+  cdf_ytrue = tf.cumsum(y_true, axis=-1)
+  cdf_ypred = tf.cumsum(y_pred, axis=-1)
+  samplewise_emd = tf.sqrt(tf.reduce_mean(tf.square(tf.abs(cdf_ytrue - cdf_ypred)), axis=-1))
+  #return samplewise_emd
+  return tf.reduce_mean(samplewise_emd)
+

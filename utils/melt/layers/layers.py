@@ -386,21 +386,52 @@ class Pooling(keras.Model):
                top_k=2,
                **kwargs):
     super(Pooling, self).__init__(**kwargs)
-    if name == 'max':
-      self.pooling = MaxPooling()
-    elif name == 'mean':
-      self.pooling = MeanPooling()
-    elif name == 'attention':
-      self.pooling = AttentionPooling()
-    elif name == 'attention2':
-      self.pooling = AttentionPooling(hidden_size=None)
-    elif name == 'topk':
-      self.pooling = TopKPooling(top_k)
-    else:
-      raise f'Unsupport pooling now:{name}'
+
+    self.poolings = []
+    def get_pooling(name):
+      if name == 'max':
+        return MaxPooling()
+      elif name == 'mean':
+        return MeanPooling()
+      elif name == 'attention' or name == 'att':
+        return AttentionPooling()
+      elif name == 'attention2' or name == 'att2':
+        return AttentionPooling(hidden_size=None)
+      elif name == 'topk':
+        return TopKPooling(top_k)
+      else:
+        raise f'Unsupport pooling now:{name}'
+
+    names = name.split(',')
+    for name in names:
+      self.poolings.append(get_pooling(name))
   
   def call(self, outputs, sequence_length=None, axis=1):
-    return self.pooling(outputs, sequence_length, axis)
+    results = []
+    for pooling in self.poolings:
+     results.append(pooling(outputs, sequence_length, axis))
+    
+    return tf.concat(results, -1)
+
+class DynamicDense(keras.Model):
+  def __init__(self,  
+               ratio,
+               activation=None,
+               use_bias=True,
+               **kwargs):
+    super(DynamicDense, self).__init__(**kwargs)
+    self.ratio = ratio  
+    self.activation = activation
+    self.use_bais = use_bias
+
+    self.step = -1
+
+  def call(self, x):
+    self.step += 1
+    if self.step == 0:
+      self.dense = layers.Dense(melt.get_shape(x, -1) * self.ratio, self.activation, self.use_bais)
+    return self.dense(x)
+
 
 from melt import dropout
 from melt.rnn import OutputMethod, encode_outputs

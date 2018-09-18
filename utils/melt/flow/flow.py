@@ -358,7 +358,7 @@ def tf_train_flow(train_once_fn,
       if save_model and step:
         #step 0 is also saved! actually train one step and save
         if step % save_interval_steps == 0:
-          #timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path))
+          timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path), False)
           model_path_ = _get_checkpoint_path(checkpoint_path, fixed_step, num_steps_per_epoch)
           saver.save(sess, model_path_, global_step=step)
           if freeze_graph:
@@ -368,7 +368,7 @@ def tf_train_flow(train_once_fn,
             command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
             print(command, file=sys.stderr)
             os.system(command)
-          #timer.print_elapsed()
+          timer.print_elapsed()
         #if save_interval_epochs and num_steps_per_epoch and step % (num_steps_per_epoch * save_interval_epochs) == 0:
         #if save_interval_epochs and num_steps_per_epoch and step % num_steps_per_epoch == 0:
         if save_interval_epochs and num_steps_per_epoch and fixed_step % num_steps_per_epoch == 0:

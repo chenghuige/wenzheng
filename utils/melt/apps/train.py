@@ -121,6 +121,13 @@ flags.DEFINE_string('learning_rate_step_boundaries', None, 'like 10000,20000')
 flags.DEFINE_string('learning_rate_epoch_boundaries', None, 'like 10,30 or 10.5,30.6')
 flags.DEFINE_integer('num_learning_rate_weights', 1, '')
 
+#cosine learning rate method
+flags.DEFINE_float('learning_rate_cosine_t_mul', 2., '')
+flags.DEFINE_float('learning_rate_cosine_m_mul', 1., '')
+flags.DEFINE_float('learning_rate_cosine_alpha', 0., '')
+
+flags.DEFINE_string('learning_rate_method', 'decay', 'decay or cosine')
+
 #flags.DEFINE_string('lr_ratios', None, '0.2,1,0.2,1,1,1')
 flags.DEFINE_boolean('use_finetune_step', False, '')
 flags.DEFINE_boolean('use_finetune2_step', False, '')
@@ -454,7 +461,7 @@ def gen_learning_rate(num_steps_per_epoch=None):
   #0.1 * decay you can set learning rate to 0.001 manualy after when restart training, then it means you start
   #with 0.001 * decay (0.01 * decayed_learning_rate)
   if not FLAGS.dynamic_learning_rate:
-    if FLAGS.learning_rate_decay_factor > 0:
+    if FLAGS.learning_rate_decay_factor > 0 or FLAGS.learning_rate_method != 'decay':
       learning_rate = tf.constant(FLAGS.learning_rate)
       #learning_rate = FLAGS.learning_rate
     else:
@@ -522,7 +529,22 @@ def gen_learning_rate(num_steps_per_epoch=None):
           decay_rate=FLAGS.learning_rate_decay_factor,
           decay_start_step=decay_start_step,
           staircase=True)
+  elif FLAGS.learning_rate_method == 'cosine':
+    assert FLAGS.num_steps_per_decay or (FLAGS.num_epochs_per_decay and num_steps_per_epoch), 'must set num_steps_per_epoch or num_epochs_per_decay and num_steps_per_epoch'
+    decay_steps = FLAGS.num_steps_per_decay or int(num_steps_per_epoch * FLAGS.num_epochs_per_decay)    
+    logging.info('learning_rate_decay_factor:{} decay_epochs:{} decay_steps:{}'.format(
+        FLAGS.learning_rate_decay_factor, FLAGS.num_epochs_per_decay, decay_steps))
+    def _learning_rate_decay_fn(learning_rate, global_step):
+      return tf.train.cosine_decay_restarts(
+          learning_rate,
+          global_step,
+          first_decay_steps=decay_steps,
+          t_mul=FLAGS.learning_rate_cosine_t_mul,
+          m_mul=FLAGS.learning_rate_cosine_m_mul,
+          alpha=FLAGS.learning_rate_cosine_alpha)
   else:
+    # TODO support Slanted triangular learning rate
+    # https://medium.com/@hiromi_suenaga/deep-learning-2-part-2-lesson-10-422d87c3340c 
     logging.warning('Will ignore learning rate values since you have learning rate not 0!')
 
   learning_rate_decay_fn = _learning_rate_decay_fn
@@ -698,6 +720,7 @@ def train_flow(ops,
   try:
     sess.run(tf.variables_initializer([learning_rate]))
   except Exception:
+    '--------------!sess.run(tf.variables_initializer([learning_rate])) fail...'
     pass
 
   #-----------post deal
