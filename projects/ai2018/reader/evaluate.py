@@ -19,7 +19,7 @@ flags.DEFINE_string('info_path', None, '')
 
 #from sklearn.utils.extmath import softmax
 
-from melt.utils.weight_decay import WeightDecay
+from melt.utils.weight_decay import WeightDecay, WeightsDecay
 
 import numpy as np
 import gezi
@@ -48,7 +48,7 @@ def init():
     cmp = 'less' if decay_target == 'loss' else 'greater'
     if not decay:
       logging.info('Weight decay target:', decay_target)
-      if FLAGS.num_learning_rate_weights == 1:
+      if FLAGS.num_learning_rate_weights <= 1:
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,

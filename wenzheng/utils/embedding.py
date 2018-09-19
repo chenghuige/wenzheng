@@ -73,11 +73,13 @@ layers = tf.keras.layers
 class Embedding(layers.Layer):
   """An Embedding layer."""
 
-  def __init__(self, vocab_size, embedding_dim=None, embedding=None, trainable=True, **kwargs):
+  def __init__(self, vocab_size, embedding_dim=None, embedding=None, trainable=True, vocab2_size=None, vocab2_trainable=False, **kwargs):
     super(Embedding, self).__init__(**kwargs)
     self.vocab_size = vocab_size
+    self.vocab2_size = vocab2_size
     self.embedding_dim = embedding_dim if embedding_dim else FLAGS.emb_dim
     self.trainable = trainable
+    self.vocab2_trainable = vocab2_trainable
 
     self.embedding = embedding
     if embedding is not None:
@@ -101,15 +103,34 @@ class Embedding(layers.Layer):
 
     self.embedding = self.add_variable(
         "embedding_kernel",
-        shape=[self.vocab_size, self.embedding_dim],
+        shape=[int(self.vocab_size), self.embedding_dim],
         dtype=tf.float32,
         initializer=initializer,
         trainable=self.trainable)
 
+    if self.vocab2_size:
+      initializer2 = 'uniform'
+      if FLAGS.emb_init == 'uniform':
+        init_width = 0.5 / self.embedding_dim
+        logging.info('emb random_uniform init with width:', init_width)
+        initializer2 = tf.random_uniform_initializer(-init_width, init_width)
+      elif FLAGS.emb_init == 'normal' or FLAGS.emb_init == 'random':
+        stddev = FLAGS.emb_stddev or self.embedding_dim ** -0.5
+        logging.info('emb random_normal init with stddev:', stddev)
+        initializer2 = tf.random_normal_initializer(mean=0., stddev=stddev)
+      logging.info('vocab2 trainable:', self.vocab2_trainable)
+      embedding2 = self.add_variable(
+          "embedding2_kernel",
+          shape=[int(self.vocab2_size), self.embedding_dim],
+          dtype=tf.float32,
+          initializer=initializer2,
+          trainable=self.vocab2_trainable)
+
+      self.embedding = tf.concat([self.embedding, embedding2], 0)
+
   def call(self, x):
     #print('---------', self.embedding)
     return tf.nn.embedding_lookup(self.embedding, x)
-
 
 #TODO try l2_regularizer and compare
 #weights = slim.variable('weights',

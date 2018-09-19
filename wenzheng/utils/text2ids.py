@@ -52,13 +52,19 @@ def init(vocab_path=None, append=None):
     vocab = vocabulary.get_vocab()
     Segmentor = gezi.Segmentor()
 
+def get_id(word, unk_vocab_size=None):
+  if unk_vocab_size and not vocab.has(word):
+    return gezi.hash(word) % unk_vocab_size + vocab.size()
+  return vocab.id(word)
+  
 #@TODO gen-records should use text2ids
 #TODO ENCODE_UNK might not be in conf.py but to pass as param encode_unk=False
 def words2ids(words, feed_single=True, allow_all_zero=False, 
               pad=True, append_start=False, append_end=False,
               max_words=None, norm_digit=True, norm_all_digit=False,
               multi_grid=None, encode_unk=None, feed_single_en=False,
-              digit_to_chars=False):
+              digit_to_chars=False,
+              unk_vocab_size=None):
   """
   default params is suitable for bow
   for sequence method may need seg_method prhase and feed_single=True,
@@ -72,14 +78,17 @@ def words2ids(words, feed_single=True, allow_all_zero=False,
   encode_unk = encode_unk or ENCODE_UNK
     
   if not feed_single:
-    word_ids = [vocab.id(word) for word in words if vocab.has(word) or encode_unk]
+    word_ids = [get_id(word, unk_vocab_size) for word in words if vocab.has(word) or encode_unk]
   else:
     word_ids = []
     for word in words:
       if digit_to_chars and any(char.isdigit() for char in word):
         for w in word:
-          if vocab.has(w) or ENCODE_UNK:
-            word_ids.append(vocab.id(w))
+          if not vocab.has(w) and unk_vocab_size:
+              word_ids.append(gezi.hash(w) % unk_vocab_size + vocab.size())
+          else:
+            if vocab.has(w) or encode_unk:
+              word_ids.append(vocab.id(w))
         continue
       elif norm_all_digit and word.isdigit():
         word_ids.append(vocab.id(NUM_MARK))
@@ -97,14 +106,20 @@ def words2ids(words, feed_single=True, allow_all_zero=False,
             chars = word
           if chars:
             for w in chars:
-              if vocab.has(w) or ENCODE_UNK:
-                word_ids.append(vocab.id(w))
+              if not vocab.has(w) and unk_vocab_size:
+                word_ids.append(gezi.hash(w) % unk_vocab_size + vocab.size())
+              else:
+                if vocab.has(w) or encode_unk:
+                  word_ids.append(vocab.id(w))
           else:
-            if ENCODE_UNK:
-              word_ids.append(vocab.unk_id())
+            if unk_vocab_size:
+              word_ids.append(gezi.hash(word) % unk_vocab_size + vocab.size())
+            else:
+              if encode_unk:
+                word_ids.append(vocab.unk_id())
         else:
           #test it!  print text2ids.ids2text(text2ids.text2ids('匍匐前进'))
-          word_ids += gezi.loggest_match_seg(word, vocab, encode_unk=encode_unk)
+          word_ids += gezi.loggest_match_seg(word, vocab, encode_unk=encode_unk, unk_vocab_size=unk_vocab_size, vocab_size=vocab.size())
 
   if append_start:
     word_ids = [vocab.start_id()] + word_ids
@@ -125,7 +140,7 @@ def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False,
             pad=True, append_start=False, append_end=False, to_lower=True,
             max_words=None, norm_digit=True, norm_all_digit=False,
             multi_grid=None, remove_space=True, encode_unk=None, feed_single_en=False,
-            digit_to_chars=False):
+            digit_to_chars=False, unk_vocab_size=None):
   """
   default params is suitable for bow
   for sequence method may need seg_method prhase and feed_single=True,
@@ -152,7 +167,8 @@ def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False,
                    multi_grid=multi_grid,
                    encode_unk=encode_unk,
                    feed_single_en=feed_single_en,
-                   digit_to_chars=digit_to_chars)
+                   digit_to_chars=digit_to_chars,
+                   unk_vocab_size=unk_vocab_size)
 
 def ids2words(text_ids, print_end=True):
   #print('@@@@@@@@@@text_ids', text_ids)
@@ -222,7 +238,8 @@ def ids2words(text_ids, print_end=True):
           words.append('</S>')
         break
     else:
-      break
+      #break
+      words.append(f'<UNK:{id}>')
   return words
 
 def ids2text(text_ids, sep=' ', print_end=True):

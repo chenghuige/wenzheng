@@ -119,7 +119,7 @@ flags.DEFINE_integer('num_steps_per_decay', 0, 'if 0 no effect, if > 0 then will
 flags.DEFINE_string('learning_rate_values', None, 'like 0.1,0.05,0.005')
 flags.DEFINE_string('learning_rate_step_boundaries', None, 'like 10000,20000')
 flags.DEFINE_string('learning_rate_epoch_boundaries', None, 'like 10,30 or 10.5,30.6')
-flags.DEFINE_integer('num_learning_rate_weights', 1, '')
+flags.DEFINE_integer('num_learning_rate_weights', 0, '')
 
 #cosine learning rate method
 flags.DEFINE_float('learning_rate_cosine_t_mul', 2., '')
@@ -240,7 +240,7 @@ def init():
   if 'MODE' in os.environ:
     FLAGS.mode = os.environ['MODE']
   
-  if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOWMODEL' in os.environ:
+  if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
     logging.info('Run eager mode!')
     tf.enable_eager_execution()
 
@@ -428,16 +428,19 @@ def init():
 
   logging.info('min_after_dequeue:{}'.format(FLAGS.min_after_dequeue))
 
+  # TODO check if can all use tfe.Variable ?
   if not tf.executing_eagerly():
     learning_rate_weight = tf.get_variable('learning_rate_weight', initializer=tf.ones(shape=(), dtype=tf.float32))
     tf.add_to_collection('learning_rate_weight', learning_rate_weight)
-    learning_rate_weights = tf.get_variable('learning_rate_weights', initializer=tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32))
-    tf.add_to_collection('learning_rate_weights', learning_rate_weights)
+    if FLAGS.num_learning_rate_weights > 0:
+      learning_rate_weights = tf.get_variable('learning_rate_weights', initializer=tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32))
+      tf.add_to_collection('learning_rate_weights', learning_rate_weights)
   else:
     learning_rate_weight = tfe.Variable(1., name='learning_rate_weight')
     tf.add_to_collection('learning_rate_weight', learning_rate_weight)
-    learning_rate_weights = tfe.Variable(tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), name='learning_rate_weights')
-    tf.add_to_collection('learning_rate_weights', learning_rate_weights)
+    if FLAGS.num_learning_rate_weights > 0:
+      learning_rate_weights = tfe.Variable(tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), name='learning_rate_weights')
+      tf.add_to_collection('learning_rate_weights', learning_rate_weights)
 
   global inited
   inited = True

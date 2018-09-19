@@ -15,7 +15,8 @@ from __future__ import print_function
 import sys 
 import os
 import hashlib
-import six
+import six 
+import numpy as np
 
 def hash_str(input):
   if not six.PY2:

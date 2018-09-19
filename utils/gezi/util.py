@@ -27,6 +27,12 @@ import re
 
 import gezi
 
+
+def to_simplify(sentence):
+  sentence = gezi.langconv.Converter('zh-hans').convert(sentence)
+  return sentence
+
+
 # def parse_list_str(input, sep=','):
 #   return np.array([float(x.strip()) for x in input[1:-1].split(sep) if x.strip()])
 
@@ -111,13 +117,15 @@ def merge_dicts(*dict_args):
 def norm(text):
   return text.strip().lower().replace('。', '')
 
-def loggest_match(cns, vocab, encode_unk=False):
+def loggest_match(cns, vocab, encode_unk=False, unk_vocab_size=None, vocab_size=None):
   len_ = len(cns)
   for i in range(len_):
     w = ''.join(cns[:len_ - i])
     #for compat with c++ vocabulary
     if vocab.has(w):
       return vocab.id(w), cns[len_ - i:]
+    elif unk_vocab_size:
+      return gezi.hash(w) % unk_vocab_size + vocab_size, cns[len_ - i:] 
   if encode_unk:
     return vocab.unk_id(), cns[1:]
   else:

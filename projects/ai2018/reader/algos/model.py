@@ -36,9 +36,11 @@ class Model(melt.Model):
 
     ## adadelta adagrad will need cpu, so just use adam..
     #with tf.device('/cpu:0'):
-    self.embedding = wenzheng.utils.Embedding(vocab_size, FLAGS.emb_dim, 
+    self.embedding = wenzheng.utils.Embedding(vocab_size, 
+                                              FLAGS.emb_dim, 
                                               FLAGS.word_embedding_file, 
-                                              trainable=FLAGS.finetune_word_embedding)
+                                              trainable=FLAGS.finetune_word_embedding,
+                                              vocab2_size=FLAGS.unk_vocab_size)
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
@@ -90,9 +92,12 @@ class Model2(melt.Model):
 
     ## adadelta adagrad will need cpu, so just use adam..
     #with tf.device('/cpu:0'):
-    self.embedding = wenzheng.utils.Embedding(vocab_size, FLAGS.emb_dim, 
+    self.embedding = wenzheng.utils.Embedding(vocab_size, 
+                                              FLAGS.emb_dim, 
                                               FLAGS.word_embedding_file, 
-                                              trainable=FLAGS.finetune_word_embedding)
+                                              trainable=FLAGS.finetune_word_embedding,
+                                              vocab2_size=FLAGS.unk_vocab_size)
+
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
@@ -144,9 +149,12 @@ class QCAttention(melt.Model):
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
 
-    self.embedding = wenzheng.utils.Embedding(vocab_size, FLAGS.emb_dim, 
+    self.embedding = wenzheng.utils.Embedding(vocab_size, 
+                                              FLAGS.emb_dim, 
                                               FLAGS.word_embedding_file, 
-                                              trainable=FLAGS.finetune_word_embedding)
+                                              trainable=FLAGS.finetune_word_embedding,
+                                              vocab2_size=FLAGS.unk_vocab_size)
+
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
@@ -202,15 +210,19 @@ class QCAttention(melt.Model):
     
     return x
 
+# TODO make all to one model is fine, not to hold so many
 class Rnet(melt.Model):
   def __init__(self):
     super(Rnet, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
 
-    self.embedding = wenzheng.utils.Embedding(vocab_size, FLAGS.emb_dim, 
+    self.embedding = wenzheng.utils.Embedding(vocab_size, 
+                                              FLAGS.emb_dim, 
                                               FLAGS.word_embedding_file, 
-                                              trainable=FLAGS.finetune_word_embedding)
+                                              trainable=FLAGS.finetune_word_embedding,
+                                              vocab2_size=FLAGS.unk_vocab_size,
+                                              vocab2_trainable=FLAGS.finetune_unk_vocab)
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
@@ -242,6 +254,10 @@ class Rnet(melt.Model):
   def call(self, input, training=False):
     q = input['query']
     c = input['passage']
+
+    # print('q', q)
+    # print('c', c)
+
     q_len = melt.length(q)
     c_len = melt.length(c)
     q_mask = tf.cast(q, tf.bool)

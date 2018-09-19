@@ -38,7 +38,10 @@ import pandas as pd
 from gezi import Vocabulary
 import gezi
 import melt
-from text2ids import text2ids
+
+from text2ids import text2ids as text2ids_
+
+from wenzheng.utils import text2ids
 
 import multiprocessing
 from multiprocessing import Value, Manager
@@ -85,7 +88,7 @@ def build_features(index):
 
         limit = FLAGS.limit
         content = content[:limit]
-        content_ids = text2ids(content)
+        content_ids = text2ids_(content)
         
         feature = {
                     'id': melt.bytes_feature(str(id)),
@@ -115,8 +118,8 @@ def build_features(index):
 def main(_):  
   text2ids.init(FLAGS.vocab_)
   print('to_lower:', FLAGS.to_lower, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
-  print(text2ids.ids2text(_text2ids('傻逼脑残B')))
-  print(text2ids.ids2text(_text2ids('喜欢玩孙尚香的加我好友：2948291976')))
+  print(text2ids.ids2text(text2ids_('傻逼脑残B')))
+  print(text2ids.ids2text(text2ids_('喜欢玩孙尚香的加我好友：2948291976')))
 
   global df
   df = pd.read_csv(FLAGS.input)

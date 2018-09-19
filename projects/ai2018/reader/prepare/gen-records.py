@@ -37,18 +37,12 @@ import json
 from gezi import Vocabulary
 import gezi
 import melt
-from text2ids import text2ids
+from text2ids import text2ids as text2ids_ 
+from wenzheng.utils import text2ids
 
 from multiprocessing import Value, Manager
 counter = Value('i', 0) 
 total_words = Value('i', 0)
-
-def _text2ids(text):
-  return text2ids.text2ids(text, seg_method=FLAGS.seg_method, 
-                           feed_single_en=FLAGS.feed_single_en,
-                           to_lower=FLAGS.to_lower,
-                           norm_digit=False,
-                           pad=False)
 
 def get_mode(path):
   if 'train' in path:
@@ -237,8 +231,8 @@ def build_features(file_):
         assert candidates is not None
         candidates = '|'.join(candidates)
 
-        query_ids = text2ids(query)
-        passage_ids = text2ids(passage)
+        query_ids = text2ids_(query)
+        passage_ids = text2ids_(passage)
 
         assert len(query_ids), line
         assert len(passage_ids), line
@@ -295,8 +289,11 @@ def build_features(file_):
 def main(_):  
   text2ids.init(FLAGS.vocab_)
   print('to_lower:', FLAGS.to_lower, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
-  print(text2ids.ids2text(_text2ids('傻逼脑残B')))
-  print(text2ids.ids2text(_text2ids('喜欢玩孙尚香的加我好友：2948291976')))
+  print(text2ids.ids2text(text2ids_('傻逼脑残B')))
+  print(text2ids_('傻逼脑残B'))
+  print(text2ids.ids2text(text2ids_('喜欢玩孙尚香的加我好友：2948291976')))
+
+  #exit(0)
   
   if os.path.isfile(FLAGS.input):
     build_features(FLAGS.input)

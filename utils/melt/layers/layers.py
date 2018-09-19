@@ -329,6 +329,14 @@ class MeanPooling(Layer):
   def call(self, outputs, sequence_length=None, axis=1):
     return melt.mean_pooling(outputs, sequence_length, axis)
 
+class FirstPooling(Layer):
+  def call(self, outputs, sequence_length=None, axis=1):
+    return outputs[:, 0, :]
+
+class LastPooling(Layer):
+  def call(self, outputs, sequence_length=None, axis=1):
+    return melt.dynamic_last_relevant(outputs, sequence_length)
+
 class HierEncode(Layer):
   def call(self, outputs, sequence_length=None, window_size=3, axis=1):
     return melt.hier_encode(outputs, sequence_length, window_size=3, axis=1)
@@ -410,6 +418,10 @@ class Pooling(keras.Model):
         return AttentionPooling(hidden_size=None)
       elif name == 'topk' or name == 'top_k':
         return TopKPooling(top_k)
+      elif name =='first':
+        return FirstPooling()
+      elif name == 'last':
+        return LastPooling()
       else:
         raise f'Unsupport pooling now:{name}'
 
@@ -462,6 +474,24 @@ class InitState(keras.layers.Layer):
       return self.init[layer]
     else:
       return tf.tile(self.init[layer], [batch_size, 1])
+
+class Embedding(keras.layers.Layer):
+  def __init__(self, height, width, name='init_fw'):
+    super(Embedding, self).__init__()
+    initializer = 'uniform'
+    self.embedding = self.add_variable(
+        "embedding_kernel",
+        shape=[height, width],
+        dtype=tf.float32,
+        initializer=initializer,
+        trainable=True)
+
+  def call(self, x=None):
+    if x is not None:
+      return tf.nn.embedding_lookup(self.embedding, x)
+    else:
+      return self.embedding
+
 
 class Dropout(keras.layers.Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):

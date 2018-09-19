@@ -19,6 +19,8 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_bool('feed_single_en', True, '')
 flags.DEFINE_bool('to_lower', True, '')
+flags.DEFINE_integer('unk_vocab_size', None, 'none means not to use, and if use can set like 10000')
+
 
 import sys 
 import os
@@ -34,4 +36,5 @@ def text2ids(text):
                 feed_single_en=FLAGS.feed_single_en,
                 to_lower=FLAGS.to_lower,
                 norm_digit=False,
-                pad=False)
+                pad=False,
+                unk_vocab_size=FLAGS.unk_vocab_size)

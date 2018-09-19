@@ -59,7 +59,7 @@ def init():
       wnames = ATTRIBUTES
     if not decay:
       logging.info('Weight decay target:', decay_target)
-      if FLAGS.num_learning_rate_weights == 1:
+      if FLAGS.num_learning_rate_weights <= 1:
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
@@ -107,7 +107,7 @@ def calc_f1(labels, predicts, ids=None, model_path=None):
   
   if model_path is None:
     if FLAGS.decay_target:
-      if  FLAGS.num_learning_rate_weights == 1:
+      if  FLAGS.num_learning_rate_weights <= 1:
         target = f1
       elif FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES * NUM_CLASSES:
         target = all_f1

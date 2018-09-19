@@ -54,6 +54,14 @@ def adjust_lrs(x, ratio=None, name='learning_rate_weights'):
     x = x * ratio + tf.stop_gradient(x) * (1 - ratio)
   return x
 
+def adjust_weights(x, ratio=None, name='learning_rate_weights'):
+  if ratio is None:
+    ratios = tf.get_collection(name)[-1]
+    x = x * ratios 
+  else:
+    x = x * ratio 
+  return x
+
 def try_convert_images(images):
   if not isinstance(images, (list, tuple, np.ndarray)):
     images = [images]

@@ -31,9 +31,18 @@ def criterion(model, x, y, training=False):
   #print(y_, y, weights)
   if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
     assert FLAGS.loss == 'cross'
-    loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE)
-    loss = melt.adjust_lrs(loss)
-    loss = tf.reduce_mean(loss)
+    #loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE)
+    # loss = melt.adjust_lrs(loss)
+    #loss = tf.reduce_mean(loss)
+    #print('--------------weights', weights)
+
+    # if weights == 1:
+    #   weights = tf.ones([FLAGS.num_learning_rate_weights], dtype=tf.float32)
+    # weights = tf.expand_dims(weights *  tf.get_collection('learning_rate_weights')[-1], 0)
+
+    # TODO FIXME why above weights *  tf.get_collection('learning_rate_weights')[-1] seems not ok ? weights input is 1 actually ? why ?
+    weights = tf.expand_dims(tf.get_collection('learning_rate_weights')[-1], 0)
+    loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights)
   else: 
     if FLAGS.loss == 'cross':
       loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights) 

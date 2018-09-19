@@ -16,6 +16,7 @@ from gezi.timer import *
 from gezi.nowarning import * 
 from gezi.gezi_util import * 
 from gezi.avg_score import *
+from gezi.zhtools import *
 from gezi.util import * 
 from gezi.rank_metrics import *
 from gezi.topn import *
@@ -54,4 +55,5 @@ except Exception:
 try:
   import gezi.metrics
 except Exception:
-  print(traceback.format_exc(), file=sys.stderr)
+  print(traceback.format_exc(), file=sys.stderr) 
+

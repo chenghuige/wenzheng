@@ -37,12 +37,16 @@ def calc_f1(labels, predicts):
   f1 = np.mean(f1_list)
   return f1 
 
-def to_predict(logits):
-  logits = np.reshape(logits, [-1, num_attrs, 4])
-  probs = gezi.softmax(logits, -1)
+def to_predict(logits, need_softmax=True):
+  if need_softmax:
+    logits = np.reshape(logits, [-1, num_attrs, 4])
+    probs = gezi.softmax(logits, -1)
+  else:
+    probs = logits
   probs = np.reshape(probs, [-1, 4])
   result = np.zeros([len(probs)])
   for i, prob in enumerate(probs):
+    # TODO try to calibrate to 0.5 ?
     if prob[0] >= 0.6:
       result[i] = -2
     else:
@@ -79,10 +83,13 @@ f1 = calc_f1(labels, predicts)
 print('f1:', f1)
 print('adjusted f1:', adjusted_f1)
 
-adjusted_f1_prob = calc_f1(labels, to_predict(results2))
+adjusted_f1_prob = calc_f1(labels, to_predict(results2, need_softmax=False))
 results2 = np.reshape(results2, [-1, num_attrs, 4]) 
 predicts2 = np.argmax(results2, -1) - 2
 f1_prob = calc_f1(labels, predicts2)
+
+#print(labels)
+#print(predicts2)
 
 print('f1_prob:', f1_prob)
 print('adjusted f1_prob:', adjusted_f1_prob)

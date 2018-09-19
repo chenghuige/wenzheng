@@ -215,6 +215,7 @@ class WeightsDecay(object):
 
     if not tf.executing_eagerly():
       weights = self.sess.run(self.weights_op)
+      #print('-------', weights)
       weights_ = weights
     else:
       weights = self.weights_op
@@ -240,7 +241,10 @@ class WeightsDecay(object):
           self.scores[i] = score
           
           decay = self.decay if not isinstance(self.decay, (list, tuple)) else self.decay[i]
+
+          print('--------decay', decay, weights_)
           weights_[i] *= decay
+          print('--------weights_', weights_)
 
           if not self.min_weight:
             if weights_[i] < self.min_weight:

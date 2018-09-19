@@ -232,7 +232,10 @@ def train(Dataset,
   tf.add_to_collection('learning_rate', learning_rate)
 
   learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
-  learning_rate_weights = tf.get_collection('learning_rate_weights')[-1]
+  try:
+    learning_rate_weights = tf.get_collection('learning_rate_weights')[-1]
+  except Exception:
+    learning_rate_weights = None
 
   optimizer = melt.get_optimizer(FLAGS.optimizer)(learning_rate)
   
@@ -245,13 +248,22 @@ def train(Dataset,
   writer_valid = summary.create_file_writer(FLAGS.model_dir)
   global_step = tf.train.get_or_create_global_step()
 
-  checkpoint = tf.train.Checkpoint(
-        learning_rate=learning_rate, 
-        learning_rate_weight=learning_rate_weight,
-        learning_rate_weights=learning_rate_weights,
-        model=model,
-        optimizer=optimizer,
-        global_step=global_step)
+  # TODO...
+  if not learning_rate_weights:
+    checkpoint = tf.train.Checkpoint(
+          learning_rate=learning_rate, 
+          learning_rate_weight=learning_rate_weight,
+          model=model,
+          optimizer=optimizer,
+          global_step=global_step)
+  else:
+    checkpoint = tf.train.Checkpoint(
+          learning_rate=learning_rate, 
+          learning_rate_weight=learning_rate_weight,
+          learning_rate_weights=learning_rate_weights,
+          model=model,
+          optimizer=optimizer,
+          global_step=global_step)
         
   ckpt_dir = FLAGS.model_dir + '/ckpt'
 
@@ -277,7 +289,7 @@ def train(Dataset,
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs
   
-  if valid_dataset and not FLAGS.mode == 'test' and not 'SHOWMODEL' in os.environ:
+  if valid_dataset and not FLAGS.mode == 'test' and not 'SHOW' in os.environ:
     logging.info('valid')
     if evaluate_fn is not None:
       vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
@@ -308,6 +320,9 @@ def train(Dataset,
         inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
     exit(0)
   
+  if 'SHOW' in os.environ:
+    num_epochs = start_epoch + 1
+
   for epoch in range(start_epoch, num_epochs):
     epoch_loss_avg = tfe.metrics.Mean()
     epoch_valid_loss_avg = tfe.metrics.Mean()
@@ -380,11 +395,11 @@ def train(Dataset,
       if epoch == start_epoch and i == 0:
         try:
           logging.info(model.summary())
-          if 'SHOWMODEL' in os.environ:
-            exit(0)
         except Exception:
           traceback.print_exc()
           logging.info('Fail to do model.summary() may be you have layer define in init but not used in call')
+        if 'SHOW' in os.environ:
+          exit(0)
 
     logging.info('epoch:%d/%d' % (epoch + 1, num_epochs), 
                  'step:%d' % global_step.numpy(), 

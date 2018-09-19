@@ -18,4 +18,9 @@ import os
 import gezi
 
 def filter(x):
-  return gezi.filter_quota(x).replace('\r', '\x01').replace('\n', '\x02').replace('<R>', '\x01').replace('<N>', '\x02').replace('\t', ' ')
+  x = gezi.filter_quota(x).replace('\r', '\x01').replace('\n', '\x02').replace('<R>', '\x01').replace('<N>', '\x02').replace('\t', ' ')
+  # simplify seems not help but might help diversity
+  #x = gezi.to_simplify(x)
+  # TODO if needed try to find case usefull or not　I think especally for sentiment not reading, lower is ok not loose important info like NIKE
+  x = x.lower()
+  return x

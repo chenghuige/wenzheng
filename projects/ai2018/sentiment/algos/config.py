@@ -118,6 +118,8 @@ flags.DEFINE_float('emb_keepprob', 0.5, '')
 flags.DEFINE_bool('emb_dropout', False, '')
 
 flags.DEFINE_bool('use_label_emb', False, '')
+flags.DEFINE_bool('use_label_att', False, '')
+
 flags.DEFINE_string('label_attention_combiner', 'gate', 'gate or dsfu')
 flags.DEFINE_string('self_attention_combiner', 'gate', 'gate or dsfu')
 

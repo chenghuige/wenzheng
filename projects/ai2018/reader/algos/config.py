@@ -31,22 +31,12 @@ flags.DEFINE_bool('split_type', False, '')
 flags.DEFINE_string('att_type', 'p2q', '')
 flags.DEFINE_string('att_combiner', 'gate', '')
 
-flags.DEFINE_bool('use_text', True, '')
-flags.DEFINE_bool('use_image', False, '')
-flags.DEFINE_bool('use_all_image', False, '')
-flags.DEFINE_bool('use_user', False, '')
-flags.DEFINE_bool('use_imtxt', False, '')
-flags.DEFINE_bool('use_image_score', False, '')
-flags.DEFINE_bool('use_image_score_emb', False, '')
+flags.DEFINE_integer('unk_vocab_size', 10000, 'none means not to use, and if use can set like 10000')
+flags.DEFINE_bool('finetune_unk_vocab', False, '')
+
 flags.DEFINE_bool('use_bias', False, '')
 
 flags.DEFINE_bool('use_image_info', False, '')
-
-flags.DEFINE_string('image_combiner', 'rnn', 'rnn, concat, sum, sfu')
-flags.DEFINE_string('user_combiner', 'concat', 'rnn, concat, sum, sfu')
-
-flags.DEFINE_string('comment_fields', 'comment', '')
-flags.DEFINE_string('comment_combiner', 'concat', '')
 
 flags.DEFINE_string('encoder_combiner', 'concat', '')
 
