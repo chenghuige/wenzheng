@@ -21,7 +21,7 @@ FLAGS = flags.FLAGS
 from tensorflow import keras
 
 import wenzheng
-from wenzheng.utils import vocabulary, embedding
+from wenzheng.utils import vocabulary
 
 from algos.config import NUM_CLASSES
 
@@ -36,11 +36,11 @@ class Model(melt.Model):
 
     ## adadelta adagrad will need cpu, so just use adam..
     #with tf.device('/cpu:0'):
-    self.embedding = wenzheng.utils.Embedding(vocab_size, 
-                                              FLAGS.emb_dim, 
-                                              FLAGS.word_embedding_file, 
-                                              trainable=FLAGS.finetune_word_embedding,
-                                              vocab2_size=FLAGS.unk_vocab_size)
+    self.embedding = wenzheng.Embedding(vocab_size, 
+                                        FLAGS.emb_dim, 
+                                        FLAGS.word_embedding_file, 
+                                        trainable=FLAGS.finetune_word_embedding,
+                                        vocab2_size=FLAGS.unk_vocab_size)
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
@@ -92,7 +92,7 @@ class Model2(melt.Model):
 
     ## adadelta adagrad will need cpu, so just use adam..
     #with tf.device('/cpu:0'):
-    self.embedding = wenzheng.utils.Embedding(vocab_size, 
+    self.embedding = wenzheng.Embedding(vocab_size, 
                                               FLAGS.emb_dim, 
                                               FLAGS.word_embedding_file, 
                                               trainable=FLAGS.finetune_word_embedding,
@@ -149,7 +149,7 @@ class QCAttention(melt.Model):
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
 
-    self.embedding = wenzheng.utils.Embedding(vocab_size, 
+    self.embedding = wenzheng.Embedding(vocab_size, 
                                               FLAGS.emb_dim, 
                                               FLAGS.word_embedding_file, 
                                               trainable=FLAGS.finetune_word_embedding,
@@ -217,7 +217,7 @@ class Rnet(melt.Model):
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
 
-    self.embedding = wenzheng.utils.Embedding(vocab_size, 
+    self.embedding = wenzheng.Embedding(vocab_size, 
                                               FLAGS.emb_dim, 
                                               FLAGS.word_embedding_file, 
                                               trainable=FLAGS.finetune_word_embedding,
@@ -272,22 +272,22 @@ class Rnet(melt.Model):
     mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
     
-    c = self.encode(c_emb, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
-    q = self.encode(q_emb, q_len, mask_fws=mask_fws, mask_bws=mask_bws)
+    c = self.encode(c_emb, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
+    q = self.encode(q_emb, q_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
 
     qc_att = self.att_dot_attention(c, q, mask=q_mask, training=training)
 
     num_units = [melt.get_shape(qc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
     mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    att = self.att_encode(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
+    att = self.att_encode(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
 
     self_att = self.match_dot_attention(att, att, mask=c_mask, training=training)
 
     num_units = [melt.get_shape(self_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
     mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    x = self.match_encode(self_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws)
+    x = self.match_encode(self_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
 
     x = self.pooling(x, c_len, calc_word_scores=self.debug)
 

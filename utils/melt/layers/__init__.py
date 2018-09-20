@@ -13,4 +13,9 @@ from __future__ import print_function
 
 from melt.layers.layers import *
 
-from melt.layers.optimizers import *
+from melt.layers.optimizers import * 
+
+from melt.layers.cnn import *
+from melt.layers.rnn import *
+from melt.layers.transformer import * 
+

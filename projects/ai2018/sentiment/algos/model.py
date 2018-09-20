@@ -21,7 +21,7 @@ FLAGS = flags.FLAGS
 from tensorflow import keras
 
 import wenzheng
-from wenzheng.utils import vocabulary, embedding
+from wenzheng.utils import vocabulary
 
 from algos.config import NUM_CLASSES, NUM_ATTRIBUTES
 from algos.weights import *
@@ -38,18 +38,15 @@ class Model(melt.Model):
     logging.info('vocab_size:', vocab_size)
 
     self.num_layers = FLAGS.num_layers
-    self.num_units = FLAGS.rnn_hidden_size
+    self.num_units = FLAGS.rnn_hidden_size if FLAGS.encoder_type != 'convnet' else FLAGS.num_filters
     self.keep_prob = FLAGS.keep_prob
-
-    logging.info('num_layers:', self.num_layers)
-    logging.info('num_unints:', self.num_units)
-    logging.info('keep_prob:', self.keep_prob)
 
     ## adadelta adagrad will need cpu, so just use adam..
     #with tf.device('/cpu:0'):
-    self.embedding = wenzheng.utils.Embedding(vocab_size, FLAGS.emb_dim, 
-                                              FLAGS.word_embedding_file, 
-                                              trainable=FLAGS.finetune_word_embedding)
+    self.embedding = wenzheng.Embedding(vocab_size, 
+                                        FLAGS.emb_dim, 
+                                        FLAGS.word_embedding_file, 
+                                        trainable=FLAGS.finetune_word_embedding)
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       assert not FLAGS.use_label_emb and FLAGS.use_label_att
@@ -60,7 +57,10 @@ class Model(melt.Model):
         self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
         self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
+    #self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
+    self.encode = wenzheng.Encoder(FLAGS.encoder_type)
+    
+    #self.multiplier = 2 if self.encode.bidirectional else 1
 
     # hier a bit worse
     self.hier_encode = melt.layers.HierEncode() if FLAGS.use_hier_encode else None
@@ -95,11 +95,12 @@ class Model(melt.Model):
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
 
-    num_units = [melt.get_shape(x, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-    #print('----------------length', tf.reduce_max(length), inputs.comment.shape)
-    mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
-    mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
-    x = self.encode(x, length, mask_fws=mask_fws, mask_bws=mask_bws)
+    # num_units = [melt.get_shape(x, -1) if layer == 0 else self.multiplier * self.num_units for layer in range(self.num_layers)]
+    # #print('----------------length', tf.reduce_max(length), inputs.comment.shape)
+    # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
+    # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
+    #x = self.encode(x, length, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
+    x = self.encode(x, length, training=training)
     #x = self.encode(x)
 
     # not help
@@ -111,10 +112,11 @@ class Model(melt.Model):
       label_seq = tf.tile(tf.expand_dims(label_emb, 0), [batch_size, 1, 1])
       lc_att = self.att_dot_attention(x, label_seq, mask=tf.ones([batch_size, NUM_ATTRIBUTES * NUM_CLASSES], tf.bool), training=training)
 
-      num_units = [melt.get_shape(lc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-      mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-      mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-      x = self.att_encode(lc_att, length, mask_fws=mask_fws, mask_bws=mask_bws)
+      # num_units = [melt.get_shape(lc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
+      # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
+      # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
+      #x = self.att_encode(lc_att, length, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
+      x = self.att_encode(lc_att, length, training=training)
   
     x = self.pooling(x, length, calc_word_scores=self.debug)
     #x = self.pooling(x)
@@ -122,7 +124,7 @@ class Model(melt.Model):
     # not help much
     if self.dense is not None:
       x = self.dense(x)
-      x = self.dropout(x)
+      x = self.dropout(x, training=training)
 
     if not FLAGS.use_label_emb:
       x = self.logits(x)
