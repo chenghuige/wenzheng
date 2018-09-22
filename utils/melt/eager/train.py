@@ -249,7 +249,7 @@ def train(Dataset,
   global_step = tf.train.get_or_create_global_step()
 
   # TODO...
-  if not learning_rate_weights:
+  if  learning_rate_weights is None:
     checkpoint = tf.train.Checkpoint(
           learning_rate=learning_rate, 
           learning_rate_weight=learning_rate_weight,
@@ -289,7 +289,7 @@ def train(Dataset,
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs
   
-  if valid_dataset and not FLAGS.mode == 'test' and not 'SHOW' in os.environ:
+  if valid_dataset and not FLAGS.mode == 'test' and not 'QUICK' in os.environ and not 'SHOW' in os.environ:
     logging.info('valid')
     if evaluate_fn is not None:
       vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)

@@ -54,5 +54,8 @@ class Dataset(melt.tfrecords.Dataset):
     label = features['label']
 
     x = features
-    y = label
+    y = label + 2
+    if FLAGS.binary_class_index is not None:
+      y = tf.to_int64(tf.equal(y, FLAGS.binary_class_index))
+    
     return x, y

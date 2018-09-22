@@ -140,11 +140,11 @@ flags.DEFINE_boolean('optimize_has_scope', True, '')
 #----------train
 flags.DEFINE_boolean('train_only', False, '')
 flags.DEFINE_boolean('train_all', False, 'use for small dataset like competetion or standard dataset where use k folds for train/valid and use all k parts if set train_all==True')
-flags.DEFINE_string('work_mode', 'full', 'full/train_valid_show_metric, train, test, train_metric, train_valid, train_valid_metric')
+flags.DEFINE_string('mode', 'train', '')
 flags.DEFINE_integer('monitor_level', 2, '1 will monitor emb, 2 will monitor gradient')
 flags.DEFINE_integer('log_level', 0, '')
 flags.DEFINE_boolean('no_log', False, '')
-flags.DEFINE_string('mode', 'train', 'or predict')
+#flags.DEFINE_string('mode', 'train', 'or predict')
 flags.DEFINE_boolean('freeze_graph_collections', True, '')
 flags.DEFINE_integer('random_seed', None, '')
 
@@ -239,8 +239,10 @@ inited = None
 def init():
   if 'MODE' in os.environ:
     FLAGS.mode = os.environ['MODE']
-  
-  if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
+
+  #if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
+  # well for safe just not by default use eager mode for valid and test since some a bit complex model now still has diff graph and eager, TODO FIXME
+  if FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
     logging.info('Run eager mode!')
     tf.enable_eager_execution()
 
@@ -430,16 +432,16 @@ def init():
 
   # TODO check if can all use tfe.Variable ?
   if not tf.executing_eagerly():
-    learning_rate_weight = tf.get_variable('learning_rate_weight', initializer=tf.ones(shape=(), dtype=tf.float32))
+    learning_rate_weight = tf.get_variable('learning_rate_weight', initializer=tf.ones(shape=(), dtype=tf.float32), trainable=False)
     tf.add_to_collection('learning_rate_weight', learning_rate_weight)
     if FLAGS.num_learning_rate_weights > 0:
-      learning_rate_weights = tf.get_variable('learning_rate_weights', initializer=tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32))
+      learning_rate_weights = tf.get_variable('learning_rate_weights', initializer=tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), trainable=False)
       tf.add_to_collection('learning_rate_weights', learning_rate_weights)
   else:
-    learning_rate_weight = tfe.Variable(1., name='learning_rate_weight')
+    learning_rate_weight = tfe.Variable(1., name='learning_rate_weight', trainable=False)
     tf.add_to_collection('learning_rate_weight', learning_rate_weight)
     if FLAGS.num_learning_rate_weights > 0:
-      learning_rate_weights = tfe.Variable(tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), name='learning_rate_weights')
+      learning_rate_weights = tfe.Variable(tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), name='learning_rate_weights', trainable=False)
       tf.add_to_collection('learning_rate_weights', learning_rate_weights)
 
   global inited
@@ -745,30 +747,30 @@ def train_flow(ops,
   if not FLAGS.metric_eval:
     metric_eval_interval_steps = 0
 
-  if FLAGS.work_mode == 'train' or FLAGS.train_only:
+  if FLAGS.mode == 'train_only' or FLAGS.train_only:
     eval_ops = None 
     metric_eval_fn = None
     logging.info('running train only mode')
-  elif FLAGS.work_mode == 'train_metric':
+  elif FLAGS.mode == 'train_metric':
     eval_ops = None 
     assert metric_eval_fn is not None, 'set metric_eval to 1'
     logging.info('running train+metric mode')
-  elif FLAGS.work_mode == 'train_valid':
+  elif FLAGS.mode == 'train+valid':
     metric_eval_fn = None
     logging.info('running train+valid mode')
-  elif FLAGS.work_mode.startswith('test'):
+  elif FLAGS.mode.startswith('test'):
     ops = None
     logging.info('running test only mode')
     interval_steps = 0
     eval_interval_steps = 1
     metric_eval_interval_steps /= FLAGS.eval_interval_steps
     save_model = False
-  elif FLAGS.work_mode.startswith('metric') or FLAGS.work_mode.startswith('eval') or FLAGS.work_mode.startswith('valid') or gezi.env_has('METRIC'):
-    #TODO name is a bit cofusing for work_mode, eval or metric means using metric evaluation
+  elif FLAGS.mode.startswith('metric') or FLAGS.mode.startswith('eval') or FLAGS.mode.startswith('valid') or gezi.env_has('METRIC'):
+    #TODO name is a bit cofusing for mode, eval or metric means using metric evaluation
     #test above means using eval_loss(valid_loss) as composed to train_loss for evaluation
     ops = None 
     eval_ops = None
-    if FLAGS.work_mode == 'valid+test':
+    if FLAGS.mode == 'valid+test':
       logging.info('runing valid and test only mode')
     else:
       logging.info('running metric eval only mode')
@@ -779,7 +781,7 @@ def train_flow(ops,
     assert metric_eval_fn is not None 
 
   
-  if FLAGS.work_mode.endswith('once'):
+  if FLAGS.mode.endswith('once'):
     num_epochs = -1 #hack to make only do one step!
 
   #TODO hack seq2seq/OptimizeLoss/seq2seq/main/decode/rnn/basic_lstm_cell/kernel/Adagrad (DT_FLOAT) [1280,4096] need to save

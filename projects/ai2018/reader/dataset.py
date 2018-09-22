@@ -33,6 +33,10 @@ class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='train'):
     super(Dataset, self).__init__(subset)
 
+    # !must use tf.equal not ==, verify this using eager mode! tensor != 1... tf.equal(tensor, 1)
+    self.filter_fn = None if not FLAGS.type1_only else lambda x, y: tf.equal(x['type'], 1)
+    logging.info('filter_fn', self.filter_fn)
+
   def parser(self, example):
     """Parses a single tf.Example into image and label tensors."""
     features_dict = {

@@ -42,6 +42,7 @@ def init():
 
   ids2text.init()
 
+  min_learning_rate = 5e-5
   if FLAGS.decay_target:
     global decay
     decay_target = FLAGS.decay_target
@@ -52,15 +53,13 @@ def init():
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
-                      #min_weight=0.00001,
-                      min_learning_rate=0.00001)
+                      min_learning_rate=min_learning_rate)
       else:
         wnames = ['if', 'whether']
         decay = WeightsDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
-                      #min_weight=0.00001,
-                      min_learning_rate=0.00001,
+                      min_learning_rate=min_learning_rate,
                       names=wnames)  
 
 ## worse then just simply argmax

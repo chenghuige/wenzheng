@@ -45,6 +45,7 @@ flags.DEFINE_float('init_weight', 1., '')
 
 flags.DEFINE_float('mlp_ratio', 0., '')
 
+flags.DEFINE_bool('binary_class_index', None, '')
 
 flags.DEFINE_bool('use_hier_encode', False, '')
 
@@ -119,6 +120,7 @@ flags.DEFINE_bool('emb_dropout', False, '')
 
 flags.DEFINE_bool('use_label_emb', False, '')
 flags.DEFINE_bool('use_label_att', False, '')
+flags.DEFINE_bool('simple_label_att', False, '')
 
 flags.DEFINE_string('label_attention_combiner', 'gate', 'gate or dsfu')
 flags.DEFINE_string('self_attention_combiner', 'gate', 'gate or dsfu')
@@ -128,6 +130,10 @@ flags.DEFINE_integer('label_emb_height', None, '')
 flags.DEFINE_bool('concat_label_emb', False, '')
 flags.DEFINE_bool('label2text_attention', False, '')
 flags.DEFINE_bool('perlabel_encoding', False, '')
+
+flags.DEFINE_bool('use_self_match', False, '')
+
+flags.DEFINE_bool('self_match_before_label_att', True, '')
 
 flags.DEFINE_bool('toxic_only', False, '')
 flags.DEFINE_bool('toxic_softmax_loss', False, 'for toxic and serv')

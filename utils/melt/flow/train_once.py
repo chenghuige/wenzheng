@@ -169,6 +169,9 @@ def train_once(sess,
     and ((is_start or metric_eval_interval_steps \
          and step % metric_eval_interval_steps == 0) or model_path):
    metric_evaluate = True
+
+  if 'QUICK' in os.environ and (is_start or step == 0):
+    metric_evaluate = False
   
   if metric_evaluate:
     # TODO better 

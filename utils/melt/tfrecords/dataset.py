@@ -29,6 +29,7 @@ logging = melt.logging
 class Dataset(object):
   def __init__(self, subset='train'):
     self.subset = subset
+    self.filter_fn = None
 
   def get_filenames(self):
     if self.subset in ['train', 'valid', 'test']:
@@ -89,6 +90,7 @@ class Dataset(object):
         length_index=FLAGS.length_index,
         length_key=FLAGS.length_key,
         return_iterator=return_iterator,
+        filter_fn=self.filter_fn if self.subset == 'train' else None,
         name=self.subset) 
 
   @staticmethod

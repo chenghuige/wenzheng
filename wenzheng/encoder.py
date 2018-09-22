@@ -73,7 +73,8 @@ class Encoder(melt.Model):
                                    num_heads=4)
       else:
         raise ValueError('not support {} now'.format(type))
-      encode.bidirectional = False
+      if encode is not None:
+        encode.bidirectional = False
       if type == 'gru' or type == 'rnn' or type == 'lstm':
         encode.bidirectional = True
       return encode
@@ -92,6 +93,7 @@ class Encoder(melt.Model):
           pass
         else:
           seq = seq * mask_fws[0]
+        continue
       if encode.bidirectional:
         seq = encode(seq, seq_len, mask_fws, mask_fws, training=training)
       elif mask_fws is not None:

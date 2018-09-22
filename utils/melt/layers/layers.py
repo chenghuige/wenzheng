@@ -368,7 +368,8 @@ def attention_layer(outputs, sequence_length, hidden_size=128, activation=tf.nn.
 
 # TODO check which is better tf.nn.tanh or tf.nn.relu, by paper default should be tanh
 # TODO check your topk,att cases before use relu.. seems tanh worse then relu, almost eqaul but relu a bit better and stable
-class AttentionPooling(Layer):
+# should be keras.Model layer will not save layer...so..
+class AttentionPooling(keras.Model):
   def __init__(self,  
                hidden_size=128,
                #activation=tf.nn.tanh,  
@@ -547,7 +548,7 @@ class SemanticFusionCombine(keras.Model):
   def call(self, x, y, training=False):
     self.step += 1
     if melt.get_shape(x, -1) != melt.get_shape(y, -1):
-      if step == 0:
+      if self.step == 0:
         self.dense = layers.Dense(melt.get_shape(x, -1), activation=None, name='sfu_dense')
       y = self.dense(x)
     return self.sfu(x, [y, x * y, x - y], training=training)

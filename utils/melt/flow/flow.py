@@ -11,6 +11,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tensorflow as tf
+flags = tf.app.flags
+#import gflags as flags
+FLAGS = flags.FLAGS
+
 import os, sys, traceback
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -325,6 +330,15 @@ def tf_train_flow(train_once_fn,
     if num_epochs < 0:
       only_one_step = True
       logging.info('just run one step')
+
+    if FLAGS.mode != 'train':
+      assert not os.path.isdir(FLAGS.model_dir)
+      if 'valid' in FLAGS.mode:
+        vals, names = metric_eval_fn(FLAGS.model_dir)
+        logging.info(list(zip(names, vals)))
+      if 'test' in FLAGS.mode:
+        inference_fn(FLAGS.model_dir)
+      exit(0)
 
     #early_stop = True #TODO allow config
     num_bad_epochs = 0

@@ -31,12 +31,12 @@ flags.DEFINE_bool('split_type', False, '')
 flags.DEFINE_string('att_type', 'p2q', '')
 flags.DEFINE_string('att_combiner', 'gate', '')
 
-flags.DEFINE_integer('unk_vocab_size', 10000, 'none means not to use, and if use can set like 10000')
+flags.DEFINE_integer('unk_vocab_size', None, 'none means not to use, and if use can set like 10000')
 flags.DEFINE_bool('finetune_unk_vocab', False, '')
 
-flags.DEFINE_bool('use_bias', False, '')
+flags.DEFINE_bool('type1_only', False, '')
 
-flags.DEFINE_bool('use_image_info', False, '')
+flags.DEFINE_bool('use_bias', False, '')
 
 flags.DEFINE_string('encoder_combiner', 'concat', '')
 

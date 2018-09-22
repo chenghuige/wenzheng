@@ -236,7 +236,6 @@ class Rnet(melt.Model):
     # TODO seems not work like layers.Dense... name in graph mode in eager mode will name as att_encode, match_encode 
     # in graph mode just cudnn_rnn, cudnn_rnn_1 so all ignore name=.. not like layers.Dense.. TODO
     self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
-
     self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
 
     # seems share att and match attention is fine a bit improve ? but just follow squad to use diffent dot attention 
@@ -255,6 +254,7 @@ class Rnet(melt.Model):
     q = input['query']
     c = input['passage']
 
+    #print(input['type'])
     # print('q', q)
     # print('c', c)
 
@@ -276,18 +276,19 @@ class Rnet(melt.Model):
     q = self.encode(q_emb, q_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
 
     qc_att = self.att_dot_attention(c, q, mask=q_mask, training=training)
-
-    num_units = [melt.get_shape(qc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-    mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    att = self.att_encode(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
-
-    self_att = self.match_dot_attention(att, att, mask=c_mask, training=training)
-
-    num_units = [melt.get_shape(self_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-    mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    x = self.match_encode(self_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
+    # TODO if not need share dropout can remove input masks
+    # num_units = [melt.get_shape(qc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
+    # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
+    # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
+    # att = self.att_encode(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
+    att = self.att_encode(qc_att, c_len, training=training)
+    
+    self_match_att = self.match_dot_attention(att, att, mask=c_mask, training=training)
+    # num_units = [melt.get_shape(self_match_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
+    # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
+    # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
+    # x = self.match_encode(self_match_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
+    x = self.match_encode(self_match_att, c_len, training=training)
 
     x = self.pooling(x, c_len, calc_word_scores=self.debug)
 

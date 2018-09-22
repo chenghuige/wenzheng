@@ -50,7 +50,8 @@ class Model(melt.Model):
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       assert not FLAGS.use_label_emb and FLAGS.use_label_att
-      self.label_embedding = melt.layers.Embedding(NUM_CLASSES * NUM_ATTRIBUTES, FLAGS.emb_dim)
+      self.label_emb_height = NUM_CLASSES * NUM_ATTRIBUTES if not FLAGS.label_emb_height else FLAGS.label_emb_height
+      self.label_embedding = melt.layers.Embedding(self.label_emb_height, FLAGS.emb_dim)
       if not FLAGS.use_label_att:
         self.label_dense = keras.layers.Dense(FLAGS.emb_dim, activation=tf.nn.relu)
       else:
@@ -64,6 +65,10 @@ class Model(melt.Model):
 
     # hier a bit worse
     self.hier_encode = melt.layers.HierEncode() if FLAGS.use_hier_encode else None
+
+    if FLAGS.use_self_match:
+      self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+      self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
     
     # top-k best, max,att can benfit ensemble(better then max, worse then topk-3), topk,att now best with 2layers
     logging.info('encoder_output_method:', FLAGS.encoder_output_method)
@@ -85,40 +90,40 @@ class Model(melt.Model):
     else:
       self.dense = None
 
-    self.logits = keras.layers.Dense(NUM_ATTRIBUTES * NUM_CLASSES, activation=None)
+    self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
+    self.logits = keras.layers.Dense(NUM_ATTRIBUTES * self.num_classes, activation=None)
     
   def call(self, input, training=False):
     x = input['content'] 
 
+    c_mask = tf.cast(x, tf.bool)
     batch_size = melt.get_shape(x, 0)
-    length = melt.length(x)
+    c_len = melt.length(x)
+
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
 
-    # num_units = [melt.get_shape(x, -1) if layer == 0 else self.multiplier * self.num_units for layer in range(self.num_layers)]
-    # #print('----------------length', tf.reduce_max(length), inputs.comment.shape)
-    # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
-    # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
-    #x = self.encode(x, length, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
-    x = self.encode(x, length, training=training)
+    x = self.encode(x, c_len, training=training)
     #x = self.encode(x)
 
     # not help
     if self.hier_encode is not None:
-      x = self.hier_encode(x, length)
+      x = self.hier_encode(x, c_len)
 
     if FLAGS.use_label_att:
       label_emb = self.label_embedding(None)
       label_seq = tf.tile(tf.expand_dims(label_emb, 0), [batch_size, 1, 1])
-      lc_att = self.att_dot_attention(x, label_seq, mask=tf.ones([batch_size, NUM_ATTRIBUTES * NUM_CLASSES], tf.bool), training=training)
+      x = self.att_dot_attention(x, label_seq, mask=tf.ones([batch_size, self.label_emb_height], tf.bool), training=training)
 
-      # num_units = [melt.get_shape(lc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-      # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-      # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-      #x = self.att_encode(lc_att, length, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
-      x = self.att_encode(lc_att, length, training=training)
-  
-    x = self.pooling(x, length, calc_word_scores=self.debug)
+      if not FLAGS.simple_label_att:
+        x = self.att_encode(x, c_len, training=training)
+
+    # pust self match at last
+    if FLAGS.use_self_match:
+       self_match_att = self.match_dot_attention(x, x, mask=c_mask, training=training) 
+       x = self.match_encode(self_match_att, c_len, training=training) 
+
+    x = self.pooling(x, c_len, calc_word_scores=self.debug)
     #x = self.pooling(x)
 
     # not help much
@@ -137,6 +142,6 @@ class Model(melt.Model):
     # if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES * NUM_CLASSES:
     #   x = melt.adjust_lrs(x)
 
-    x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, NUM_CLASSES])
+    x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, self.num_classes])
     
     return x

@@ -84,6 +84,8 @@ def build_features(index):
         id = row[0]
         content = row[1] 
         label = list(row[2:])
+        
+        #label = [x + 2 for x in label]
         #num_labels = len(label)
 
         limit = FLAGS.limit

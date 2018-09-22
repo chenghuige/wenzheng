@@ -47,6 +47,8 @@ def init():
 
   ids2text.init()
 
+  # here min change from 1e-5 to 5e-5
+  min_learning_rate = 5e-5
   if FLAGS.decay_target:
     global decay
     decay_target = FLAGS.decay_target
@@ -63,14 +65,12 @@ def init():
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
-                      #min_weight=0.00001,
-                      min_learning_rate=0.00001)
+                      min_learning_rate=min_learning_rate)
       else:
         decay = WeightsDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
-                      #min_weight=0.00001,
-                      min_learning_rate=0.00001,
+                      min_learning_rate=min_learning_rate,
                       names=wnames)  
 
 def to_predict(logits):
@@ -85,15 +85,22 @@ def to_predict(logits):
   return result
 
 def calc_f1(labels, predicts, ids=None, model_path=None):
-  names = ['mean'] + ATTRIBUTES + ['0na', '1neg', '2neu', '3pos']
+  classes = ['0na', '1neg', '2neu', '3pos']
+  names = ['mean'] + ATTRIBUTES + classes
+  num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
+  if FLAGS.binary_class_index is not None:
+    names = ['mean'] + ATTRIBUTES + ['not', classes[FLAGS.binary_class_index]] 
+
   names = ['f1/' + x for x in names]
   # TODO show all 20 * 4 ? not only show 20 f1
   f1_list = []
-  attr_f1 = np.zeros([4])
+  attr_f1 = np.zeros([num_classes])
   all_f1 = []
   for i in range(NUM_ATTRIBUTES):
     #f1 = f1_score(labels[:,i], np.argmax(predicts[:,i], 1) - 2, average='macro')
-    scores = f1_score(labels[:,i], np.argmax(predicts[:,i], 1) - 2, average=None)
+    scores = f1_score(labels[:,i], np.argmax(predicts[:,i], -1), average=None)
+    # if FLAGS.binary_class_index is not None:
+    #   scores = [scores[1]]
     ## this will be a bit better imporve 0.001, I will just use when ensemble
     #scores = f1_score(labels[:,i], to_predict(predicts[:,i]), average=None)
     attr_f1 += scores
@@ -133,12 +140,14 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
   df['content'] = contents
   if labels is not None:
     for i in range(len(ATTRIBUTES)):
-      df[ATTRIBUTES[i] + '_y'] = labels[:,i]
+      df[ATTRIBUTES[i] + '_y'] = labels[:,i] - 2
   for i in range(len(ATTRIBUTES)):
+    # nitice if na only then if -1 means predict na as finally should be -2
     df[ATTRIBUTES[i]] = np.argmax(predicts[:,i], 1) - 2
   if is_infer:
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
-  df['score'] = [list(x) for x in np.reshape(predicts, [-1, NUM_ATTRIBUTES * NUM_CLASSES])]
+  num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
+  df['score'] = [list(x) for x in np.reshape(predicts, [-1, NUM_ATTRIBUTES * num_classes])]
   if not is_infer:
     df['seg'] = [ids2text.ids2text(infos[id]['content'], sep='|') for id in ids]
     df.to_csv(ofile, index=False, encoding="utf_8_sig")

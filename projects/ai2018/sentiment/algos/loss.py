@@ -25,7 +25,7 @@ from algos.weights import *
 
 def criterion(model, x, y, training=False):
   y_ = model(x, training=training)
-  y += 2
+  #y += 2
   weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
   
   #print(y_, y, weights)
@@ -38,10 +38,8 @@ def criterion(model, x, y, training=False):
 
     # if weights == 1:
     #   weights = tf.ones([FLAGS.num_learning_rate_weights], dtype=tf.float32)
-    # weights = tf.expand_dims(weights *  tf.get_collection('learning_rate_weights')[-1], 0)
-
-    # TODO FIXME why above weights *  tf.get_collection('learning_rate_weights')[-1] seems not ok ? weights input is 1 actually ? why ?
-    weights = tf.expand_dims(tf.get_collection('learning_rate_weights')[-1], 0)
+    weights = tf.expand_dims(weights *  tf.get_collection('learning_rate_weights')[-1], 0)
+    #  FIXME weights actually is per example adjust not for classes.. should be of shape [batch_size]
     loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights)
   else: 
     if FLAGS.loss == 'cross':
