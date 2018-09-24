@@ -280,7 +280,7 @@ class SemanticFusionCombine(keras.Model):
   def call(self, x, y, training=False):
     self.step += 1
     if melt.get_shape(x, -1) != melt.get_shape(y, -1):
-      if step == 0:
+      if self.step == 0:
         self.dense = layers.Dense(melt.get_shape(x, -1), activation=None, name='sfu_dense')
       y = self.dense(y)
     return self.sfu(x, [y, x * y, x - y], training=training)
