@@ -324,6 +324,7 @@ def train(Dataset,
     num_epochs = start_epoch + 1
 
   for epoch in range(start_epoch, num_epochs):
+    melt.set_global('epoch', '%.4f' % (epoch))
     epoch_loss_avg = tfe.metrics.Mean()
     epoch_valid_loss_avg = tfe.metrics.Mean()
 

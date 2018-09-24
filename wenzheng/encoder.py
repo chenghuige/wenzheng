@@ -31,12 +31,12 @@ import wenzheng.utils.rnn_flags
 
 
 class Encoder(melt.Model):
-  def __init__(self, type='gru'):
+  def __init__(self, type='gru', keep_prob=None):
     super(Encoder, self).__init__()
     
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
-    self.keep_prob = FLAGS.keep_prob
+    self.keep_prob = keep_prob or FLAGS.keep_prob
 
     logging.info(f'encoder:{type}')
     logging.info('encoder num_layers:{}'.format(self.num_layers))

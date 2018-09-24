@@ -25,6 +25,7 @@ flags.DEFINE_string('vocab_', './mount/temp/ai2018/reader/tfrecord/vocab.txt', '
 #flags.DEFINE_string('seg_method', 'basic', '') 
 flags.DEFINE_bool('binary', False, '')
 flags.DEFINE_integer('limit', 5000, '')
+flags.DEFINE_integer('max_examples', None, '')
 flags.DEFINE_integer('threads', None, '')
 
 import traceback
@@ -229,10 +230,13 @@ def build_features(file_):
             answer_id = i
 
         assert candidates is not None
-        candidates = '|'.join(candidates)
+        candidates_str = '|'.join(candidates)
 
         query_ids = text2ids_(query)
         passage_ids = text2ids_(passage)
+
+        candidate_neg_ids = text2ids_(candidates[0])
+        candidate_pos_ids = text2ids_(candidates[1])
 
         assert len(query_ids), line
         assert len(passage_ids), line
@@ -249,11 +253,13 @@ def build_features(file_):
                     'id': melt.bytes_feature(str(query_id)),
                     'url': melt.bytes_feature(url),
                     'alternatives': melt.bytes_feature(alternatives),
-                    'candidates': melt.bytes_feature(candidates),
+                    'candidates': melt.bytes_feature(candidates_str),
                     'passage': melt.int64_feature(passage_ids),
                     'passage_str': melt.bytes_feature(passage),
                     'query': melt.int64_feature(query_ids),
                     'query_str': melt.bytes_feature(query),
+                    'candidate_neg': melt.int64_feature(candidate_neg_ids),
+                    'candidate_pos': melt.int64_feature(candidate_pos_ids),
                     'answer': melt.int64_feature(answer_id),
                     'answer_str': melt.bytes_feature(answer),
                     'type': melt.int64_feature(type)         
@@ -278,6 +284,8 @@ def build_features(file_):
         global total_words
         with total_words.get_lock():
           total_words.value += len(passage_ids)
+        if FLAGS.max_examples and num >= FLAGS.max_examples:
+          break
       except Exception:
         print(traceback.format_exc(), file=sys.stderr)
         print('-----------', query)

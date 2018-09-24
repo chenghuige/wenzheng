@@ -24,6 +24,8 @@ ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_d
               'dish_portion', 'dish_taste', 'dish_look', 'dish_recommendation',
               'others_overall_experience', 'others_willing_to_consume_again']
 
+ASPECTS = ['location', 'service', 'price', 'environment', 'dish', 'others']
+
 NUM_ATTRIBUTES = len(ATTRIBUTES)
 ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 

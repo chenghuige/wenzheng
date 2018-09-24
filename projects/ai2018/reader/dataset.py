@@ -27,7 +27,8 @@ from collections import namedtuple
 import gezi
 import melt
 logging = melt.logging
-from wenzheng.utils import vocabulary
+from wenzheng.utils import vocabulary 
+import algos.config
 
 class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='train'):
@@ -35,10 +36,11 @@ class Dataset(melt.tfrecords.Dataset):
 
     # !must use tf.equal not ==, verify this using eager mode! tensor != 1... tf.equal(tensor, 1)
     self.filter_fn = None if not FLAGS.type1_only else lambda x, y: tf.equal(x['type'], 1)
+    if FLAGS.type0_only:
+      self.filter_fn = lambda x, y: tf.equal(x['type'], 0)
     logging.info('filter_fn', self.filter_fn)
 
   def parser(self, example):
-    """Parses a single tf.Example into image and label tensors."""
     features_dict = {
       'id':  tf.FixedLenFeature([], tf.string),
       'url':  tf.FixedLenFeature([], tf.string),
@@ -48,6 +50,8 @@ class Dataset(melt.tfrecords.Dataset):
       'query_str':  tf.FixedLenFeature([], tf.string),
       'passage': tf.VarLenFeature(tf.int64),
       'passage_str':  tf.FixedLenFeature([], tf.string),
+      'candidate_neg':  tf.VarLenFeature(tf.int64),
+      'candidate_pos':  tf.VarLenFeature(tf.int64),
       'alternatives':  tf.FixedLenFeature([], tf.string),
       'candidates':  tf.FixedLenFeature([], tf.string),
       'type':  tf.FixedLenFeature([], tf.int64),
@@ -57,15 +61,22 @@ class Dataset(melt.tfrecords.Dataset):
 
     query = features['query']
     passage = features['passage']
+    candidate_neg = features['candidate_neg']
+    candidate_pos = features['candidate_pos']
     query = melt.sparse_tensor_to_dense(query)
     passage = melt.sparse_tensor_to_dense(passage)
+    candidate_neg = melt.sparse_tensor_to_dense(candidate_neg)
+    candidate_pos = melt.sparse_tensor_to_dense(candidate_pos)
+
+    def add_start_end(text):
+      return  tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), text, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
 
     if FLAGS.add_start_end:
-      query = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), query, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
+      query = add_start_end(query)
     features['query'] = query
 
     if FLAGS.add_start_end:
-      passage = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), passage, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
+      passage = add_start_end(passage)
     features['passage'] = passage
 
     if not FLAGS.add_start_end:
@@ -74,6 +85,14 @@ class Dataset(melt.tfrecords.Dataset):
     else:
         features['content'] = tf.concat([passage, query[1:]], 0)
         features['rcontent'] = tf.concat([query, passage[1:]], 0)    
+
+    if FLAGS.add_start_end:
+      candidate_neg = add_start_end(candidate_neg)
+    features['candidate_neg'] = candidate_neg
+
+    if FLAGS.add_start_end:
+      candidate_pos = add_start_end(candidate_pos)
+    features['candidate_pos'] = candidate_pos  
 
     answer = features['answer']
 

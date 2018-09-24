@@ -46,10 +46,13 @@ def inputs(files,
            length_key=None,
            length_fn=None,
            bucket_batch_sizes=None,
-           filter_fn=None,
            repeat=True,
            initializable=False,
+           filter_fn=None,
            balance_pos_neg=False,
+           pos_filter_fn=None,
+           neg_filter_fn=None,
+           count_fn=None,
            return_iterator=False,
            name='input'):
   """Reads input data num_epochs times.
@@ -175,8 +178,8 @@ def inputs(files,
       ## Has bug.. seems as least not work with bucket not sure without bucket ok or not
       if balance_pos_neg:
         # https://stackoverflow.com/questions/46938530/produce-balanced-mini-batch-with-dataset-api/49283371#49283371
-        ds_pos = dataset.filter(lambda id, classes, *args, **kw: tf.reduce_sum(classes, -1) != 0).repeat()
-        ds_neg = dataset.filter(lambda id, classes, *args, **kw: tf.reduce_sum(classes, -1) == 0).repeat()
+        ds_pos = dataset.filter(pos_filter_fn).repeat()
+        ds_neg = dataset.filter(neg_filter_fn)
 
         # def _concat(x, y):
         #   return tf.cond(tf.random_uniform(()) > 0.5, lambda: x, lambda: y)
@@ -190,6 +193,16 @@ def inputs(files,
         dataset = dataset.flat_map(
             lambda ex_pos, ex_neg: tf.data.Dataset.from_tensors(ex_pos).concatenate(
                 tf.data.Dataset.from_tensors(ex_neg)))
+
+      #https://github.com/tensorflow/tensorflow/issues/14451
+      # count_fn for over sample
+      if count_fn is not None:
+        dataset = dataset.flat_map(
+          lambda x, y : tf.data.Dataset.from_tensors((x, y)).repeat(tf.to_int64(count_fn(x, y))))
+
+      # filter fn for under sample
+      # if under_sample_filter_fn is not None:
+      #   dataset = dataset.filter(under_sample_filter_fn)
         
       if filter_fn is not None:
         dataset = dataset.filter(filter_fn)

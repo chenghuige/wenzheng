@@ -36,6 +36,13 @@ class Model(keras.Model):
     super(Model, self).__init__(**kwargs)
     self.debug = False
     self.step = -1
+    self.training = False
+  
+  def train(self):
+    self.training = True
+
+  def eval(self):
+    self.training = False
 
 # def reset_global_step(global_step):
 #   new_global_step = tf.train.get_global_step().assign(global_step)

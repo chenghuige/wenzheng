@@ -22,7 +22,14 @@ FLAGS = flags.FLAGS
 import sys 
 import os
 
+# TODO add support for na or not binary sigmoid loss
 def criterion(model, x, y, training=False):
   y_ = model(x, training=training)
-  return tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y) 
+  if not FLAGS.type1_weight:
+    weights = 1.0  
+  else:
+    # weights not help seems
+    weights = tf.map_fn(lambda x: tf.cond(tf.equal(x, 1), lambda: FLAGS.type1_weight, lambda: 1.), x['type'], dtype=tf.float32)
+
+  return tf.losses.sparse_softmax_cross_entropy(labels=y, logits=y_, weights=weights) 
 

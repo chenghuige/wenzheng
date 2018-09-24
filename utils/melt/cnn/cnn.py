@@ -19,9 +19,6 @@ import melt
 
 from official.transformer.model import model_utils
 
-keras = tf.keras
-layers = tf.keras.layers
-Layer = layers.Layer
 
 """
 Hierarchical ConvNet
@@ -32,11 +29,8 @@ Hierarchical ConvNet
 # This is simple can be cnn baseline, but easy to overfit
 
 class ConvNet(object):
-  def __init__(self, 
-               num_layers, 
-               num_filters, 
-               use_position_encoding=False, 
-               keep_prob=1.0, 
+  def __init__(self, num_layers, num_filters, 
+               use_position_encoding=False, keep_prob=1.0, 
                is_train=None, scope="conv_net"):
       self.num_layers = num_layers
       self.keep_prob = keep_prob

@@ -40,6 +40,7 @@ class WeightDecay(object):
                min_weight=None,
                min_learning_rate=None,
                initial_learning_rate=None,
+               decay_start_epoch=0,
                sess=None):
     import melt.utils.logging as logging
     if not tf.executing_eagerly():
@@ -65,9 +66,9 @@ class WeightDecay(object):
       self.name = 'weight'
 
     if cmp == 'less':
-      self.cmp = lambda x, y: x <= y
+      self.cmp = lambda x, y: x < y
     elif cmp== 'greater':
-      self.cmp = lambda x, y: x >= y  
+      self.cmp = lambda x, y: x > y  
     else:
       self.cmp = cmp
     self.score = None
@@ -86,6 +87,8 @@ class WeightDecay(object):
     # if 'learning_rate' in self.name:
     #   melt.set_learning_rate(tf.constant(weight, dtype=tf.float32), self.sess)
 
+    self.decay_start_epoch = decay_start_epoch
+
   def add(self, score):
     import melt.utils.logging as logging
 
@@ -97,9 +100,9 @@ class WeightDecay(object):
     
     if (not self.cmp) and self.score:
       if score > self.score:
-        self.cmp = lambda x, y: x >= y  
+        self.cmp = lambda x, y: x > y  
       else:
-        self.cmp = lambda x, y: x <= y
+        self.cmp = lambda x, y: x < y
       logging.info('decay cmp:', self.cmp)
 
     if not self.score or self.cmp(score, self.score):
@@ -107,8 +110,13 @@ class WeightDecay(object):
       self.patience = 0
     else:
       self.patience += 1
+      # epoch is set during training loop
+      epoch = melt.epoch()
       # TODO why not print ..
       logging.info('patience', self.patience)
+      #print(epoch, self.decay_start_epoch)
+      if epoch < self.decay_start_epoch:
+        return
       if self.patience >= self.max_patience:
         self.count += 1
         self.patience = 0
@@ -170,10 +178,10 @@ class WeightsDecay(object):
     assert cmp == 'less' or cmp == 'greater'
 
     if cmp == 'less':
-      self.cmp = lambda x, y: x <= y
+      self.cmp = lambda x, y: x < y
       self.scores = np.ones([num_weights]) * 1e10
     elif cmp == 'greater':
-      self.cmp = lambda x, y: x >= y  
+      self.cmp = lambda x, y: x > y  
       self.scores = np.ones([num_weights]) * -1e10
     else:
       # TODO...
@@ -222,9 +230,9 @@ class WeightsDecay(object):
 
     if (not self.cmp) and self.scores:
       if scores[0] > self.scores[0]:
-        self.cmp = lambda x, y: x >= y  
+        self.cmp = lambda x, y: x > y  
       else:
-        self.cmp = lambda x, y: x <= y
+        self.cmp = lambda x, y: x < y
       logging.info('decay cmp:', self.cmp)
 
     for i, score in enumerate(scores):

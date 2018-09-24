@@ -30,6 +30,9 @@ class Dataset(object):
   def __init__(self, subset='train'):
     self.subset = subset
     self.filter_fn = None
+    self.pos_filter_fn = None
+    self.neg_filter_fn = None 
+    self.count_fn = None
 
   def get_filenames(self):
     if self.subset in ['train', 'valid', 'test']:
@@ -74,6 +77,10 @@ class Dataset(object):
       shuffle_files = False
       fix_sequence = True
 
+    balance_pos_neg=False
+    if self.pos_filter_fn and self.neg_filter_fn:
+      balance_pos_neg = True
+
     with tf.device('/cpu:0'):
       return melt.dataset_decode.inputs(
         filenames, 
@@ -89,8 +96,13 @@ class Dataset(object):
         bucket_batch_sizes=FLAGS.batch_sizes,
         length_index=FLAGS.length_index,
         length_key=FLAGS.length_key,
+        seed=FLAGS.random_seed,
         return_iterator=return_iterator,
         filter_fn=self.filter_fn if self.subset == 'train' else None,
+        balance_pos_neg=balance_pos_neg,
+        pos_filter_fn=self.pos_filter_fn if self.subset == 'train' else None,
+        neg_filter_fn=self.neg_filter_fn if self.subset == 'train' else None,
+        count_fn=self.count_fn if self.subset == 'train' else None,
         name=self.subset) 
 
   @staticmethod

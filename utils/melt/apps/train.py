@@ -272,9 +272,17 @@ def init():
       FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
 
   assert FLAGS.log_dir, 'you need to set log_dir or model_dir'
-  print('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir, file=sys.stderr)
+  logging.info('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir)
   os.system('mkdir -p %s' % FLAGS.log_dir)
   logging.set_logging_path(FLAGS.log_dir)
+
+  # but seems not work ... still different result different run TODO FIXME
+  # looks a bit fixed but not exactly..
+  if FLAGS.random_seed or 'SEED' in os.environ:
+    if not FLAGS.random_seed:
+      FLAGS.random_seed = int(os.environ['SEED'])
+    tf.set_random_seed(FLAGS.random_seed)
+  logging.info('seed', FLAGS.random_seed)
 
   if 'VLOG' in os.environ:
     FLAGS.log_level = int(os.environ['VLOG'])
@@ -596,9 +604,6 @@ def train_flow(ops,
     sess = melt.get_session()
   if debug:
     sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-
-  if FLAGS.random_seed:
-    tf.set_random_seed(FLAGS.random_seed)
 
   model_dir = model_dir or FLAGS.model_dir
   log_dir = log_dir or FLAGS.log_dir

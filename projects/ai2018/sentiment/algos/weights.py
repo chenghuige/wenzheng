@@ -50,7 +50,7 @@ def get_pos(aspect):
   elif aspect == 'dish':
     start = 14
     end = 18
-  elif aspect == 'other':
+  elif aspect == 'others':
     start = 18
     end = 19  
 

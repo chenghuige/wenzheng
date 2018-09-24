@@ -49,13 +49,17 @@ class Model(melt.Model):
                                         trainable=FLAGS.finetune_word_embedding)
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
-      assert not FLAGS.use_label_emb and FLAGS.use_label_att
+      #assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
       self.label_emb_height = NUM_CLASSES * NUM_ATTRIBUTES if not FLAGS.label_emb_height else FLAGS.label_emb_height
+      if FLAGS.use_label_emb and FLAGS.use_label_att:
+        assert self.label_emb_height == NUM_CLASSES * NUM_ATTRIBUTES
       self.label_embedding = melt.layers.Embedding(self.label_emb_height, FLAGS.emb_dim)
-      if not FLAGS.use_label_att:
-        self.label_dense = keras.layers.Dense(FLAGS.emb_dim, activation=tf.nn.relu)
-      else:
+      if FLAGS.use_label_emb:
+        #self.label_dense = keras.layers.Dense(FLAGS.emb_dim, activation=tf.nn.relu)
+        self.label_dense = keras.layers.Dense(FLAGS.emb_dim, use_bias=False)
+      if FLAGS.use_label_att:
         self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
+        #self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=0.5, combiner=FLAGS.att_combiner)
         self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
 
     #self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
@@ -68,6 +72,7 @@ class Model(melt.Model):
 
     if FLAGS.use_self_match:
       self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+      #self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=0.5)
       self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
     
     # top-k best, max,att can benfit ensemble(better then max, worse then topk-3), topk,att now best with 2layers
@@ -120,8 +125,8 @@ class Model(melt.Model):
 
     # pust self match at last
     if FLAGS.use_self_match:
-       self_match_att = self.match_dot_attention(x, x, mask=c_mask, training=training) 
-       x = self.match_encode(self_match_att, c_len, training=training) 
+       x = self.match_dot_attention(x, x, mask=c_mask, training=training) 
+       x = self.match_encode(x, c_len, training=training) 
 
     x = self.pooling(x, c_len, calc_word_scores=self.debug)
     #x = self.pooling(x)

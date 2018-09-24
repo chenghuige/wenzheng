@@ -47,8 +47,7 @@ def init():
 
   ids2text.init()
 
-  # here min change from 1e-5 to 5e-5
-  min_learning_rate = 5e-5
+  min_learning_rate = 1e-5
   if FLAGS.decay_target:
     global decay
     decay_target = FLAGS.decay_target
@@ -65,6 +64,7 @@ def init():
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
+                      decay_start_epoch=1,
                       min_learning_rate=min_learning_rate)
       else:
         decay = WeightsDecay(patience=FLAGS.decay_patience, 

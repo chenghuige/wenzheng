@@ -32,9 +32,10 @@ from melt.rnn import encode_outputs, OutputMethod
 
 from melt import dropout
 
-class InitState(Layer):
+
+class InitStates(Layer):
   def __init__(self, num_layers, num_units, name='init_fw'):
-    super(InitState, self).__init__()
+    super(InitStates, self).__init__()
     self.init = [None] * num_layers
     for layer in range(num_layers):
       self.init[layer] = self.add_variable("%s_%d" % (name, layer), [1, num_units], initializer=tf.zeros_initializer())
@@ -45,10 +46,10 @@ class InitState(Layer):
     else:
       return tf.tile(self.init[layer], [batch_size, 1])
 
+
 # TODO for safe both graph and eager, do not use keep prob, just pass Dropout result to call
 # FIXME so share_dropout only work for graph mode !! and now also eager mode has droput problem... as each batch call use 
 # same dropout mask if share_dropout=True..
-# TODO may be move CudnnnRNn just to melt.rnn.CudnnRnn ?
 class CudnnRnn(keras.Model):
   def __init__(self,  
                 num_layers, 
@@ -75,7 +76,6 @@ class CudnnRnn(keras.Model):
         raise ValueError(cell)
 
     logging.info('cudnn cell:', self.cell)
-    logging.info('share_dropout in cudnn class:', share_dropout)
     self.num_layers = num_layers
     self.keep_prob = keep_prob
     assert num_units % 4 == 0, 'bad performance for units size not % 4'
@@ -86,13 +86,8 @@ class CudnnRnn(keras.Model):
     # c = rnn(c_emb, sequence_length=c_len)
     # scope.reuse_variables()
     # q = rnn(q_emb, sequence_length=q_len)
-    # NOTICE for share dropout also in eager mode, you need to pass mask from outside of this class.. !
-    # so actually always sugget to let it False if you need wehter graph mode or eager mode just pass mask values from outside 
     self.share_dropout = share_dropout
-
-    # if share droput.. then dangerous as you may use same dropout values time by time from class init
-    if tf.executing_eagerly():
-      assert not self.share_dropout
+    
 
     # TODO FIXME hack for model.save try to save self.dropout_mask_fw , even though I think should not... TODO  how to NoDependency
     # ValueError: Unable to save the object ListWrapper([<tf.Tensor: id=115958, shape=(32, 1, 300), dtype=float32, numpy=
@@ -145,8 +140,8 @@ class CudnnRnn(keras.Model):
     if self.train_init_state:
       # well TODO! add_variable not allowed in keras.Model but using keras.layers.Layer you should not use other layers otherwise not save them
       # TODO name is not very ok... without scope ...
-      self.init_fw_layer = InitState(num_layers, num_units, 'init_fw')
-      self.init_bw_layer = InitState(num_layers, num_units, 'init_bw')
+      self.init_fw_layer = InitStates(num_layers, num_units, 'init_fw')
+      self.init_bw_layer = InitStates(num_layers, num_units, 'init_bw')
 
   def set_dropout_mask(self, mask_fw, mask_bw):
     self.dropout_mask_fw = mask_fw 
@@ -169,15 +164,12 @@ class CudnnRnn(keras.Model):
   def call(self, 
            inputs, 
            sequence_length, 
-           mask_fws=None,
-           mask_bws=None,
-           emb=None, 
+           mask_fws = None,
+           mask_bws = None,
            concat_layers=True, 
            output_method=OutputMethod.all, 
            training=False):
-    if emb is not None:
-      inputs = tf.nn.embedding_lookup(emb, inputs)
-      
+
     outputs = [inputs]
 
     #states = []
@@ -197,8 +189,6 @@ class CudnnRnn(keras.Model):
           mask_fw = dropout(tf.ones([batch_size, 1, input_size_], dtype=tf.float32),
                         keep_prob=keep_prob, training=training, mode=None)
         else:
-          # NOTICE this is danerous, notice for eager mode if put to class init then each time it is same droput values revist
-          # but for graphcs mode, you sess.run will get different dropout values, they are diff!
           if self.dropout_mask_fw[layer] is None or (tf.executing_eagerly() and batch_size != self.dropout_mask_fw[layer].shape[0]):
             mask_fw = dropout(tf.ones([batch_size, 1, input_size_], dtype=tf.float32),
                                       keep_prob=keep_prob, training=training, mode=None)

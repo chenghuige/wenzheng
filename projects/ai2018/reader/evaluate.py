@@ -42,7 +42,8 @@ def init():
 
   ids2text.init()
 
-  min_learning_rate = 5e-5
+  min_learning_rate = 1e-5
+  logging.info('Min learning rate:', min_learning_rate)
   if FLAGS.decay_target:
     global decay
     decay_target = FLAGS.decay_target
@@ -53,6 +54,8 @@ def init():
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
+                      #decay_start_epoch=FLAGS.decay_start_epoch,
+                      decay_start_epoch=1,
                       min_learning_rate=min_learning_rate)
       else:
         wnames = ['if', 'whether']
@@ -74,10 +77,12 @@ def init():
 #   return predicts
 
 def calc_acc(labels, predicts, ids, model_path):
-  names = ['acc', 'acc_if', 'acc_whether'] 
+  names = ['acc', 'acc_if', 'acc_whether', 'acc_na'] 
   predicts = np.argmax(predicts, 1)
   #predicts = to_predict(predicts)
   acc = np.mean(np.equal(labels, predicts))
+  # na index is set to 2
+  acc_na = np.mean(np.equal(np.equal(labels, 2), np.equal(predicts, 2)))
 
   predicts1, predicts2, labels1, labels2 = [], [], [], []
   for i, id in enumerate(ids):
@@ -91,10 +96,11 @@ def calc_acc(labels, predicts, ids, model_path):
     
   acc_if = np.mean(np.equal(labels1, predicts1))
   acc_whether = np.mean(np.equal(labels2, predicts2))
-  vals = [acc, acc_if, acc_whether]
+
+  vals = [acc, acc_if, acc_whether, acc_na]
   if model_path is None:
     if FLAGS.decay_target:
-      target = acc if FLAGS.num_learning_rate_weights == 1 else [acc_if, acc_whether]
+      target = acc if FLAGS.num_learning_rate_weights <= 1 else [acc_if, acc_whether]
       weights = decay.add(target)
       if FLAGS.num_learning_rate_weights > 1:
         vals += list(weights)

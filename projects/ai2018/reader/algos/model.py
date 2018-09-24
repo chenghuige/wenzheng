@@ -60,11 +60,7 @@ class Model(melt.Model):
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
     
-    num_units = [melt.get_shape(x, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-    #print('----------------length', tf.reduce_max(length), inputs.comment.shape)
-    mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
-    mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
-    x = self.encode(x, length, mask_fws=mask_fws, mask_bws=mask_bws)
+    x = self.encode(x, length, training=training)
     #x = self.encode(x)
     x = self.pooling(x, length)
     #x = self.pooling(x)
@@ -210,7 +206,7 @@ class QCAttention(melt.Model):
     
     return x
 
-# TODO make all to one model is fine, not to hold so many
+# TODO make all to one model is fine, not to hold so many JUST USE Rnet!
 class Rnet(melt.Model):
   def __init__(self):
     super(Rnet, self).__init__()
@@ -218,11 +214,11 @@ class Rnet(melt.Model):
     vocab_size = vocabulary.get_vocab_size() 
 
     self.embedding = wenzheng.Embedding(vocab_size, 
-                                              FLAGS.emb_dim, 
-                                              FLAGS.word_embedding_file, 
-                                              trainable=FLAGS.finetune_word_embedding,
-                                              vocab2_size=FLAGS.unk_vocab_size,
-                                              vocab2_trainable=FLAGS.finetune_unk_vocab)
+                                        FLAGS.emb_dim, 
+                                        FLAGS.word_embedding_file, 
+                                        trainable=FLAGS.finetune_word_embedding,
+                                        vocab2_size=FLAGS.unk_vocab_size,
+                                        vocab2_trainable=FLAGS.finetune_unk_vocab)
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
@@ -233,14 +229,31 @@ class Rnet(melt.Model):
 
     self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
 
-    # TODO seems not work like layers.Dense... name in graph mode in eager mode will name as att_encode, match_encode 
-    # in graph mode just cudnn_rnn, cudnn_rnn_1 so all ignore name=.. not like layers.Dense.. TODO
-    self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
-    self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
-
-    # seems share att and match attention is fine a bit improve ? but just follow squad to use diffent dot attention 
-    self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
-    self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
+    if FLAGS.use_qc_att:
+      # seems share att and match attention is fine a bit improve ? but just follow squad to use diffent dot attention 
+      self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
+      # TODO seems not work like layers.Dense... name in graph mode in eager mode will name as att_encode, match_encode 
+      # in graph mode just cudnn_rnn, cudnn_rnn_1 so all ignore name=.. not like layers.Dense.. TODO
+      self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+      #self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=0.5)
+    
+    if FLAGS.use_label_emb or FLAGS.use_label_att:
+      assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
+      self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
+      self.label_embedding = melt.layers.Embedding(self.label_emb_height, FLAGS.emb_dim)
+      if not FLAGS.use_label_att:
+        # TODO not use activation ?
+        #self.label_dense = keras.layers.Dense(FLAGS.emb_dim, activation=tf.nn.relu)
+        self.label_dense = keras.layers.Dense(FLAGS.emb_dim, use_bias=False)
+      else:
+        self.label_att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
+        self.label_att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+        #self.label_att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=0.5)
+    
+    if FLAGS.use_self_match:
+      self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
+      self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+      #self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=0.5)
 
     logging.info('encoder_output_method:', FLAGS.encoder_output_method)
     logging.info('topk:', FLAGS.top_k)
@@ -272,36 +285,36 @@ class Rnet(melt.Model):
     mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
     mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(self.num_layers)]
     
+    # NOTICE query and passage share same drop out, so same word still has same embedding vector after dropout in query and passage
     c = self.encode(c_emb, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
     q = self.encode(q_emb, q_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
 
-    qc_att = self.att_dot_attention(c, q, mask=q_mask, training=training)
-    # TODO if not need share dropout can remove input masks
-    # num_units = [melt.get_shape(qc_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-    # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    # att = self.att_encode(qc_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
-    att = self.att_encode(qc_att, c_len, training=training)
+    if FLAGS.use_qc_att:
+      x = self.att_dot_attention(c, q, mask=q_mask, training=training)
+      x = self.att_encode(x, c_len, training=training)
     
-    self_match_att = self.match_dot_attention(att, att, mask=c_mask, training=training)
-    # num_units = [melt.get_shape(self_match_att, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
-    # mask_fws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    # mask_bws = [melt.dropout(tf.ones([batch_size, 1, num_units[layer]], dtype=tf.float32), keep_prob=self.keep_prob, training=training, mode=None) for layer in range(1)]
-    # x = self.match_encode(self_match_att, c_len, mask_fws=mask_fws, mask_bws=mask_bws, training=training)
-    x = self.match_encode(self_match_att, c_len, training=training)
+    if FLAGS.use_self_match:
+      x = self.match_dot_attention(x, x, mask=c_mask, training=training)
+      x = self.match_encode(x, c_len, training=training)
 
     x = self.pooling(x, c_len, calc_word_scores=self.debug)
 
     if FLAGS.use_type:
       x = tf.concat([x, tf.expand_dims(tf.to_float(input['type']), 1)], 1)
 
-    if not FLAGS.split_type:
-      x = self.logits(x)
+    if not FLAGS.use_label_emb:
+      # split logits by type is useful, especially for type1, and improve a lot with type1 only finetune
+      if not FLAGS.split_type:
+        x = self.logits(x)
+      else:
+        x1 = self.logits(x)
+        x2 = self.logits2(x)
+        mask = tf.expand_dims(tf.to_float(tf.equal(input['type'], 0)), 1)
+        x = x1 * mask + x2 * (1 - mask)
     else:
-      x1 = self.logits(x)
-      x2 = self.logits2(x)
-      #x = tf.cond(tf.cast(input['type'] == 0, tf.bool), lambda: (x1 + x2) / 2., lambda: x2)
-      x = tf.cond(tf.cast(input['type'] == 0, tf.bool), lambda: x1, lambda: x2)
-    
+      x = self.label_dense(x)
+      # TODO..
+      x = melt.dot(x, self.label_embedding(None))
+
     return x
 

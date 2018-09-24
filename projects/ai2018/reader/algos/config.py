@@ -35,6 +35,11 @@ flags.DEFINE_integer('unk_vocab_size', None, 'none means not to use, and if use 
 flags.DEFINE_bool('finetune_unk_vocab', False, '')
 
 flags.DEFINE_bool('type1_only', False, '')
+flags.DEFINE_bool('type0_only', False, '')
+flags.DEFINE_float('type1_weight', None, '')
+
+flags.DEFINE_bool('use_qc_att', True, '')
+flags.DEFINE_bool('use_self_match', True, '')
 
 flags.DEFINE_bool('use_bias', False, '')
 
@@ -81,6 +86,9 @@ flags.DEFINE_float('emb_keepprob', 0.5, '')
 flags.DEFINE_bool('emb_dropout', False, '')
 
 flags.DEFINE_bool('use_label_emb', False, '')
+flags.DEFINE_bool('use_label_att', False, '')
+flags.DEFINE_bool('simple_label_att', False, '')
+
 flags.DEFINE_string('label_attention_combiner', 'gate', 'gate or dsfu')
 flags.DEFINE_string('self_attention_combiner', 'gate', 'gate or dsfu')
 

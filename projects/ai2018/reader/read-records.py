@@ -87,7 +87,10 @@ def main(_):
       if i % 10 == 1:
         print(x['passage'][0])
         print(ids2text.ids2text(x['passage'][0], sep='|'))
+        print(ids2text.ids2text(x['candidate_pos'][0], sep='|'))
+        print(ids2text.ids2text(x['candidate_neg'][0], sep='|'))
         print(x['passage'])
+        print(x['candidate_pos'])
         print(type(x['id'].numpy()[0]) == bytes)
         break
   else:
