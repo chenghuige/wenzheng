@@ -40,6 +40,10 @@ class Dataset(melt.tfrecords.Dataset):
       self.filter_fn = lambda x, y: tf.equal(x['type'], 0)
     logging.info('filter_fn', self.filter_fn)
 
+    if FLAGS.type1_count:
+      self.count_fn = lambda x, y: tf.cond(tf.equal(x['type'], 1), lambda: FLAGS.type1_count, lambda: 1)
+    logging.info('count_fn', self.count_fn)
+
   def parser(self, example):
     features_dict = {
       'id':  tf.FixedLenFeature([], tf.string),
@@ -52,6 +56,7 @@ class Dataset(melt.tfrecords.Dataset):
       'passage_str':  tf.FixedLenFeature([], tf.string),
       'candidate_neg':  tf.VarLenFeature(tf.int64),
       'candidate_pos':  tf.VarLenFeature(tf.int64),
+      'candidate_na': tf.VarLenFeature(tf.int64),
       'alternatives':  tf.FixedLenFeature([], tf.string),
       'candidates':  tf.FixedLenFeature([], tf.string),
       'type':  tf.FixedLenFeature([], tf.int64),
@@ -63,10 +68,12 @@ class Dataset(melt.tfrecords.Dataset):
     passage = features['passage']
     candidate_neg = features['candidate_neg']
     candidate_pos = features['candidate_pos']
+    candidate_na = features['candidate_na']
     query = melt.sparse_tensor_to_dense(query)
     passage = melt.sparse_tensor_to_dense(passage)
     candidate_neg = melt.sparse_tensor_to_dense(candidate_neg)
     candidate_pos = melt.sparse_tensor_to_dense(candidate_pos)
+    candidate_na = melt.sparse_tensor_to_dense(candidate_na)
 
     def add_start_end(text):
       return  tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), text, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
@@ -86,13 +93,15 @@ class Dataset(melt.tfrecords.Dataset):
         features['content'] = tf.concat([passage, query[1:]], 0)
         features['rcontent'] = tf.concat([query, passage[1:]], 0)    
 
-    if FLAGS.add_start_end:
-      candidate_neg = add_start_end(candidate_neg)
+    # if FLAGS.add_start_end:
+    #   candidate_neg = add_start_end(candidate_neg)
     features['candidate_neg'] = candidate_neg
 
-    if FLAGS.add_start_end:
-      candidate_pos = add_start_end(candidate_pos)
+    # if FLAGS.add_start_end:
+    #   candidate_pos = add_start_end(candidate_pos)
     features['candidate_pos'] = candidate_pos  
+
+    features['candidate_na'] = candidate_na
 
     answer = features['answer']
 

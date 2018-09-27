@@ -91,7 +91,14 @@ def main(_):
         print(ids2text.ids2text(x['candidate_neg'][0], sep='|'))
         print(x['passage'])
         print(x['candidate_pos'])
-        print(type(x['id'].numpy()[0]) == bytes)
+        print(x['candidate_neg'])
+        print(x['candidate_na'])
+        print(x['candidate_na'].shape[1])
+        print(x['candidate_na'].numpy())
+        print(len(x['candidate_na'].numpy()))
+        print(type(x['id'].numpy()[0]) == bytes) 
+        print(x['id'].numpy().dtype)
+        print(x['passage'].numpy().dtype)
         break
   else:
     infos = {}

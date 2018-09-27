@@ -31,15 +31,27 @@ flags.DEFINE_bool('split_type', False, '')
 flags.DEFINE_string('att_type', 'p2q', '')
 flags.DEFINE_string('att_combiner', 'gate', '')
 
+flags.DEFINE_string('att_activation', 'relu', '')
+
 flags.DEFINE_integer('unk_vocab_size', None, 'none means not to use, and if use can set like 10000')
 flags.DEFINE_bool('finetune_unk_vocab', False, '')
 
 flags.DEFINE_bool('type1_only', False, '')
 flags.DEFINE_bool('type0_only', False, '')
 flags.DEFINE_float('type1_weight', None, '')
+flags.DEFINE_integer('type1_count', None, '')
 
 flags.DEFINE_bool('use_qc_att', True, '')
+flags.DEFINE_bool('use_bidaf_att', False, '')
+flags.DEFINE_bool('use_ac_att', False, '')
 flags.DEFINE_bool('use_self_match', True, '')
+
+flags.DEFINE_bool('cq_reverse', False, '')
+
+flags.DEFINE_bool('use_answer_emb', False, '')
+
+flags.DEFINE_bool('combine_query', False, '')
+
 
 flags.DEFINE_bool('use_bias', False, '')
 
@@ -59,17 +71,6 @@ flags.DEFINE_integer('ngram_emb_dim', 300, '')
 flags.DEFINE_string('ngram_combiner', 'sum', 'sum or concat or dsfu')
 flags.DEFINE_string('ngram_self_combiner', 'sum', 'sum or concat')
 flags.DEFINE_bool('ngram_only', False, '')
-
-flags.DEFINE_bool('use_token_info', False, '')
-flags.DEFINE_bool('use_info_fc', False, '')
-flags.DEFINE_string('token_info_combiner', 'concat', '')
-
-flags.DEFINE_bool('use_comment_info', False, '')
-flags.DEFINE_bool('use_comment_info_fc', False, '')
-flags.DEFINE_string('comment_info_combiner', 'concat', '')
-flags.DEFINE_bool('comment_info_lang_only', False, '')
-
-flags.DEFINE_bool('cudnn_gru_encode', False, 'depreciated, for safe you could just use gru_baseline.py with auc 0.954 single model')
 
 flags.DEFINE_bool('use_pos', False, '')
 flags.DEFINE_bool('use_tag', False, '')

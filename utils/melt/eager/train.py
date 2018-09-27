@@ -12,6 +12,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+try:
+  import torch
+except Exception:
+  pass
+
 import tensorflow as tf 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -29,12 +34,54 @@ import gezi
 import melt
 logging = melt.logging
 
+
+def torch_(x):
+  for dim in x.shape:
+    if dim == 0:
+      return x
+
+  x = x.numpy()
+  # if x.dtype == np.int64 or x.dtype == np.int32:
+  #   x = torch.LongTensor(x)
+    
+  #   if torch.cuda.is_available():
+  #     x = x.cuda()   
+  #     x.requires_grad = False 
+  #   #x = torch.cuda.LongTensor(x)
+  # elif x.dtype == np.float32 or x.dtype == np.float64:
+  #   x = torch.FloatTensor(x)
+    
+  #   if torch.cuda.is_available():
+  #     x = x.cuda() 
+  #     x.requires_grad = False   
+  #   #x = torch.cuda.FloatTensor(x)
+  if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
+    x = torch.from_numpy(x)
+    if torch.cuda.is_available():
+      x = x.cuda()
+
+  return x
+
+
+def to_torch(x, y=None):
+  if y is not None:
+    y = torch_(y)
+
+  for key in x:
+    x[key] = torch_(x[key])
+  if y is None:
+    return x
+  else:
+    return x, y
+
 # TODO not support multiple gpu right now!
 
 def evaluate(model, dataset, eval_fn, model_path=None, 
              names=None, write_fn=None, write_streaming=False,
              num_steps_per_epoch=None, 
              suffix='.valid', sep=','):
+    if FLAGS.torch:
+      model.eval()
     if not write_fn:
       write_streaming = True
     predicts_list = []
@@ -49,10 +96,20 @@ def evaluate(model, dataset, eval_fn, model_path=None,
     else:
       out = None
     for x, y in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
+      if FLAGS.torch:
+        x, y = to_torch(x, y)
+
       predicts = model(x)
+      if FLAGS.torch:
+        predicts = predicts.detach().cpu()
+        y = y.detach().cpu()
+
       predicts_list.append(predicts)
       labels_list.append(y)
-      ids = gezi.decode(x['id'].numpy())
+      if not FLAGS.torch:
+        ids = gezi.decode(x['id'].numpy())
+      else:
+        ids = gezi.decode(x['id'])
       ids_list.append(ids)
       if out:
         for id, label, predict in zip(ids, y.numpy(), predicts.numpy()):
@@ -64,6 +121,10 @@ def evaluate(model, dataset, eval_fn, model_path=None,
             print(id, *label, *predict, sep=sep, file=out)
           else:
             write_fn(id, label, predict, out)
+
+    # if FLAGS.torch:
+    #   predicts_list = [x.detach().numpy() for x in predicts_list]
+    #   labels_lis = [x.detach().numpy() for x in labels_list]
 
     predicts = np.concatenate(predicts_list)
     labels = np.concatenate(labels_list)
@@ -88,6 +149,8 @@ def inference(model, dataset, model_path,
               write_fn=None, write_streaming=False,
               num_steps_per_epoch=None, 
               suffix='.infer', sep=','):
+  if FLAGS.torch:
+    model.eval()
   if not write_fn:
     write_streaming = True
   ofile = model_path + suffix
@@ -111,15 +174,22 @@ def inference(model, dataset, model_path,
   predicts_list = []
   ids_list = []
   for (x, _) in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
-    predicts = model(x).numpy()
+    if FLAGS.torch:
+      x = to_torch(x)
+    predicts = model(x)
+    if FLAGS.torch:
+      predicts = predicts.detach().cpu()
     # here id is str in py3 will be bytes
-    ids = gezi.decode(x['id'].numpy())
+    if not FLAGS.torch:
+      ids = gezi.decode(x['id'].numpy())
+    else:
+      ids = gezi.decode(x['id'])
 
     if not write_streaming:
       predicts_list.append(predicts)
       ids_list.append(ids)
     else:
-      for id, predict in zip(ids, predicts):
+      for id, predict in zip(ids, predicts.numpy()):
         if write_fn is None:
           if not gezi.iterable(predict):
             predict = [predict]
@@ -136,6 +206,8 @@ def inference(model, dataset, model_path,
     out_debug.close()
 
   if not write_streaming:
+    # if FLAGS.torch:
+    #   predicts_list = [x.detach().numpy() for x in predicts_list]
     predicts = np.concatenate(predicts_list)
     ids = np.concatenate(ids_list)
 
@@ -160,6 +232,11 @@ def train(Dataset,
           infer_suffix='.infer',
           write_streaming=False,
           sep=','):
+  if FLAGS.torch:
+    #torch.cuda.set_device(0)  # set the device back to 0
+    if torch.cuda.is_available():
+      model.cuda()
+  
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
   inputs.sort()
@@ -227,17 +304,6 @@ def train(Dataset,
     num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
   else:
     test_dataset = None
-
-  learning_rate = tfe.Variable(FLAGS.learning_rate, name="learning_rate")
-  tf.add_to_collection('learning_rate', learning_rate)
-
-  learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
-  try:
-    learning_rate_weights = tf.get_collection('learning_rate_weights')[-1]
-  except Exception:
-    learning_rate_weights = None
-
-  optimizer = melt.get_optimizer(FLAGS.optimizer)(learning_rate)
   
   summary = tf.contrib.summary
   # writer = summary.create_file_writer(FLAGS.model_dir + '/epoch')
@@ -248,23 +314,15 @@ def train(Dataset,
   writer_valid = summary.create_file_writer(FLAGS.model_dir)
   global_step = tf.train.get_or_create_global_step()
 
-  # TODO...
-  if  learning_rate_weights is None:
-    checkpoint = tf.train.Checkpoint(
-          learning_rate=learning_rate, 
-          learning_rate_weight=learning_rate_weight,
-          model=model,
-          optimizer=optimizer,
-          global_step=global_step)
-  else:
-    checkpoint = tf.train.Checkpoint(
-          learning_rate=learning_rate, 
-          learning_rate_weight=learning_rate_weight,
-          learning_rate_weights=learning_rate_weights,
-          model=model,
-          optimizer=optimizer,
-          global_step=global_step)
-        
+  learning_rate = tfe.Variable(FLAGS.learning_rate, name="learning_rate")
+  tf.add_to_collection('learning_rate', learning_rate)
+
+  learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
+  try:
+    learning_rate_weights = tf.get_collection('learning_rate_weights')[-1]
+  except Exception:
+    learning_rate_weights = None
+
   ckpt_dir = FLAGS.model_dir + '/ckpt'
 
   #TODO FIXME now I just changed tf code so to not by default save only latest 5
@@ -274,23 +332,70 @@ def train(Dataset,
   # latest_checkpoint = manager.latest_checkpoint
 
   latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
-  if os.path.exists(FLAGS.model_dir + '.index'):
-    latest_checkpoint = FLAGS.model_dir
-
-  checkpoint.restore(latest_checkpoint)
+  logging.info('Latest checkpoint:', latest_checkpoint)
   checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
 
-  logging.info('Latest checkpoint:', latest_checkpoint)
+  if not FLAGS.torch:
+    optimizer = melt.get_optimizer(FLAGS.optimizer)(learning_rate)
+    
+    # TODO...
+    if  learning_rate_weights is None:
+      checkpoint = tf.train.Checkpoint(
+            learning_rate=learning_rate, 
+            learning_rate_weight=learning_rate_weight,
+            model=model,
+            optimizer=optimizer,
+            global_step=global_step)
+    else:
+      checkpoint = tf.train.Checkpoint(
+            learning_rate=learning_rate, 
+            learning_rate_weight=learning_rate_weight,
+            learning_rate_weights=learning_rate_weights,
+            model=model,
+            optimizer=optimizer,
+            global_step=global_step)
+      
+    if os.path.exists(FLAGS.model_dir + '.index'):
+      latest_checkpoint = FLAGS.model_dir   
+
+    checkpoint.restore(latest_checkpoint)
+
+    start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint else 0
+  else:
+    # TODO torch with learning rate adjust
+    optimizer = torch.optim.Adamax(model.parameters(), lr=FLAGS.learning_rate)
+
+    if latest_checkpoint:
+      checkpoint = torch.load(latest_checkpoint + '.pyt')
+      start_epoch = checkpoint['epoch']
+      model.load_state_dict(checkpoint['state_dict'])
+      optimizer.load_state_dict(checkpoint['optimizer'])
+      model.eval()
+    else:
+      start_epoch = 0
+
+    if learning_rate_weights is None:
+      checkpoint = tf.train.Checkpoint(
+          learning_rate=learning_rate, 
+          learning_rate_weight=learning_rate_weight,
+          global_step=global_step)
+    else:
+      checkpoint = tf.train.Checkpoint(
+            learning_rate=learning_rate, 
+            learning_rate_weight=learning_rate_weight,
+            learning_rate_weights=learning_rate_weights,
+            global_step=global_step)
 
   #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
   #model.save('./weight3.hd5')
 
-  start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint else 0
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs
   
   if valid_dataset and not FLAGS.mode == 'test' and not 'QUICK' in os.environ and not 'SHOW' in os.environ:
     logging.info('valid')
+    if FLAGS.torch:
+      model.eval()
     if evaluate_fn is not None:
       vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
     elif eval_fn:
@@ -302,7 +407,8 @@ def train(Dataset,
                              names, valid_write_fn, write_streaming,
                              num_valid_steps_per_epoch,
                              suffix=valid_suffix, sep=sep)
-  
+    if FLAGS.torch:
+      model.train()
     logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
                   ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
   
@@ -312,28 +418,105 @@ def train(Dataset,
   if 'test' in FLAGS.mode:
     logging.info('test/inference')
     if test_dataset:
+      if FLAGS.torch:
+        model.eval()
       if inference_fn is None:
         inference(model, test_dataset, latest_checkpoint, 
                   infer_names, infer_debug_names, infer_write_fn, write_streaming,
                   num_test_steps_per_epoch, suffix=infer_suffix)
-    else:
+      else:
         inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
+      if FLAGS.torch:
+        model.train()
     exit(0)
   
   if 'SHOW' in os.environ:
     num_epochs = start_epoch + 1
 
+
+  class PytObj(object):
+    def __init__(self, x):
+      self.x = x
+    def numpy(self):
+      return self.x
+
+  class PytMean(object):
+    def __init__(self):
+      self._val = 0. 
+      self.count = 0
+
+      self.is_call = True
+
+    def clear(self):
+      self._val = 0
+      self.count = 0
+
+    def __call__(self, val):
+      if not self.is_call:
+        self.clear()
+        self.is_call = True
+      self._val += val.item()
+      self.count += 1
+
+    def result(self):
+      if self.is_call:
+        self.is_call = False
+      if not self.count:
+        val = 0
+      else:
+        val = self._val / self.count
+      # TODO just for compact with tf ..
+      return PytObj(val)
+      
+  Mean =  tfe.metrics.Mean if not FLAGS.torch else PytMean
+
   for epoch in range(start_epoch, num_epochs):
     melt.set_global('epoch', '%.4f' % (epoch))
-    epoch_loss_avg = tfe.metrics.Mean()
-    epoch_valid_loss_avg = tfe.metrics.Mean()
+
+    if FLAGS.torch:
+      model.train()
+
+    epoch_loss_avg = Mean()
+    epoch_valid_loss_avg = Mean()
+
+    #valid_dataset = None
+    #valid_dataset2 = None 
+    #test_dataset = None
+
+    # l = []
+    # for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
+    #   if i > 200:
+    #     break
+    #   l.append((x, y))
+    # print('-----------', len(l))
 
     for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
+      #if i > 300:
+      #  break
+    #for i, (x, y) in enumerate(l):
+      if FLAGS.torch:
+        x, y = to_torch(x, y)
+
+      # if i == 0:
+      #   x0 = x
+      #   y0 = y
       #if global_step.numpy() == 0:
       #loss = loss_fn(model, x, y, training=True)
-      loss, grads = melt.eager.grad(model, x, y, loss_fn)
-      optimizer.apply_gradients(zip(grads, model.variables))
+      if not FLAGS.torch:
+        loss, grads = melt.eager.grad(model, x, y, loss_fn)
+        optimizer.apply_gradients(zip(grads, model.variables))
+      else:
+        optimizer.zero_grad()
+        loss = loss_fn(model, x, y)
+        loss.backward()
+        optimizer.step()
+        #loss = torch.Tensor([0.])
+        #pass
+      
       epoch_loss_avg(loss)  # add current batch loss
+
+      if FLAGS.torch:
+        del loss
 
       batch_size_ = list(x.values())[0].shape[0] if type(x) == type({}) else x[0].shape[0]
 
@@ -341,13 +524,18 @@ def train(Dataset,
         #checkpoint.save(checkpoint_prefix)
         if valid_dataset2:
           x, y = next(iter(valid_dataset2))
+          if FLAGS.torch:
+            x, y = to_torch(x, y)
+            model.eval()
           valid_loss = loss_fn(model, x, y)
           epoch_valid_loss_avg(valid_loss)
+          if FLAGS.torch:
+            model.train()
 
           logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
                       'batch_size:%d' % batch_size_,
-                      'learning_rate:%.5f' % learning_rate.numpy(),
+                      'learning_rate:%.7f' % learning_rate.numpy(),
                       'train_loss:%.4f' % epoch_loss_avg.result().numpy(),
                       'valid_loss:%.4f' % epoch_valid_loss_avg.result().numpy())
           with writer_valid.as_default(), summary.always_record_summaries():
@@ -358,7 +546,7 @@ def train(Dataset,
           logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
                       'batch_size:%d' % batch_size_,
-                      'learning_rate:%.3f' % learning_rate.numpy(),
+                      'learning_rate:%.7f' % learning_rate.numpy(),
                       'train_loss:%.4f' % epoch_loss_avg.result().numpy())       
 
         with writer_train.as_default(), summary.always_record_summaries():
@@ -379,9 +567,15 @@ def train(Dataset,
               summary.scalar(f'step/valid/{name}', val)
             writer_valid.flush()
       
+        if FLAGS.torch:
+          for param_group in optimizer.param_groups:
+            param_group['lr'] = learning_rate.numpy()
+          model.train()
+
         logging.info2('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs),  
                       'step:%d' % global_step.numpy(),
                       ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
+        
       
       # if i == 5:
       #   print(i, '---------------------save')
@@ -393,9 +587,11 @@ def train(Dataset,
 
 
       global_step.assign_add(1)
+
       if epoch == start_epoch and i == 0:
         try:
-          logging.info(model.summary())
+          if not FLAGS.torch:
+            logging.info(model.summary())
         except Exception:
           traceback.print_exc()
           logging.info('Fail to do model.summary() may be you have layer define in init but not used in call')
@@ -411,9 +607,19 @@ def train(Dataset,
 
     timer = gezi.Timer(f'save model to {checkpoint_prefix}', False)
     checkpoint.save(checkpoint_prefix)
+    if FLAGS.torch:
+      state = {
+                'epoch': epoch + 1,
+                'state_dict': model.state_dict(),
+                'optimizer' : optimizer.state_dict(),
+              }
+      if torch.cuda.is_available():
+       model.cpu()
+      torch.save(state, tf.train.latest_checkpoint(ckpt_dir) + '.pyt')
+      if torch.cuda.is_available():
+       model.cuda()
     timer.print_elapsed()
     
-
     if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:
       if evaluate_fn is not None:
         vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
@@ -424,16 +630,16 @@ def train(Dataset,
         vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
                                names, valid_write_fn, write_streaming,
                                num_valid_steps_per_epoch, sep=sep)
-    
       logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
                     ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
 
     with writer.as_default(), summary.always_record_summaries():
       temp = global_step.value()
       global_step.assign(epoch + 1)
-      summary.scalar('epoch/train/loss', epoch_loss_avg.result())
-      for name, val in zip(names, vals):
-        summary.scalar(f'epoch/valid/{name}', val)
+      summary.scalar('epoch/train/loss', epoch_loss_avg.result().numpy())
+      if valid_dataset:
+        for name, val in zip(names, vals):
+          summary.scalar(f'epoch/valid/{name}', val)
       writer.flush()
       global_step.assign(temp)
 
@@ -444,3 +650,4 @@ def train(Dataset,
                   num_test_steps_per_epoch, suffix=infer_suffix, sep=sep)
       else:
          inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
+

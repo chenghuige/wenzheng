@@ -103,7 +103,7 @@ class AttentionPooling(keras.Model):
   def __init__(self,  
                hidden_size=128,
                #activation=tf.nn.tanh,  
-               activation=tf.nn.relu,  
+               activation=tf.nn.relu,
                **kwargs):
     super(AttentionPooling, self).__init__(**kwargs)
     self.activation = activation
@@ -132,6 +132,8 @@ class Pooling(keras.Model):
   def __init__(self,  
                name,
                top_k=2,
+               #att_activation=tf.nn.tanh,
+               att_activation=tf.nn.relu,
                **kwargs):
     super(Pooling, self).__init__(**kwargs)
 
@@ -144,9 +146,9 @@ class Pooling(keras.Model):
       elif name == 'mean':
         return MeanPooling()
       elif name == 'attention' or name == 'att':
-        return AttentionPooling()
+        return AttentionPooling(activation=att_activation)
       elif name == 'attention2' or name == 'att2':
-        return AttentionPooling(hidden_size=None)
+        return AttentionPooling(hidden_size=None, activation=att_activation)
       elif name == 'topk' or name == 'top_k':
         return TopKPooling(top_k)
       elif name =='first':
@@ -214,18 +216,18 @@ class Dropout(keras.layers.Layer):
     self.noise_shape = noise_shape
     self.seed = seed
   
-  def call(self, inputs, training=False):
+  def call(self, x, training=False):
     if not training or self.rate <= 0.:
-      return inputs
+      return x
     else:
       scale = 1.
-      shape = tf.shape(inputs)
+      shape = tf.shape(x)
       if mode == 'embedding':
         noise_shape = [shape[0], 1]
         scale = 1 - self.rate
-      elif mode == 'recurrent' and len(inputs.get_shape().as_list()) == 3:
+      elif mode == 'recurrent' and len(x.get_shape().as_list()) == 3:
         noise_shape = [shape[0], 1, shape[-1]] 
-      return tf.nn.dropout(inputs, 1 - self.rate, noise_shape=noise_shape) * scale
+      return tf.nn.dropout(x, 1 - self.rate, noise_shape=noise_shape) * scale
 
 
 class Gate(keras.Model):
@@ -236,10 +238,10 @@ class Gate(keras.Model):
     self.keep_prob = keep_prob
     self.step = -1
 
-  def call(self, inputs, outputs, training=False):
+  def call(self, x, y, training=False):
     self.step += 1
     #with tf.variable_scope(self.scope):
-    res = tf.concat([inputs, outputs], axis=2)
+    res = tf.concat([x, y], axis=2)
     dim = melt.get_shape(res, -1)
     d_res = dropout(res, keep_prob=self.keep_prob, training=training)
     if self.step == 0:
@@ -314,19 +316,88 @@ class DotAttention(keras.Model):
     d_memory = dropout(memory, keep_prob=self.keep_prob, training=training)
     JX = tf.shape(inputs)[1]
     
+    # TODO remove scope ?
     with tf.variable_scope("attention"):
       inputs_ = self.inputs_dense(d_inputs)
       memory_ = self.memory_dense(d_memory)
 
-      outputs = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
+      weights = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
+      
       if mask is not None:
         mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
-        logits = tf.nn.softmax(softmax_mask(outputs, mask))
+        #print(inputs_.shape, memory_.shape, weights.shape, mask.shape)
+        # (32, 318, 100) (32, 26, 100) (32, 318, 26) (32, 318, 26)
+        probs = tf.nn.softmax(softmax_mask(weights, mask))
       else:
-        logits = tf.nn.softmax(outputs)
+        probs = tf.nn.softmax(weights)
 
-      self.logits = logits
-      outputs = tf.matmul(logits, memory)
+      self.probs = probs
+      # logits (32, 326, 326)  memory(32, 326, 200)
+      outputs = tf.matmul(probs, memory)
 
     return self.combine(inputs, outputs, training=training)
+
+# https://arxiv.org/pdf/1611.01603.pdf
+class BiDAFAttention(keras.Model):
+  def __init__(self,
+               hidden,
+               keep_prob=1.0,
+               combiner='gate',
+               **kwargs):
+    super(BiDAFAttention, self).__init__(**kwargs)
+    self.hidden = hidden
+    self.keep_prob = keep_prob
+    self.combiner = combiner
+
+    self.inputs_dense = layers.Dense(hidden, use_bias=False, activation=tf.nn.relu, name='inputs_dense')
+    self.memory_dense = layers.Dense(hidden, use_bias=False, activation=tf.nn.relu, name='memory_dense')
+
+    if combiner == 'gate':
+      self.combine = Gate(keep_prob=keep_prob)
+    elif combiner == 'sfu':
+      self.combine = SemanticFusionCombine(keep_prob=keep_prob)
+    else:
+      raise ValueError(combiner)
+
+  def call(self, inputs, memory, inputs_mask, memory_mask, training=False):
+    combiner = self.combiner
+    # DotAttention already convert to dot_attention
+    #with tf.variable_scope(self.scope):
+    d_inputs = dropout(inputs, keep_prob=self.keep_prob, training=training)
+    d_memory = dropout(memory, keep_prob=self.keep_prob, training=training)
+    JX = tf.shape(inputs)[1]
+    
+    with tf.variable_scope("attention"):
+      inputs_ = self.inputs_dense(d_inputs)
+      memory_ = self.memory_dense(d_memory)
+
+      # shared matrix for c2q and q2c attention
+      weights = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
+
+      # c2q attention
+      mask = memory_mask
+      if mask is not None:
+        mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
+        weights = softmax_mask(weights, mask)
+
+      probs = tf.nn.softmax(weights)
+      self.probs = probs
+      c2q = tf.matmul(probs, memory)
+
+      # q2c attention
+      # (batch_size, clen)
+      logits = tf.reduce_max(weights, -1) 
+      mask = inputs_mask
+      if mask is not None:
+        logits = softmax_mask(logits, mask)
+      probs = tf.nn.softmax(logits)
+      # inputs (batch_size, clen, dim), probs (batch_size, clen)
+      q2c = tf.matmul(tf.expand_dims(probs, 1), inputs)
+      # (batch_size, clen, dim)
+      q2c = tf.tile(q2c, [1, JX, 1])
+
+      outputs = tf.concat([c2q, q2c], -1)
+
+    return self.combine(inputs, outputs, training=training)
+
       

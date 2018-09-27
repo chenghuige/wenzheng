@@ -61,6 +61,8 @@ flags.DEFINE_bool('split_type', False, '')
 flags.DEFINE_string('att_type', 'p2q', '')
 flags.DEFINE_string('att_combiner', 'gate', '')
 
+flags.DEFINE_string('att_activation', 'relu', '')
+
 flags.DEFINE_bool('use_text', True, '')
 flags.DEFINE_bool('use_image', False, '')
 flags.DEFINE_bool('use_all_image', False, '')

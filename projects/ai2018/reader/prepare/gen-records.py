@@ -200,6 +200,7 @@ def build_features(file_):
 
   num = 0
   num_whether = 0
+  answer_len = 0
   with melt.tfrecords.Writer(out_file) as writer:
     for line in open(file_):
       try:
@@ -237,7 +238,15 @@ def build_features(file_):
 
         candidate_neg_ids = text2ids_(candidates[0])
         candidate_pos_ids = text2ids_(candidates[1])
+        candidate_na_ids = text2ids_('无法确定')
 
+        if len(candidate_pos_ids) > answer_len:
+          answer_len = len(candidate_pos_ids)
+          print(answer_len)
+        if len(candidate_neg_ids) > answer_len:
+          answer_len = len(candidate_neg_ids)
+          print(answer_len)
+        
         assert len(query_ids), line
         assert len(passage_ids), line
 
@@ -260,6 +269,7 @@ def build_features(file_):
                     'query_str': melt.bytes_feature(query),
                     'candidate_neg': melt.int64_feature(candidate_neg_ids),
                     'candidate_pos': melt.int64_feature(candidate_pos_ids),
+                    'candidate_na': melt.int64_feature(candidate_na_ids),
                     'answer': melt.int64_feature(answer_id),
                     'answer_str': melt.bytes_feature(answer),
                     'type': melt.int64_feature(type)         

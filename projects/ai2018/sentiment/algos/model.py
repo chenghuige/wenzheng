@@ -78,7 +78,10 @@ class Model(melt.Model):
     # top-k best, max,att can benfit ensemble(better then max, worse then topk-3), topk,att now best with 2layers
     logging.info('encoder_output_method:', FLAGS.encoder_output_method)
     logging.info('topk:', FLAGS.top_k)
-    self.pooling = melt.layers.Pooling(FLAGS.encoder_output_method, top_k=FLAGS.top_k)
+    self.pooling = melt.layers.Pooling(
+                        FLAGS.encoder_output_method, 
+                        top_k=FLAGS.top_k,
+                        att_activation=getattr(tf.nn, FLAGS.att_activation))
     #self.pooling = keras.layers.GlobalMaxPool1D()
 
     # mlp not help much!

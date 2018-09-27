@@ -69,4 +69,5 @@ python $exe \
         --decay_factor=0.8 \
         --decay_start_epoch=2 \
         --num_epochs=$num_epochs \
+        --buffer_size=250000 \
 

@@ -81,6 +81,7 @@ class Dataset(object):
     if self.pos_filter_fn and self.neg_filter_fn:
       balance_pos_neg = True
 
+    # for bow using cpu 69 insts/s using gpu 54 inst/s
     with tf.device('/cpu:0'):
       return melt.dataset_decode.inputs(
         filenames, 
@@ -89,7 +90,7 @@ class Dataset(object):
         num_threads=FLAGS.num_threads,
         shuffle_files=shuffle_files,
         fix_sequence=fix_sequence,
-        buffer_size=min_queue_examples + 3 * batch_size,
+        buffer_size=min_queue_examples + 3 * batch_size if not FLAGS.buffer_size else FLAGS.buffer_size,
         initializable=initializable,
         repeat=repeat,
         bucket_boundaries=FLAGS.buckets,

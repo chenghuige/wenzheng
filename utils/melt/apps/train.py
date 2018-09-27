@@ -200,6 +200,9 @@ flags.DEFINE_string('length_key', None, '')
 flags.DEFINE_integer('min_after_dequeue', 0, """by deafualt will be 500, 
                                                 set to large number for production training 
                                                 for better randomness""")
+flags.DEFINE_integer('buffer_size', 0, """by deafualt will be 500, 
+                                                set to large number for production training 
+                                                for better randomness""")
 flags.DEFINE_integer('num_prefetch_batches', 0, '')
 
 #---------- input dirs
@@ -226,13 +229,14 @@ flags.DEFINE_integer('big_batch_size', None, '')
 
 flags.DEFINE_boolean('adjust_global_step', False, '')
 
-flags.DEFINE_boolean('use_eager', False, '')
+flags.DEFINE_boolean('eager', False, '')
 
 
 flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
                                            setting to 1 may be faster but less randomness
                                         """)
 
+flags.DEFINE_boolean('torch', False, '')
 
 inited = None 
 
@@ -240,11 +244,23 @@ def init():
   if 'MODE' in os.environ:
     FLAGS.mode = os.environ['MODE']
 
-  #if FLAGS.mode != 'train' or FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
+  if 'PYTORCH'  in os.environ or 'PYT' in os.environ or 'TORCH' in os.environ:
+    FLAGS.torch = True
+
+  #if FLAGS.mode != 'train' or FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
   # well for safe just not by default use eager mode for valid and test since some a bit complex model now still has diff graph and eager, TODO FIXME
-  if FLAGS.use_eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
+  # TODO torch mode should use tf eager mode reading but since some bug for gpu oom.. now just use graph mode
+  if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ or FLAGS.torch:
+  #if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
     logging.info('Run eager mode!')
-    tf.enable_eager_execution()
+    if FLAGS.torch:
+      # by default tf will use all... and also set 0. not ok so set really small
+      #opts = tf.GPUOptions(per_process_gpu_memory_fraction=1e-5)
+      #conf = tf.ConfigProto(gpu_options=opts)
+      conf = tf.ConfigProto(device_count={'GPU': 0})
+      tf.enable_eager_execution(config=conf)
+    else:
+      tf.enable_eager_execution()
 
   if 'MODEL_DIR' in os.environ:
     FLAGS.model_dir = os.environ['MODEL_DIR']
@@ -400,6 +416,9 @@ def init():
 
   if 'BUFFER_SIZE' in os.environ:
     FLAGS.min_after_dequeue = int(os.environ['BUFFER_SIZE'])
+
+  FLAGS.buffer_size = max(FLAGS.buffer_size, FLAGS.min_after_dequeue)
+  logging.info('buffer_size:{}'.format(FLAGS.buffer_size))
   
   if 'RANDOM_EMB' in os.environ and os.environ['RANDOM_EMB'] == '1':
     FLAGS.word_embedding_file = None
@@ -415,6 +434,8 @@ def init():
 
   num_gpus = FLAGS.num_gpus
   assert num_gpus is not None, 'forget to set CUDA...? to specify the gpus?'
+  # if not num_gpus:
+  #   num_gpus = 1
   melt.set_global('num_gpus', max(num_gpus, 1))
 
   melt.set_global('batch_size', FLAGS.batch_size * melt.num_gpus())
@@ -435,8 +456,6 @@ def init():
     FLAGS.dynamic_learning_rate = True
     if not FLAGS.learning_rate_decay_factor:
       FLAGS.learning_rate_decay_factor = 0.5
-
-  logging.info('min_after_dequeue:{}'.format(FLAGS.min_after_dequeue))
 
   # TODO check if can all use tfe.Variable ?
   if not tf.executing_eagerly():
@@ -1179,4 +1198,8 @@ def train(Dataset,
 
 
 def get_train():
-  return melt.eager.train if tf.executing_eagerly() else melt.apps.train
+  train = melt.eager.train if tf.executing_eagerly() else melt.apps.train
+  # # TODO should just use melt.eager.train if in future no oom bug for eager + torch
+  if FLAGS.torch and not tf.executing_eagerly():
+    train = melt.torch.train
+  return train

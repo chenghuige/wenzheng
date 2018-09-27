@@ -8,11 +8,17 @@ try:
 except Exception:
   pass
 
+try:
+  import torch
+  print('torch_version:', torch.__version__, file=sys.stderr) 
+except Exception:
+  pass
+
 import tensorflow as tf 
 import traceback
 
 import sys
-print('tensorflow_version:', tf.__version__, file=sys.stderr)
+print('tensorflow_version:', tf.__version__, file=sys.stderr) 
 
 import melt.utils
 from melt.utils import logging
@@ -53,4 +59,6 @@ import melt.losses
 
 from melt.training import training as train 
 
-import melt.eager
+import melt.eager 
+
+import melt.torch 

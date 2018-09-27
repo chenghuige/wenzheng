@@ -44,7 +44,7 @@ class Encoder(melt.Model):
     logging.info('encoder keep_prob:{}'.format(self.keep_prob))
 
     def get_encode(type):
-      if type == 'bow':
+      if type == 'bow' or type == 'none':
         encode = None
       elif type == 'gru' or type == 'rnn':
         encode = melt.layers.CudnnRnn(num_layers=self.num_layers, 

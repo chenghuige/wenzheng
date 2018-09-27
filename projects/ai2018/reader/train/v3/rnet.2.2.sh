@@ -63,7 +63,7 @@ python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=adam \
-        --learning_rate=0.003 \
+        --learning_rate=0.0025 \
         --decay_target=acc \
         --decay_patience=1 \
         --decay_factor=0.8 \

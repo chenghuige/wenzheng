@@ -284,7 +284,7 @@ keras_optimizers = {
   'nadam': tf.keras.optimizers.Nadam,
 }
 
-def get_session(log_device_placement=False, allow_soft_placement=True, debug=False):
+def get_session(log_device_placement=False, allow_soft_placement=True, debug=False, device_count=None):
   """
   TODO FIXME get_session will casue  at last
 #Exception UnboundLocalError: "local variable 'status' referenced before assignment" in <bound method Session.__del__ of <tensorflow.python.client.session.Session object at 0x858af10>> ignored
@@ -293,8 +293,13 @@ def get_session(log_device_placement=False, allow_soft_placement=True, debug=Fal
 global or inside function global sess will cause this but not big problem for convenience just accpet right now
   """
   if not hasattr(get_session, 'sess') or get_session.sess is None:
-    config=tf.ConfigProto(allow_soft_placement=allow_soft_placement, 
-                          log_device_placement=log_device_placement)
+    if device_count is None:
+      config=tf.ConfigProto(allow_soft_placement=allow_soft_placement, 
+                            log_device_placement=log_device_placement)
+    else:
+      config=tf.ConfigProto(allow_soft_placement=allow_soft_placement, 
+                            log_device_placement=log_device_placement,
+                            device_count=device_count)      
     #config.operation_timeout_in_ms=600000
     #NOTICE https://github.com/tensorflow/tensorflow/issues/2130 but 5000 will cause init problem!
     #config.operation_timeout_in_ms=50000   # terminate on long hangs

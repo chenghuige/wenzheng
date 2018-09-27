@@ -22,6 +22,9 @@ FLAGS = flags.FLAGS
 import sys 
 import os
 
+import melt 
+logging = melt.logging 
+
 # TODO add support for na or not binary sigmoid loss
 def criterion(model, x, y, training=False):
   y_ = model(x, training=training)
