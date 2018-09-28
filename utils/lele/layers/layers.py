@@ -198,7 +198,7 @@ class PointerNetwork(nn.Module):
     
     def pointer(self, x, state, x_mask):
         x_ = torch.cat([x, state.unsqueeze(1).repeat(1,x.size(1),1)], 2)
-        s0 = F.tanh(self.linear(x_))
+        s0 = torch.tanh(self.linear(x_))
         s = self.weights(s0).view(x.size(0), x.size(1))
         s.data.masked_fill_(x_mask.data, -float('inf'))
         a = F.softmax(s)
@@ -488,7 +488,7 @@ class Gate(nn.Module):
             res: batch * len * dim
         """
         x_proj = self.linear(x)
-        gate = F.sigmoid(x)
+        gate = torch.sigmoid(x)
         return x_proj * gate
 
 
@@ -504,8 +504,8 @@ class SFU(nn.Module):
 
     def forward(self, x, fusions):
         r_f = torch.cat([x, fusions], 2)
-        r = F.tanh(self.linear_r(r_f))
-        g = F.sigmoid(self.linear_g(r_f))
+        r = torch.tanh(self.linear_r(r_f))
+        g = torch.sigmoid(self.linear_g(r_f))
         o = g * r + (1-g) * x
         return o
         

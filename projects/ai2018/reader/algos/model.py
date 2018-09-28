@@ -16,5 +16,5 @@ from algos.qcatt import QCAttention
 from algos.rnet import RNet 
 from algos.rnet import RNet as Rnet
 
-from algos.m_reader import MnemonicReader 
+from algos.m_reader import *
 from algos.m_reader import MnemonicReader as MReader

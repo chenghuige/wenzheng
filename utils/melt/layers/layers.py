@@ -287,6 +287,9 @@ class SemanticFusionCombine(keras.Model):
       y = self.dense(y)
     return self.sfu(x, [y, x * y, x - y], training=training)
   
+# TODO may be need input_keep_prob and output_keep_prob(combiner dropout)
+# TODO change keep_prob to use dropout
+# https://github.com/HKUST-KnowComp/R-Net/blob/master/func.py
 class DotAttention(keras.Model):
   def __init__(self,
                hidden,
@@ -305,37 +308,49 @@ class DotAttention(keras.Model):
       self.combine = Gate(keep_prob=keep_prob)
     elif combiner == 'sfu':
       self.combine = SemanticFusionCombine(keep_prob=keep_prob)
+    elif combiner == None:
+      self.combine = None
     else:
       raise ValueError(combiner)
 
-  def call(self, inputs, memory, mask, training=False):
+  def call(self, inputs, memory, mask, self_match=False, training=False):
     combiner = self.combiner
     # DotAttention already convert to dot_attention
     #with tf.variable_scope(self.scope):
+    # TODO... here has some problem might for self match dot attention as same inputs with different dropout...Try self_match == True and verify..
+    # NOTICE self_match == False following HKUST rnet
     d_inputs = dropout(inputs, keep_prob=self.keep_prob, training=training)
-    d_memory = dropout(memory, keep_prob=self.keep_prob, training=training)
+    if not self_match:
+      d_memory = dropout(memory, keep_prob=self.keep_prob, training=training)
+    else:
+      d_memory = d_inputs
     JX = tf.shape(inputs)[1]
     
     # TODO remove scope ?
     with tf.variable_scope("attention"):
       inputs_ = self.inputs_dense(d_inputs)
-      memory_ = self.memory_dense(d_memory)
+      if not self_match:
+        memory_ = self.memory_dense(d_memory)
+      else:
+        memory_ = inputs_
 
-      weights = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
+      scores = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
       
       if mask is not None:
         mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
         #print(inputs_.shape, memory_.shape, weights.shape, mask.shape)
         # (32, 318, 100) (32, 26, 100) (32, 318, 26) (32, 318, 26)
-        probs = tf.nn.softmax(softmax_mask(weights, mask))
-      else:
-        probs = tf.nn.softmax(weights)
-
-      self.probs = probs
+        scores = softmax_mask(scores, mask)
+      
+      alpha = tf.nn.softmax(scores)
+      self.alpha = alpha
       # logits (32, 326, 326)  memory(32, 326, 200)
-      outputs = tf.matmul(probs, memory)
-
-    return self.combine(inputs, outputs, training=training)
+      outputs = tf.matmul(alpha, memory)
+    
+    if self.combine is not None:
+      return self.combine(inputs, outputs, training=training)
+    else:
+      return outputs
 
 # https://arxiv.org/pdf/1611.01603.pdf
 # but worse result then rnet only cq att
@@ -357,6 +372,8 @@ class BiDAFAttention(keras.Model):
       self.combine = Gate(keep_prob=keep_prob)
     elif combiner == 'sfu':
       self.combine = SemanticFusionCombine(keep_prob=keep_prob)
+    elif combiner == None:
+      self.combine = None
     else:
       raise ValueError(combiner)
 
@@ -373,32 +390,168 @@ class BiDAFAttention(keras.Model):
       memory_ = self.memory_dense(d_memory)
 
       # shared matrix for c2q and q2c attention
-      weights = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
+      scores = tf.matmul(inputs_, tf.transpose(memory_, [0, 2, 1])) / (self.hidden ** 0.5)
 
       # c2q attention
       mask = memory_mask
       if mask is not None:
         mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
-        weights = softmax_mask(weights, mask)
+        scores = softmax_mask(scores, mask)
 
-      probs = tf.nn.softmax(weights)
-      self.probs = probs
-      c2q = tf.matmul(probs, memory)
+      alpha = tf.nn.softmax(scores)
+      self.alpha = alpha
+      c2q = tf.matmul(alpha, memory)
 
+      # TODO check this with allennlp implementation since not good result here...
       # q2c attention
       # (batch_size, clen)
-      logits = tf.reduce_max(weights, -1) 
+      logits = tf.reduce_max(scores, -1) 
       mask = inputs_mask
       if mask is not None:
         logits = softmax_mask(logits, mask)
-      probs = tf.nn.softmax(logits)
+      alpha2 = tf.nn.softmax(logits)
       # inputs (batch_size, clen, dim), probs (batch_size, clen)
-      q2c = tf.matmul(tf.expand_dims(probs, 1), inputs)
+      q2c = tf.matmul(tf.expand_dims(alpha2, 1), inputs)
       # (batch_size, clen, dim)
       q2c = tf.tile(q2c, [1, JX, 1])
 
       outputs = tf.concat([c2q, q2c], -1)
 
-    return self.combine(inputs, outputs, training=training)
+    if self.combine is not None:
+      return self.combine(inputs, outputs, training=training)
+    else:
+      return outputs
 
+# copy from mreader pytorch code which has good effect on machine reading
+# https://github.com/HKUST-KnowComp/MnemonicReader
+class SeqAttnMatch(melt.Model):
+  """Given sequences X and Y, match sequence Y to each element in X.
+
+  * o_i = sum(alpha_j * y_j) for i in X
+  * alpha_j = softmax(y_j * x_i)
+  """
+  def __init__(self, 
+                keep_prob=1.0,  
+                combiner='gate',
+                identity=False):
+    super(SeqAttnMatch, self).__init__()
+    self.keep_prob = keep_prob
+    self.identity = identity
+
+    if combiner == 'gate':
+      self.combine = Gate(keep_prob=keep_prob)
+    elif combiner == 'sfu':
+      self.combine = SemanticFusionCombine(keep_prob=keep_prob)
+    elif combiner == None:
+      self.combine = None
+    else:
+      raise ValueError(combiner)
+
+  # mask is y_mask
+  def call(self, x, y, mask, training=False):
+    self.step += 1
+    x_ = x
+
+    x = dropout(x, keep_prob=self.keep_prob, training=training)
+    y = dropout(y, keep_prob=self.keep_prob, training=training)
+
+    if self.step == 0:
+      if not self.identity:
+        self.linear = layers.Dense(melt.get_shape(x, -1), activation=tf.nn.relu)
+      else:
+        self.linear = None
+    
+    # NOTICE shared linear!
+    if self.linear is not None:
+      x = self.linear(x)
+      y = self.linear(y)
+
+    scores = tf.matmul(x, tf.transpose(y, [0, 2, 1])) 
+
+    if mask is not None:
+      JX = melt.get_shape(x, 1)
+      mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
+      scores = softmax_mask(scores, mask)
+
+    alpha = tf.nn.softmax(scores)
+    self.alpha = alpha
+
+    y = tf.matmul(alpha, y)
+
+    if self.combine is None:
+      return y
+    else:
+      return self.combine(x_, y, training=training)
+
+class SelfAttnMatch(melt.Model):
+  """Given sequences X and Y, match sequence Y to each element in X.
+
+  * o_i = sum(alpha_j * x_j) for i in X
+  * alpha_j = softmax(x_j * x_i)
+  """
+  def __init__(self, 
+                keep_prob=1.0,  
+                combiner='gate',
+                identity=False, 
+                diag=True):
+    super(SelfAttnMatch, self).__init__()
+
+    self.keep_prob = keep_prob
+    self.identity = identity
+    self.diag = diag
+
+    if combiner == 'gate':
+      self.combine = Gate(keep_prob=keep_prob)
+    elif combiner == 'sfu':
+      self.combine = SemanticFusionCombine(keep_prob=keep_prob)
+    elif combiner == None:
+      self.combine = None
+    else:
+      raise ValueError(combiner)
+      
+      if not identity:
+          self.linear = nn.Linear(input_size, input_size)
+      else:
+          self.linear = None
+      self.diag = diag
+
+  def call(self, x, mask, training=False):
+    self.step += 1
+    x_ = x
+    x = dropout(x, keep_prob=self.keep_prob, training=training)
+
+    if self.step == 0:
+      if not self.identity:
+        self.linear = layers.Dense(melt.get_shape(x, -1), activation=tf.nn.relu)
+      else:
+        self.linear = None
+    
+    # NOTICE shared linear!
+    if self.linear is not None:
+      x = self.linear(x)
+
+    scores = tf.matmul(x, tf.transpose(x, [0, 2, 1])) 
+
+    #  x = tf.constant([[[1,2,3], [4,5,6],[7,8,9]],[[1,2,3],[4,5,6],[7,8,9]]], dtype=tf.float32) # shape=(2, 3, 3)
+    #  z = tf.matrix_set_diag(x, tf.zeros([2, 3]))
+    if not self.diag:
+      # TODO better dim
+      dim0 = melt.get_shape(scores, 0)
+      dim1 = melt.get_shape(scores, 1)
+      scores = tf.matrix_set_diag(scores, tf.zeros([dim0, dim1]))
+
+    if mask is not None:
+      JX = melt.get_shape(x, 1)
+      mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
+      scores = softmax_mask(scores, mask)
+
+    alpha = tf.nn.softmax(scores)
+    self.alpha = alpha
+
+    x = tf.matmul(alpha, x)
+
+    if self.combine is None:
+      return y
+    else:
+      return self.combine(x_, x, training=training)
       

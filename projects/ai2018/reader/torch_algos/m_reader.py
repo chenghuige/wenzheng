@@ -53,7 +53,6 @@ class MnemonicReader(nn.Module):
         vocabulary.init()
         vocab_size = vocabulary.get_vocab_size() 
         
-        # Word embeddings (+1 for padding)
         self.embedding = nn.Embedding(vocab_size,
                                       args.emb_dim,
                                       padding_idx=0)
@@ -106,20 +105,11 @@ class MnemonicReader(nn.Module):
                 )
             )
 
-        self.logits = nn.Linear(2 * args.rnn_hidden_size, NUM_CLASSES, bias=True)
+        self.logits = nn.Linear(2 * args.rnn_hidden_size, NUM_CLASSES)
+        self.logits2 = nn.Linear(2 * args.rnn_hidden_size, NUM_CLASSES)
 
 
     def forward(self, inputs):
-        """Inputs:
-        x1 = document word indices             [batch * len_d]
-        x1_c = document char indices           [batch * len_d]
-        x1_f = document word features indices  [batch * len_d * nfeat]
-        x1_mask = document padding mask        [batch * len_d]
-        x2 = question word indices             [batch * len_q]
-        x2_c = document char indices           [batch * len_d]
-        x1_f = document word features indices  [batch * len_d * nfeat]
-        x2_mask = question padding mask        [batch * len_q]
-        """
         x1 = inputs['passage']
         x2 = inputs['query']
 
@@ -149,7 +139,14 @@ class MnemonicReader(nn.Module):
             c_hat = self.self_SFUs[i].forward(c_bar, torch.cat([c_tilde, c_bar * c_tilde, c_bar - c_tilde], 2))
             c_check = self.aggregate_rnns[i].forward(c_hat, x1_mask)
 
+        # TODO support other pooling layer like attention topk in torch
         c = torch.max(c_check, 1)[0]
-        x = self.logits(c)
         
+        x = self.logits(c)
+
+        if self.args.split_type:
+            x2 = self.logits2(c)
+            mask = torch.eq(inputs['type'], 0).float().unsqueeze(1)
+            x = x * mask + x2 * (1 - mask)
+
         return x
