@@ -36,21 +36,22 @@ except Exception:
   pass 
 
 import traceback
-try:
-  from gezi.libgezi_util import *
-  import gezi.libgezi_util as libgezi_util
-  from gezi.segment import *
-  import gezi.bigdata_util
-except Exception:
-  print(traceback.format_exc(), file=sys.stderr)
-  print('import libgezi, segment bigdata_util fail')
 
-try:
-  from gezi.pydict import *
-except Exception:
-  #print(traceback.format_exc(), file=sys.stderr)
-  #print('import pydict fail')
-  pass
+#try:
+#  from gezi.libgezi_util import *
+#  import gezi.libgezi_util as libgezi_util
+#  from gezi.segment import *
+#  import gezi.bigdata_util
+#except Exception:
+#  print(traceback.format_exc(), file=sys.stderr)
+#  print('import libgezi, segment bigdata_util fail')
+#
+#try:
+#  from gezi.pydict import *
+#except Exception:
+#  #print(traceback.format_exc(), file=sys.stderr)
+#  #print('import pydict fail')
+#  pass
 
 try:
   import gezi.metrics

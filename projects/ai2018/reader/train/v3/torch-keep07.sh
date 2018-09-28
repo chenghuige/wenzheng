@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/v3/torch
+model_dir=$base/temp/ai2018/reader/model/v3/torch.keep07
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -57,7 +57,7 @@ python $exe \
         --batch_sizes 32,16 \
         --batch_size 32 \
         --encoder_type=rnn \
-        --keep_prob=1. \
+        --keep_prob=0.7 \
         --num_layers=1 \
         --rnn_hidden_size=100 \
         --encoder_output_method=max \

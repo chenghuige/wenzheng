@@ -53,6 +53,9 @@ flags.DEFINE_bool('use_answer_emb', False, '')
 flags.DEFINE_bool('combine_query', False, '')
 
 
+flags.DEFINE_integer('hop', 2, '')
+flags.DEFINE_bool('use_att_encode', False, 'for mreader wether to use at encode or not')
+
 flags.DEFINE_bool('use_bias', False, '')
 
 flags.DEFINE_string('encoder_combiner', 'concat', '')

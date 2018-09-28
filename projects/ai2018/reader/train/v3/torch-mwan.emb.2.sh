@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/v3/torch
+model_dir=$base/temp/ai2018/reader/model/v3/torch.mwan.emb.2
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -41,7 +41,7 @@ fi
         #--batch_sizes 32,16,8,4,2,1 \
         #--batch_size 32 \
 python $exe \
-        --model=Model \
+        --model=MwAN \
         --use_type=1 \
         --rcontent=1 \
         --vocab=$dir/vocab.txt \
@@ -51,10 +51,12 @@ python $exe \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
+        --word_embedding_file=$dir/emb.npy \
+        --finetune_word_embedding=1 \
         --length_key rcontent \
-        --buckets 400 \
+        --buckets 400,2000 \
         --length_key rcontent \
-        --batch_sizes 32,16 \
+        --batch_sizes 32,16,8 \
         --batch_size 32 \
         --encoder_type=rnn \
         --keep_prob=1. \

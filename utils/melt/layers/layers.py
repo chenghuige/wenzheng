@@ -338,6 +338,7 @@ class DotAttention(keras.Model):
     return self.combine(inputs, outputs, training=training)
 
 # https://arxiv.org/pdf/1611.01603.pdf
+# but worse result then rnet only cq att
 class BiDAFAttention(keras.Model):
   def __init__(self,
                hidden,

@@ -41,20 +41,6 @@ def torch_(x):
       return x
 
   x = x.numpy()
-  # if x.dtype == np.int64 or x.dtype == np.int32:
-  #   x = torch.LongTensor(x)
-    
-  #   if torch.cuda.is_available():
-  #     x = x.cuda()   
-  #     x.requires_grad = False 
-  #   #x = torch.cuda.LongTensor(x)
-  # elif x.dtype == np.float32 or x.dtype == np.float64:
-  #   x = torch.FloatTensor(x)
-    
-  #   if torch.cuda.is_available():
-  #     x = x.cuda() 
-  #     x.requires_grad = False   
-  #   #x = torch.cuda.FloatTensor(x)
   if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
     x = torch.from_numpy(x)
     if torch.cuda.is_available():
@@ -374,6 +360,7 @@ def train(Dataset,
     else:
       start_epoch = 0
 
+    # TODO by this way restart can not change learning rate..
     if learning_rate_weights is None:
       checkpoint = tf.train.Checkpoint(
           learning_rate=learning_rate, 
@@ -385,6 +372,7 @@ def train(Dataset,
             learning_rate_weight=learning_rate_weight,
             learning_rate_weights=learning_rate_weights,
             global_step=global_step)
+    checkpoint.restore(latest_checkpoint)
 
   #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
   #model.save('./weight3.hd5')
@@ -393,7 +381,7 @@ def train(Dataset,
   num_epochs = FLAGS.num_epochs
   
   if valid_dataset and not FLAGS.mode == 'test' and not 'QUICK' in os.environ and not 'SHOW' in os.environ:
-    logging.info('valid')
+    logging.info('----------valid')
     if FLAGS.torch:
       model.eval()
     if evaluate_fn is not None:
@@ -402,13 +390,11 @@ def train(Dataset,
       model_path = None if not write_valid else latest_checkpoint
       names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:] if infer_names else None
 
-      print('model_path:', model_path)
+      logging.info('model_path:', model_path, 'model_dir:', FLAGS.model_dir)
       vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
                              names, valid_write_fn, write_streaming,
                              num_valid_steps_per_epoch,
                              suffix=valid_suffix, sep=sep)
-    if FLAGS.torch:
-      model.train()
     logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
                   ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
   
@@ -416,7 +402,7 @@ def train(Dataset,
     exit(0)
 
   if 'test' in FLAGS.mode:
-    logging.info('test/inference')
+    logging.info('--------test/inference')
     if test_dataset:
       if FLAGS.torch:
         model.eval()
@@ -426,8 +412,6 @@ def train(Dataset,
                   num_test_steps_per_epoch, suffix=infer_suffix)
       else:
         inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
-      if FLAGS.torch:
-        model.train()
     exit(0)
   
   if 'SHOW' in os.environ:
@@ -469,7 +453,8 @@ def train(Dataset,
       return PytObj(val)
       
   Mean =  tfe.metrics.Mean if not FLAGS.torch else PytMean
-
+  timer = gezi.Timer()
+  num_insts = 0
   for epoch in range(start_epoch, num_epochs):
     melt.set_global('epoch', '%.4f' % (epoch))
 
@@ -479,29 +464,10 @@ def train(Dataset,
     epoch_loss_avg = Mean()
     epoch_valid_loss_avg = Mean()
 
-    #valid_dataset = None
-    #valid_dataset2 = None 
-    #test_dataset = None
-
-    # l = []
-    # for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
-    #   if i > 200:
-    #     break
-    #   l.append((x, y))
-    # print('-----------', len(l))
-
     for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
-      #if i > 300:
-      #  break
-    #for i, (x, y) in enumerate(l):
       if FLAGS.torch:
         x, y = to_torch(x, y)
 
-      # if i == 0:
-      #   x0 = x
-      #   y0 = y
-      #if global_step.numpy() == 0:
-      #loss = loss_fn(model, x, y, training=True)
       if not FLAGS.torch:
         loss, grads = melt.eager.grad(model, x, y, loss_fn)
         optimizer.apply_gradients(zip(grads, model.variables))
@@ -510,8 +476,6 @@ def train(Dataset,
         loss = loss_fn(model, x, y)
         loss.backward()
         optimizer.step()
-        #loss = torch.Tensor([0.])
-        #pass
       
       epoch_loss_avg(loss)  # add current batch loss
 
@@ -519,7 +483,7 @@ def train(Dataset,
         del loss
 
       batch_size_ = list(x.values())[0].shape[0] if type(x) == type({}) else x[0].shape[0]
-
+      num_insts += batch_size_
       if global_step.numpy() % FLAGS.interval_steps == 0:
         #checkpoint.save(checkpoint_prefix)
         if valid_dataset2:
@@ -538,23 +502,42 @@ def train(Dataset,
                       'learning_rate:%.7f' % learning_rate.numpy(),
                       'train_loss:%.4f' % epoch_loss_avg.result().numpy(),
                       'valid_loss:%.4f' % epoch_valid_loss_avg.result().numpy())
-          with writer_valid.as_default(), summary.always_record_summaries():
-            #summary.scalar('step/loss', epoch_valid_loss_avg.result().numpy())
-            summary.scalar('loss/eval', epoch_valid_loss_avg.result().numpy())
-            writer_valid.flush()
+          if global_step.numpy() % FLAGS.eval_interval_steps == 0:
+            with writer_valid.as_default(), summary.always_record_summaries():
+              #summary.scalar('step/loss', epoch_valid_loss_avg.result().numpy())
+              summary.scalar('loss/eval', epoch_valid_loss_avg.result().numpy())
+              writer_valid.flush()
         else:
           logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
                       'batch_size:%d' % batch_size_,
                       'learning_rate:%.7f' % learning_rate.numpy(),
-                      'train_loss:%.4f' % epoch_loss_avg.result().numpy())       
+                      'train_loss:%.4f' % epoch_loss_avg.result().numpy())      
 
-        with writer_train.as_default(), summary.always_record_summaries():
-          #summary.scalar('step/loss', epoch_loss_avg.result().numpy())
-          summary.scalar('loss/train_avg', epoch_loss_avg.result().numpy())
-          writer_train.flush()
+        if global_step.numpy() % FLAGS.eval_interval_steps == 0:
+          with writer_train.as_default(), summary.always_record_summaries():
+            #summary.scalar('step/loss', epoch_loss_avg.result().numpy())
+            summary.scalar('loss/train_avg', epoch_loss_avg.result().numpy())
+            summary.scalar('learning_rate', learning_rate.numpy())
+            summary.scalar('batch_size', batch_size_)
+            summary.scalar('epoch', melt.epoch())
+            elapsed = timer.elapsed()
+            steps_per_second = FLAGS.interval_steps / elapsed
+            instances_per_second = num_insts / elapsed
+            summary.scalar('steps_per_second', steps_per_second)
+            summary.scalar('instances_per_second', instances_per_second)
+            num_insts = 0
+            writer_train.flush()
+
+          if FLAGS.log_dir != FLAGS.model_dir:
+            assert FLAGS.log_dir
+            command = 'rsync -l -r -t %s/* %s' % (FLAGS.log_dir, FLAGS.model_dir) 
+            print(command, file=sys.stderr)
+            os.system(command)
       
       if valid_dataset and FLAGS.metric_eval_interval_steps and global_step.numpy() and global_step.numpy() % FLAGS.metric_eval_interval_steps == 0:
+        if FLAGS.torch:
+          model.eval()
         if evaluate_fn is not None:
           vals, names = evaluate_fn(model, valid_dataset, None, num_valid_steps_per_epoch)
         elif eval_fn:
@@ -562,10 +545,10 @@ def train(Dataset,
           vals, names = evaluate(model, valid_dataset, eval_fn, None, 
                                 names, valid_write_fn, write_streaming,
                                 num_valid_steps_per_epoch, sep=sep)
-          with writer_valid.as_default(), summary.always_record_summaries():
-            for name, val in zip(names, vals):
-              summary.scalar(f'step/valid/{name}', val)
-            writer_valid.flush()
+        with writer_valid.as_default(), summary.always_record_summaries():
+          for name, val in zip(names, vals):
+            summary.scalar(f'step/valid/{name}', val)
+          writer_valid.flush()
       
         if FLAGS.torch:
           for param_group in optimizer.param_groups:
@@ -621,6 +604,8 @@ def train(Dataset,
     timer.print_elapsed()
     
     if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:
+      if FLAGS.torch:
+        model.eval()
       if evaluate_fn is not None:
         vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
       elif eval_fn:
@@ -629,7 +614,7 @@ def train(Dataset,
 
         vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
                                names, valid_write_fn, write_streaming,
-                               num_valid_steps_per_epoch, sep=sep)
+                               num_valid_steps_per_epoch, suffix=valid_suffix, sep=sep)
       logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
                     ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
 
@@ -638,12 +623,16 @@ def train(Dataset,
       global_step.assign(epoch + 1)
       summary.scalar('epoch/train/loss', epoch_loss_avg.result().numpy())
       if valid_dataset:
+        if FLAGS.torch:
+          model.eval()
         for name, val in zip(names, vals):
           summary.scalar(f'epoch/valid/{name}', val)
       writer.flush()
       global_step.assign(temp)
 
     if test_dataset and (epoch + 1) % FLAGS.inference_interval_epochs == 0:
+      if FLAGS.torch:
+        model.eval()
       if inference_fn is None:
         inference(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), 
                   infer_names, infer_debug_names, infer_write_fn, write_streaming,
@@ -651,3 +640,8 @@ def train(Dataset,
       else:
          inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
 
+  if FLAGS.log_dir != FLAGS.model_dir:
+    assert FLAGS.log_dir
+    command = 'rsync -l -r -t %s/* %s' % (FLAGS.log_dir, FLAGS.model_dir) 
+    print(command, file=sys.stderr)
+    os.system(command)

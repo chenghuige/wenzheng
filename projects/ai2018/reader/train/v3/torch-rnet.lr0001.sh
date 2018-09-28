@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/v3/torch
+model_dir=$base/temp/ai2018/reader/model/v3/torch.rnet.lr0001
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -31,17 +31,8 @@ if [ "$INFER" = "2"  ];
   fold=0
 fi
 
-
-        #--model=MwAN \
-        #--buckets 400 \
-        #--length_key passage \
-        #--batch_sizes 32,16 \
-        #--buckets 200,350,800,1600,3200 \
-        #--length_key rcontent \
-        #--batch_sizes 32,16,8,4,2,1 \
-        #--batch_size 32 \
 python $exe \
-        --model=Model \
+        --model=Rnet \
         --use_type=1 \
         --rcontent=1 \
         --vocab=$dir/vocab.txt \
@@ -52,12 +43,12 @@ python $exe \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
         --length_key rcontent \
-        --buckets 400 \
+        --buckets 400,1000 \
         --length_key rcontent \
-        --batch_sizes 32,16 \
+        --batch_sizes 32,16,8 \
         --batch_size 32 \
         --encoder_type=rnn \
-        --keep_prob=1. \
+        --keep_prob=0.7 \
         --num_layers=1 \
         --rnn_hidden_size=100 \
         --encoder_output_method=max \
@@ -70,7 +61,7 @@ python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=adam \
-        --learning_rate=0.002 \
+        --learning_rate=0.001 \
         --decay_target=acc \
         --decay_patience=1 \
         --decay_factor=0.8 \

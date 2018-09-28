@@ -26,8 +26,8 @@ import traceback
 
 from wenzheng.utils import input_flags 
 
-import torch_algos.baseline.model as base
-from torch_algos.baseline.model import criterion
+import torch_algos.model as base
+from torch_algos.loss import criterion
 from dataset import Dataset
 import evaluate as ev
 
@@ -37,7 +37,8 @@ def main(_):
   melt.apps.init()
   
   Model = getattr(base, FLAGS.model)
-  
+  logging.info('Using pytorch Model:', Model)
+
   model = Model()
 
   train = melt.apps.get_train()

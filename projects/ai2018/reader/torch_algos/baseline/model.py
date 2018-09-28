@@ -15,7 +15,9 @@ from wenzheng.utils import vocabulary
 import melt
 logging = melt.logging
 
-class Model(nn.Module):
+import numpy as np
+
+class Rnn(nn.Module):
   def __init__(self):
     super(Model, self).__init__()
     vocabulary.init()
@@ -63,10 +65,14 @@ class MwAN(nn.Module):
         vocab_size = vocabulary.get_vocab_size()        
         embedding_size = FLAGS.emb_dim
         encoder_size = FLAGS.rnn_hidden_size
-        drop_out = 1 - FLAGS.keep_prob
+        self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
 
-        self.drop_out=drop_out
-        self.embedding = nn.Embedding(vocab_size + 1, embedding_dim=embedding_size)
+        self.embedding = nn.Embedding(vocab_size, embedding_dim=embedding_size)
+        if FLAGS.word_embedding_file:
+            self.embedding.weight.data.copy_(torch.from_numpy(np.load(FLAGS.word_embedding_file)))
+            if not FLAGS.finetune_word_embedding:
+                self.embedding.weight.requires_grad = False
+
         self.q_encoder = nn.GRU(input_size=embedding_size, hidden_size=encoder_size, batch_first=True,
                                 bidirectional=True)
         self.p_encoder = nn.GRU(input_size=embedding_size, hidden_size=encoder_size, batch_first=True,
@@ -100,6 +106,8 @@ class MwAN(nn.Module):
         self.Wp2 = nn.Linear(2 * encoder_size, encoder_size, bias=False)
         self.vp = nn.Linear(encoder_size, 1, bias=False)
         self.prediction = nn.Linear(2 * encoder_size, embedding_size, bias=False)
+        self.logits = nn.Linear(3, 3)
+        self.logits2 = nn.Linear(3, 3)
         self.initiation()
 
     def initiation(self):
@@ -141,12 +149,12 @@ class MwAN(nn.Module):
         a_embedding = torch.stack([neg_output, pos_output, na_output], dim=1)
 
         hq, _ = self.q_encoder(p_embedding)
-        hq=F.dropout(hq,self.drop_out)
+        hq=self.dropout(hq)
         hp, _ = self.p_encoder(q_embedding)
-        p=F.dropout(hp,self.drop_out)
+        p=self.dropout(hp)
         _s1 = self.Wc1(hq).unsqueeze(1)
         _s2 = self.Wc2(hp).unsqueeze(2)
-        #print(_s1.shape, _s2.shape)
+        # squeeze might cause batch size None TODO
         sjt = self.vc(torch.tanh(_s1 + _s2)).squeeze()
         ait = F.softmax(sjt, 2)
         qtc = ait.bmm(hq)
@@ -173,8 +181,9 @@ class MwAN(nn.Module):
         rq = F.softmax(sj, 2).bmm(hq)
         sj = F.softmax(self.vp(self.Wp1(aggregation_representation) + self.Wp2(rq)).transpose(2, 1), 2)
         rp = sj.bmm(aggregation_representation)
-        encoder_output = F.dropout(F.leaky_relu(self.prediction(rp)),self.drop_out)
+        encoder_output = self.dropout(F.leaky_relu(self.prediction(rp)))
         logits = a_embedding.bmm(encoder_output.transpose(2, 1)).squeeze()
+        #logits = self.logits(logits)
         return logits
 
 def criterion(model, x, y, training=False):

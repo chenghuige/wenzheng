@@ -34,8 +34,11 @@ import evaluate as ev
 
 def main(_):
   melt.apps.init()
-  
-  model = getattr(base, FLAGS.model)()
+
+  Model = getattr(base, FLAGS.model)
+  logging.info('Using tensorflow Model:', Model)
+
+  model = Model()
 
   train = melt.apps.get_train()
 

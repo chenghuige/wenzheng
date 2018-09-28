@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/v3/torch
+model_dir=$base/temp/ai2018/reader/model/v3/torch.mreader.emb
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -31,17 +31,8 @@ if [ "$INFER" = "2"  ];
   fold=0
 fi
 
-
-        #--model=MwAN \
-        #--buckets 400 \
-        #--length_key passage \
-        #--batch_sizes 32,16 \
-        #--buckets 200,350,800,1600,3200 \
-        #--length_key rcontent \
-        #--batch_sizes 32,16,8,4,2,1 \
-        #--batch_size 32 \
 python $exe \
-        --model=Model \
+        --model=MnemonicReader \
         --use_type=1 \
         --rcontent=1 \
         --vocab=$dir/vocab.txt \
@@ -51,13 +42,15 @@ python $exe \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
+        --word_embedding_file=$dir/emb.npy \
+        --finetune_word_embedding=1 \
         --length_key rcontent \
-        --buckets 400 \
+        --buckets 400,1000 \
         --length_key rcontent \
-        --batch_sizes 32,16 \
+        --batch_sizes 32,16,8 \
         --batch_size 32 \
         --encoder_type=rnn \
-        --keep_prob=1. \
+        --keep_prob=0.7 \
         --num_layers=1 \
         --rnn_hidden_size=100 \
         --encoder_output_method=max \
