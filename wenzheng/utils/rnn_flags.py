@@ -36,3 +36,6 @@ flags.DEFINE_boolean('feed_initial_sate', False, """set true just like ptb_word_
 flags.DEFINE_integer('rnn_hidden_size', 512, 'rnn cell state hidden size, follow im2txt set default as 512')
 flags.DEFINE_integer('encoder_rnn_hidden_size', None, '')
 flags.DEFINE_integer('decoder_rnn_hidden_size', None, '')
+
+flags.DEFINE_bool('recurrent_dropout', True, '')
+flags.DEFINE_bool('bw_dropout', False, '')

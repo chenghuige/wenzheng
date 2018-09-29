@@ -54,6 +54,8 @@ flags.DEFINE_bool('combine_query', False, '')
 
 flags.DEFINE_bool('share_dropout', True, '')
 
+flags.DEFINE_bool('mask_pooling', True, '')
+
 
 flags.DEFINE_integer('hop', 2, '')
 flags.DEFINE_bool('use_att_encode', False, 'for mreader wether to use at encode or not')

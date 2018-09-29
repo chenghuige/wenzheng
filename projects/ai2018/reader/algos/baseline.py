@@ -49,8 +49,8 @@ class Model(melt.Model):
     self.pooling = melt.layers.MaxPooling()
     #self.pooling = keras.layers.GlobalMaxPool1D()
 
-    self.logits = keras.layers.Dense(NUM_CLASSES, activation=None)
-    self.logits2 = keras.layers.Dense(NUM_CLASSES, activation=None)
+    self.logits = keras.layers.Dense(NUM_CLASSES)
+    self.logits2 = keras.layers.Dense(NUM_CLASSES)
 
   def call(self, input, training=False):
     x = input['rcontent'] if FLAGS.rcontent else input['content']
@@ -61,9 +61,12 @@ class Model(melt.Model):
     x = self.embedding(x)
     
     x = self.encode(x, length, training=training)
-    #x = self.encode(x)
+    
+    # must mask pooling when eval ? but seems much worse result
+    #if not FLAGS.mask_pooling and training:
+    if not FLAGS.mask_pooling:
+      length = None
     x = self.pooling(x, length)
-    #x = self.pooling(x)
 
     if FLAGS.use_type:
       x = tf.concat([x, tf.expand_dims(tf.to_float(input['type']), 1)], 1)

@@ -13,12 +13,15 @@ from torch.autograd import Variable
 import math
 import random
 
+import melt
+logging = melt.logging
 
 # ------------------------------------------------------------------------------
 # Modules
 # ------------------------------------------------------------------------------
 
 
+# TODO support recurrent dropout! to be similar as tf version, support shared dropout
 class StackedBRNN(nn.Module):
     """Stacked Bi-directional RNNs.
 
@@ -105,6 +108,7 @@ class StackedBRNN(nn.Module):
     def _forward_padded(self, x, x_mask):
         """Slower (significantly), but more precise, encoding that handles
         padding.
+        #chg I think do not need padded if you not want to use last state, last output
         """
         # Compute sorted sequence lengths
         lengths = x_mask.data.eq(0).long().sum(1).squeeze()
@@ -448,7 +452,7 @@ class NonLinearSeqAttn(nn.Module):
     * o_i = softmax(function(Wx_i)) for x_i in X.
     """
 
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size=128):
         super(NonLinearSeqAttn, self).__init__()
         self.FFN = FeedForwardNetwork(input_size, hidden_size, 1)
 
@@ -465,6 +469,130 @@ class NonLinearSeqAttn(nn.Module):
         alpha = F.softmax(scores)
         return alpha
 
+class MaxPooling(nn.Module):
+    def forward(self, x, x_mask):
+        if x_mask is None or x_mask.data.sum() == 0:
+            return torch.max(x, 1)[0]
+        else:
+            # x_mask = x_mask.unsqueeze(-1).expand(x.size())
+            # # TODO FIXME why torch.max with inf will ause nan..
+            # x.data.masked_fill_(x_mask.data, -float('inf'))
+            # return torch.max(x, 1)[0]
+            # https://medium.com/@sonicboom8/sentiment-analysis-with-variable-length-sequences-in-pytorch-6241635ae130
+            lengths = (1 - x_mask).sum(1)
+            return torch.cat([torch.max(i[:l], dim=0)[0].view(1,-1) for i,l in zip(x, lengths)], dim=0) 
+
+class TopKPooling(nn.Module):
+    def __init__(self, top_k=2):
+        super(TopKPooling, self).__init__()
+        self.top_k = top_k
+
+    def forward(self, x, x_mask):
+        if x_mask is None or x_mask.data.sum() == 0:
+            return torch.topk(x, k=self.top_k, dim=1)[0].view(x.size(0), -1)
+        else:
+            # x_mask = x_mask.unsqueeze(-1).expand(x.size())
+            # # TODO FIXME why torch.max with inf will ause nan..
+            # x.data.masked_fill_(x_mask.data, -float('inf'))
+            # return torch.max(x, 1)[0]
+            # https://medium.com/@sonicboom8/sentiment-analysis-with-variable-length-sequences-in-pytorch-6241635ae130
+            lengths = (1 - x_mask).sum(1)
+            return torch.cat([torch.topk(i[:l], k=self.top_k, dim=0)[0].view(1,-1) for i,l in zip(x, lengths)], dim=0).view(x.size(0), -1)
+
+class LinearSeqAttnPooling(nn.Module):
+    """Self attention over a sequence:
+
+    * o_i = softmax(Wx_i) for x_i in X.
+    """
+
+    def __init__(self, input_size):
+        super(LinearSeqAttnPooling, self).__init__()
+        self.linear = nn.Linear(input_size, 1)
+
+    def forward(self, x, x_mask):
+        """
+        Args:
+            x: batch * len * hdim
+            x_mask: batch * len (1 for padding, 0 for true)
+        Output:
+            alpha: batch * len
+        """
+        # TODO why need contiguous
+        x = x.contiguous() 
+        x_flat = x.view(-1, x.size(-1))
+        scores = self.linear(x_flat).view(x.size(0), x.size(1))
+        scores.data.masked_fill_(x_mask.data, -float('inf'))
+        alpha = F.softmax(scores)
+        return alpha.unsqueeze(1).bmm(x).squeeze(1)
+
+class NonLinearSeqAttnPooling(nn.Module):
+    """Self attention over a sequence:
+
+    * o_i = softmax(function(Wx_i)) for x_i in X.
+    """
+
+    def __init__(self, input_size, hidden_size=128):
+        super(NonLinearSeqAttnPooling, self).__init__()
+        self.FFN = FeedForwardNetwork(input_size, hidden_size, 1)
+
+    def forward(self, x, x_mask):
+        """
+        Args:
+            x: batch * len * dim
+            x_mask: batch * len (1 for padding, 0 for true)
+        Output:
+            alpha: batch * len
+        """
+        scores = self.FFN(x).squeeze(2)
+        scores.data.masked_fill_(x_mask.data, -float('inf'))
+        alpha = F.softmax(scores)
+        return alpha.unsqueeze(1).bmm(x).squeeze(1)
+
+class Pooling(nn.Module):
+  def __init__(self,  
+               name,
+               input_size=None,
+               top_k=2,
+               att_activation=F.relu,
+               **kwargs):
+    super(Pooling, self).__init__(**kwargs)
+
+    self.top_k = top_k
+
+    self.poolings = nn.ModuleList()
+    def get_pooling(name):
+      if name == 'max':
+        return MaxPooling()
+      elif name == 'mean':
+        return MeanPooling()
+      elif name == 'attention' or name == 'att':
+        return NonLinearSeqAttnPooling(input_size)
+      elif name == 'linear_attention' or name == 'linear_att' or name == 'latt':
+        return LinearSeqAttnPooling(input_size)
+      elif name == 'topk' or name == 'top_k':
+        return TopKPooling(top_k)
+      elif name =='first':
+        return FirstPooling()
+      elif name == 'last':
+        return LastPooling()
+      else:
+        raise f'Unsupport pooling now:{name}'
+
+    self.names = name.split(',')
+    for name in self.names:
+      self.poolings.append(get_pooling(name))
+
+    logging.info('poolings:', self.poolings)
+  
+  def forward(self, x, mask=None, calc_word_scores=False):
+    results = []
+    self.word_scores = []
+    for i, pooling in enumerate(self.poolings):
+      results.append(pooling(x, mask))
+      if calc_word_scores:
+        self.word_scores.append(melt.get_words_importance(outputs, sequence_length, top_k=self.top_k, method=self.names[i]))
+    
+    return torch.cat(results, -1)
 
 # ------------------------------------------------------------------------------
 # Functional Units

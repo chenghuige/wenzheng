@@ -16,28 +16,82 @@ import melt
 logging = melt.logging
 
 import numpy as np
+import lele
 
-class Rnn(nn.Module):
+class Bow(nn.Module):
   def __init__(self):
-    super(Model, self).__init__()
+    super(Bow, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
 
     emb_dim = FLAGS.emb_dim 
 
-    self.embedding = nn.Embedding(vocab_size, embedding_dim=emb_dim)
+    self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
+                                                emb_dim, 
+                                                FLAGS.word_embedding_file, 
+                                                FLAGS.finetune_word_embedding)
+
 
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
     self.encode = nn.GRU(input_size=emb_dim, hidden_size=self.num_units, batch_first=True, bidirectional=True)
 
-    self.logits = nn.Linear(2 * self.num_units, NUM_CLASSES, bias=True)
-    #self.logits = nn.Linear(emb_dim, NUM_CLASSES, bias=True)
+    #self.logits = nn.Linear(2 * self.num_units, NUM_CLASSES)
+    self.logits = nn.Linear(emb_dim, NUM_CLASSES)
 
   def forward(self, input, training=False):
     x = input['rcontent'] if FLAGS.rcontent else input['content']
     #print(x.shape)
+
+    x = self.embedding(x)
+    
+    x = torch.max(x, 1)[0]
+    
+    x = self.logits(x)    
+
+    return x
+
+class Gru(nn.Module):
+  def __init__(self):
+    super(Gru, self).__init__()
+    vocabulary.init()
+    vocab_size = vocabulary.get_vocab_size() 
+
+    emb_dim = FLAGS.emb_dim 
+
+    self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
+                                                emb_dim, 
+                                                FLAGS.word_embedding_file, 
+                                                FLAGS.finetune_word_embedding)
+
+    self.num_layers = FLAGS.num_layers
+    self.num_units = FLAGS.rnn_hidden_size
+    self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
+    self.encode = nn.GRU(input_size=emb_dim, hidden_size=self.num_units, batch_first=True, bidirectional=True)
+    
+    ## Support mask
+    #self.pooling = lele.layers.MaxPooling() 
+
+    self.pooling = lele.layers.Pooling(
+                        FLAGS.encoder_output_method, 
+                        input_size= 2 * self.num_units,
+                        top_k=FLAGS.top_k, 
+                        att_activation=getattr(F, FLAGS.att_activation))
+
+    # input dim not as convinient as tf..
+    pre_logits_dim = 2 * self.num_units 
+    if 'top' in FLAGS.encoder_output_method:
+        pre_logits_dim = 2 * self.num_units * FLAGS.top_k 
+    self.logits = nn.Linear(pre_logits_dim, NUM_CLASSES)
+    #self.logits = nn.Linear(emb_dim, NUM_CLASSES)
+
+  def forward(self, input, training=False):
+    x = input['rcontent'] if FLAGS.rcontent else input['content']
+    #print(x.shape)
+    x_mask = x.eq(0)
+    if not FLAGS.mask_pooling:
+      x_mask = torch.zeros_like(x, dtype=torch.uint8)
 
     x = self.embedding(x)
     
@@ -49,7 +103,9 @@ class Rnn(nn.Module):
     x, _ = self.encode(x)
     
     #x = F.max_pool2d(x, kernel_size=x.size()[2:])
-    x = torch.max(x, 1)[0]
+    #x = torch.max(x, 1)[0]
+
+    x = self.pooling(x, x_mask)
     
     x = self.logits(x)    
 
@@ -67,11 +123,10 @@ class MwAN(nn.Module):
         encoder_size = FLAGS.rnn_hidden_size
         self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
 
-        self.embedding = nn.Embedding(vocab_size, embedding_dim=embedding_size)
-        if FLAGS.word_embedding_file:
-            self.embedding.weight.data.copy_(torch.from_numpy(np.load(FLAGS.word_embedding_file)))
-            if not FLAGS.finetune_word_embedding:
-                self.embedding.weight.requires_grad = False
+        self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
+                                                emb_dim, 
+                                                FLAGS.word_embedding_file, 
+                                                FLAGS.finetune_word_embedding)
 
         self.q_encoder = nn.GRU(input_size=embedding_size, hidden_size=encoder_size, batch_first=True,
                                 bidirectional=True)

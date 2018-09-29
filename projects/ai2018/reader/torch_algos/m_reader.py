@@ -40,6 +40,8 @@ from algos.config import NUM_CLASSES
 
 import numpy as np
 
+
+# this is V3, V4 will have more pooling method with mask support, also add support for recurrent dropout..
 class MnemonicReader(nn.Module):
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
     CELL_TYPES = {'lstm': nn.LSTMCell, 'gru': nn.GRUCell, 'rnn': nn.RNNCell}
@@ -53,13 +55,10 @@ class MnemonicReader(nn.Module):
         vocabulary.init()
         vocab_size = vocabulary.get_vocab_size() 
         
-        self.embedding = nn.Embedding(vocab_size,
-                                      args.emb_dim,
-                                      padding_idx=0)
-        if FLAGS.word_embedding_file:
-            self.embedding.weight.data.copy_(torch.from_numpy(np.load(FLAGS.word_embedding_file)))
-            if not FLAGS.finetune_word_embedding:
-                self.embedding.weight.requires_grad = False
+        self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
+                                                    args.emb_dim, 
+                                                    args.word_embedding_file, 
+                                                    args.finetune_word_embedding)
 
         doc_input_size = args.emb_dim 
 
@@ -139,7 +138,7 @@ class MnemonicReader(nn.Module):
             c_hat = self.self_SFUs[i].forward(c_bar, torch.cat([c_tilde, c_bar * c_tilde, c_bar - c_tilde], 2))
             c_check = self.aggregate_rnns[i].forward(c_hat, x1_mask)
 
-        # TODO support other pooling layer like attention topk in torch
+        # TODO support other pooling layer like attention topk in torch or without mask ?
         c = torch.max(c_check, 1)[0]
         
         x = self.logits(c)

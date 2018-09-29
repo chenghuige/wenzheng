@@ -29,7 +29,6 @@ import numpy as np
 import wenzheng.utils.input_flags
 import wenzheng.utils.rnn_flags
 
-
 class Encoder(melt.Model):
   def __init__(self, type='gru', keep_prob=None):
     super(Encoder, self).__init__()
@@ -37,6 +36,8 @@ class Encoder(melt.Model):
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = keep_prob or FLAGS.keep_prob
+    self.recurrent_dropout = FLAGS.recurrent_dropout
+    self.bw_dropout = FLAGS.bw_dropout
 
     logging.info(f'encoder:{type}')
     logging.info('encoder num_layers:{}'.format(self.num_layers))
@@ -46,17 +47,16 @@ class Encoder(melt.Model):
     def get_encode(type):
       if type == 'bow' or type == 'none':
         encode = None
-      elif type == 'gru' or type == 'rnn':
-        encode = melt.layers.CudnnRnn(num_layers=self.num_layers, 
-                                      num_units=self.num_units, 
-                                      keep_prob=self.keep_prob,
-                                      share_dropout=False)
-      elif type == 'lstm':
+      elif type == 'gru' or type == 'rnn' or type == 'lstm':
+        if type == 'rnn':
+          type = 'gru'
         encode = melt.layers.CudnnRnn(num_layers=self.num_layers, 
                                       num_units=self.num_units, 
                                       keep_prob=self.keep_prob,
                                       share_dropout=False,
-                                      cell='lstm')
+                                      recurrent_dropout=self.recurrent_dropout,
+                                      bw_dropout=self.bw_dropout,
+                                      cell=type)
       elif type == 'cnn' or type == 'convnet':
         logging.info('encoder num_filters:{}'.format(FLAGS.num_filters))
         num_layers = FLAGS.num_layers if not ',' in type else 4

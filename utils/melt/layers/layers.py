@@ -111,7 +111,7 @@ class AttentionPooling(keras.Model):
       self.dense = layers.Dense(hidden_size, activation=activation)
     else:
       self.dense = None
-    self.logits = layers.Dense(1, activation=None)
+    self.logits = layers.Dense(1)
     self.step = -1
 
   def call(self, outputs, sequence_length=None, axis=1):
@@ -119,6 +119,24 @@ class AttentionPooling(keras.Model):
     if self.step == 0 and self.dense is None:
       self.dense = layers.Dense(melt.get_shape(outputs, -1), activation=self.activation)
     x = self.dense(outputs)
+    logits = self.logits(x)
+    alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
+    encoding = tf.reduce_sum(outputs * alphas, 1)
+    # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
+    self.alphas = tf.squeeze(alphas, -1)    
+    #self.alphas = alphas
+    tf.add_to_collection('self_attention', self.alphas) 
+    return encoding
+
+class LinearAttentionPooling(keras.Model):
+  def __init__(self,  
+               **kwargs):
+    super(LinearAttentionPooling, self).__init__(**kwargs)
+    self.logits = layers.Dense(1)
+    self.step = -1
+
+  def call(self, x, sequence_length=None, axis=1):
+    self.step += 1
     logits = self.logits(x)
     alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
     encoding = tf.reduce_sum(outputs * alphas, 1)
@@ -149,6 +167,8 @@ class Pooling(keras.Model):
         return AttentionPooling(activation=att_activation)
       elif name == 'attention2' or name == 'att2':
         return AttentionPooling(hidden_size=None, activation=att_activation)
+      elif name == 'linear_attention' or name == 'linear_att' or name == 'latt':
+        return LinearAttentionPooling()
       elif name == 'topk' or name == 'top_k':
         return TopKPooling(top_k)
       elif name =='first':
@@ -161,6 +181,8 @@ class Pooling(keras.Model):
     self.names = name.split(',')
     for name in self.names:
       self.poolings.append(get_pooling(name))
+    
+    logging.info('poolings:', self.poolings)
   
   def call(self, outputs, sequence_length=None, axis=1, calc_word_scores=False):
     results = []

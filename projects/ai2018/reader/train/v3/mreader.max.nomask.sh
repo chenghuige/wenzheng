@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/v3/mreader.max/
+model_dir=$base/temp/ai2018/reader/model/v3/mreader.max.nomask/
 num_epochs=10
 
 mkdir -p $model_dir/epoch 
@@ -33,6 +33,7 @@ fi
 
 
 python $exe \
+        --mask_pooling=0 \
         --model=MReader \
         --att_combiner=sfu \
         --rcontent=1 \

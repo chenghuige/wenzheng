@@ -464,7 +464,8 @@ def train(Dataset,
     epoch_loss_avg = Mean()
     epoch_valid_loss_avg = Mean()
 
-    for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
+    #for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
+    for i, (x, y) in enumerate(train_dataset):
       if FLAGS.torch:
         x, y = to_torch(x, y)
 
@@ -486,6 +487,17 @@ def train(Dataset,
       num_insts += batch_size_
       if global_step.numpy() % FLAGS.interval_steps == 0:
         #checkpoint.save(checkpoint_prefix)
+        elapsed = timer.elapsed()
+        steps_per_second = FLAGS.interval_steps / elapsed
+        instances_per_second = num_insts / elapsed
+        num_insts = 0
+
+        if num_steps_per_epoch is None:
+          epoch_time_info = ''
+        else:
+          hours_per_epoch = num_steps_per_epoch / FLAGS.interval_steps * elapsed / 3600
+          epoch_time_info = '1epoch:[{:.2f}h]'.format(hours_per_epoch)
+
         if valid_dataset2:
           x, y = next(iter(valid_dataset2))
           if FLAGS.torch:
@@ -498,10 +510,14 @@ def train(Dataset,
 
           logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
-                      'batch_size:%d' % batch_size_,
-                      'learning_rate:%.7f' % learning_rate.numpy(),
-                      'train_loss:%.4f' % epoch_loss_avg.result().numpy(),
-                      'valid_loss:%.4f' % epoch_valid_loss_avg.result().numpy())
+                      'elapsed:[%.3f]' % elapsed,
+                      'batch_size:[%d]' % batch_size_,
+                      'batches/s:[%.2f]' % steps_per_second,
+                      'insts/s:[%d]' % instances_per_second,
+                      '%s' % epoch_time_info,
+                      'lr:[%.7f]' % learning_rate.numpy(),
+                      'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
+                      'valid_loss:[%.4f]' % epoch_valid_loss_avg.result().numpy())
           if global_step.numpy() % FLAGS.eval_interval_steps == 0:
             with writer_valid.as_default(), summary.always_record_summaries():
               #summary.scalar('step/loss', epoch_valid_loss_avg.result().numpy())
@@ -510,9 +526,13 @@ def train(Dataset,
         else:
           logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
-                      'batch_size:%d' % batch_size_,
-                      'learning_rate:%.7f' % learning_rate.numpy(),
-                      'train_loss:%.4f' % epoch_loss_avg.result().numpy())      
+                      'elapsed:[%.3f]' % elapsed,
+                      'batch_size:[%d]' % batch_size_,
+                      'batches/s:[%.2f]' % steps_per_second,
+                      'insts/s:[%d]' % instances_per_second,
+                      '%s' % epoch_time_info,
+                      'lr:[%.7f]' % learning_rate.numpy(),
+                      'train_loss:[%.4f]' % epoch_loss_avg.result().numpy())      
 
         if global_step.numpy() % FLAGS.eval_interval_steps == 0:
           with writer_train.as_default(), summary.always_record_summaries():
@@ -521,12 +541,8 @@ def train(Dataset,
             summary.scalar('learning_rate', learning_rate.numpy())
             summary.scalar('batch_size', batch_size_)
             summary.scalar('epoch', melt.epoch())
-            elapsed = timer.elapsed()
-            steps_per_second = FLAGS.interval_steps / elapsed
-            instances_per_second = num_insts / elapsed
             summary.scalar('steps_per_second', steps_per_second)
             summary.scalar('instances_per_second', instances_per_second)
-            num_insts = 0
             writer_train.flush()
 
           if FLAGS.log_dir != FLAGS.model_dir:
@@ -556,7 +572,8 @@ def train(Dataset,
           model.train()
 
         logging.info2('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs),  
-                      'step:%d' % global_step.numpy(),
+                      'valid_step:%d' % global_step.numpy(),
+                      'valid_metrics',
                       ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
         
       
@@ -583,10 +600,10 @@ def train(Dataset,
 
     logging.info('epoch:%d/%d' % (epoch + 1, num_epochs), 
                  'step:%d' % global_step.numpy(), 
-                 'batch_size:%d' % batch_size,
-                 'learning_rate:%.3f' % learning_rate.numpy(),
-                 'train_loss:%.4f' % epoch_loss_avg.result().numpy(),
-                 'valid_loss::%.4f' % epoch_valid_loss_avg.result().numpy())
+                 'batch_size:[%d]' % batch_size,
+                 'lr:[%.7f]' % learning_rate.numpy(),
+                 'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
+                 'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
 
     timer = gezi.Timer(f'save model to {checkpoint_prefix}', False)
     checkpoint.save(checkpoint_prefix)
@@ -616,6 +633,8 @@ def train(Dataset,
                                names, valid_write_fn, write_streaming,
                                num_valid_steps_per_epoch, suffix=valid_suffix, sep=sep)
       logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
+                    'step:%d' % global_step.numpy(),
+                    'epoch_valid_metrics',
                     ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
 
     with writer.as_default(), summary.always_record_summaries():

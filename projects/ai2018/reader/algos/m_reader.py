@@ -154,7 +154,10 @@ class MnemonicReader(melt.Model):
       x = self.match_dot_attentions[i](x, mask=c_mask, training=training)
       x = self.match_encodes[i](x, c_len, training=training)
 
-    x = self.pooling(x, c_len, calc_word_scores=self.debug)
+    if FLAGS.mask_pooling:
+      x = self.pooling(x, c_len, calc_word_scores=self.debug)
+    else:
+      x = self.pooling(x, None, calc_word_scores=self.debug)
 
     if FLAGS.use_type:
       x = tf.concat([x, tf.expand_dims(tf.to_float(input['type']), 1)], 1)

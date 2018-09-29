@@ -252,7 +252,7 @@ def init():
   # TODO torch mode should use tf eager mode reading but since some bug for gpu oom.. now just use graph mode
   if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ or FLAGS.torch:
   #if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
-    logging.info('Run eager mode!')
+    logging.info('-------------RUN IN EAGER MODE!')
     if FLAGS.torch:
       # by default tf will use all... and also set 0. not ok so set really small
       #opts = tf.GPUOptions(per_process_gpu_memory_fraction=1e-5)

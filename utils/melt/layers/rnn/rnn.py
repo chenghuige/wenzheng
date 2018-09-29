@@ -56,6 +56,8 @@ class CudnnRnn(keras.Model):
                 num_units, 
                 keep_prob=1.0, 
                 share_dropout=False,
+                recurrent_dropout=True,
+                bw_dropout=False,
                 train_init_state=True,
                 cell='gru', 
                 **kwargs):
@@ -87,7 +89,9 @@ class CudnnRnn(keras.Model):
     # scope.reuse_variables()
     # q = rnn(q_emb, sequence_length=q_len)
     self.share_dropout = share_dropout
-    
+    self.recurrent_dropout = recurrent_dropout
+    # when not using recurrent_dropout if bw_dropout will let backward rnn using different dropout then forward
+    self.bw_dropout = bw_dropout 
 
     # TODO FIXME hack for model.save try to save self.dropout_mask_fw , even though I think should not... TODO  how to NoDependency
     # ValueError: Unable to save the object ListWrapper([<tf.Tensor: id=115958, shape=(32, 1, 300), dtype=float32, numpy=
@@ -182,20 +186,6 @@ class CudnnRnn(keras.Model):
 
       gru_fw, gru_bw = self.gru_fws[layer], self.gru_bws[layer]
       
-      if mask_fws is not None:
-        mask_fw = mask_fws[layer]
-      else:
-        if not self.share_dropout:
-          mask_fw = dropout(tf.ones([batch_size, 1, input_size_], dtype=tf.float32),
-                        keep_prob=keep_prob, training=training, mode=None)
-        else:
-          if self.dropout_mask_fw[layer] is None or (tf.executing_eagerly() and batch_size != self.dropout_mask_fw[layer].shape[0]):
-            mask_fw = dropout(tf.ones([batch_size, 1, input_size_], dtype=tf.float32),
-                                      keep_prob=keep_prob, training=training, mode=None)
-            self.dropout_mask_fw[layer] = mask_fw
-          else:
-            mask_fw = self.dropout_mask_fw[layer]
-      
       if self.train_init_state:
         #init_fw = tf.tile(self.init_fw[layer], [batch_size, 1])
         #init_fw = tf.tile(self.init_fw_layer(layer), [batch_size, 1])
@@ -203,7 +193,33 @@ class CudnnRnn(keras.Model):
       else:
         init_fw = None
 
-      out_fw, state_fw = gru_fw(outputs[-1] * mask_fw, init_fw)
+      if self.recurrent_dropout:
+        if mask_fws is not None:
+          mask_fw = mask_fws[layer]
+        else:
+          if not self.share_dropout:
+            mask_fw = dropout(tf.ones([batch_size, 1, input_size_], dtype=tf.float32),
+                          keep_prob=keep_prob, training=training, mode=None)
+          else:
+            if self.dropout_mask_fw[layer] is None or (tf.executing_eagerly() and batch_size != self.dropout_mask_fw[layer].shape[0]):
+              mask_fw = dropout(tf.ones([batch_size, 1, input_size_], dtype=tf.float32),
+                                        keep_prob=keep_prob, training=training, mode=None)
+              self.dropout_mask_fw[layer] = mask_fw
+            else:
+              mask_fw = self.dropout_mask_fw[layer]
+        
+        inputs_fw = outputs[-1] * mask_fw
+      else:
+        inputs_fw = dropout(outputs[-1], keep_prob=keep_prob, training=training, mode=None)
+
+      out_fw, state_fw = gru_fw(inputs_fw, init_fw)
+
+      if self.train_init_state:
+        #init_bw = tf.tile(self.init_bw[layer], [batch_size, 1])
+        #init_bw = tf.tile(self.init_bw_layer(layer), [batch_size, 1])
+        init_bw = self.init_bw_layer(layer, batch_size)
+      else:
+        init_bw = None
 
       if mask_bws is not None:
         mask_bw = mask_bws[layer]
@@ -219,15 +235,16 @@ class CudnnRnn(keras.Model):
           else:
             mask_bw = self.dropout_mask_bw[layer]
 
-      inputs_bw = tf.reverse_sequence(
-          outputs[-1] * mask_bw, seq_lengths=sequence_length, seq_axis=1, batch_axis=0)
-      
-      if self.train_init_state:
-        #init_bw = tf.tile(self.init_bw[layer], [batch_size, 1])
-        #init_bw = tf.tile(self.init_bw_layer(layer), [batch_size, 1])
-        init_bw = self.init_bw_layer(layer, batch_size)
+      if self.recurrent_dropout:
+        inputs_bw = outputs[-1] * mask_bw
       else:
-        init_bw = None
+        if self.bw_dropout:
+          inputs_bw = dropout(outputs[-1], keep_prob=keep_prob, training=training, mode=None)
+        else:
+          inputs_bw = inputs_fw
+
+      inputs_bw = tf.reverse_sequence(
+          inputs_bw, seq_lengths=sequence_length, seq_axis=1, batch_axis=0)
 
       out_bw, state_bw = gru_bw(inputs_bw, init_bw)
       out_bw = tf.reverse_sequence(

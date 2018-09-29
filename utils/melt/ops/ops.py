@@ -967,11 +967,13 @@ def dropout(args, keep_prob, training, mode="recurrent"):
     args = tf.nn.dropout(args, keep_prob, noise_shape=noise_shape) * scale
   return args
 
-# TODO not ok
+# this is fine, but lengths should has one row without padding 0
 def masked_softmax(values, lengths):
   with tf.variable_scope('masked_softmax'):
     mask = tf.expand_dims(tf.sequence_mask(lengths, dtype=tf.float32), -1)
+    # here mask 1 will get nan mask 0 -inf
     inf_mask = (1 - mask) * -np.inf
+    # keep -inf unchanged and make nan to 0
     inf_mask = tf.where(tf.is_nan(inf_mask), tf.zeros_like(inf_mask), inf_mask)
     return tf.nn.softmax(tf.multiply(values, mask) + inf_mask, axis=1)
 

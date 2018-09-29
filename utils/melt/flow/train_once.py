@@ -75,10 +75,10 @@ def train_once(sess,
   melt.set_global('step', step)
   epoch = (fixed_step or step) / num_steps_per_epoch if num_steps_per_epoch else -1
   if not num_epochs:
-    epoch_str = 'epoch:%.4f' % (epoch) if num_steps_per_epoch else ''
+    epoch_str = 'epoch:%.2f' % (epoch) if num_steps_per_epoch else ''
   else:
-    epoch_str = 'epoch:%.4f/%d' % (epoch, num_epochs) if num_steps_per_epoch else ''
-  melt.set_global('epoch', '%.4f' % (epoch))
+    epoch_str = 'epoch:%.2f/%d' % (epoch, num_epochs) if num_steps_per_epoch else ''
+  melt.set_global('epoch', '%.2f' % (epoch))
   
   info = IO()
   stop = False
@@ -141,7 +141,7 @@ def train_once(sess,
         # @TODO user print should also use logging as a must ?
         #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, 'eval_metrics:', end='')  
         eval_names_ = melt.adjust_names(eval_loss, eval_names)
-        logging.info2('{} eval_step: {} eval_metrics:{}'.format(epoch_str, step, melt.parse_results(eval_loss, eval_names_)))
+        logging.info2('{} eval_step:{} eval_metrics:{}'.format(epoch_str, step, melt.parse_results(eval_loss, eval_names_)))
         
         # if deal_eval_results_fn is not None:
         #   eval_stop = deal_eval_results_fn(eval_results)
@@ -193,8 +193,8 @@ def train_once(sess,
       except Exception:
         logging.info('Do nothing for metric eval fn with exception:\n', traceback.format_exc())
     
-
-    logging.info2('{} valid_step:{} valid_metrics:{}'.format(epoch_str, step, melt.parse_results(evaluate_results, evaluate_names)))
+    logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics' if model_path is None else 'epoch_valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
+ 
     if learning_rate is not None and (learning_rate_patience and learning_rate_patience > 0):
       assert learning_rate_decay_factor > 0 and learning_rate_decay_factor < 1
       valid_loss = evaluate_results[0]
@@ -310,135 +310,136 @@ def train_once(sess,
     if evaluate_summaries is not None:
       summary_strs += evaluate_summaries 
 
-  if is_eval_step:
-    # deal with summary
-    if log_dir:
-      # if not hasattr(train_once, 'summary_op'):
-      #   melt.print_summary_ops()
-      #   if summary_excls is None:
-      #     train_once.summary_op = tf.summary.merge_all()
-      #   else:
-      #     summary_ops = []
-      #     for op in tf.get_collection(tf.GraphKeys.SUMMARIES):
-      #       for summary_excl in summary_excls:
-      #         if not summary_excl in op.name:
-      #           summary_ops.append(op)
-      #     print('filtered summary_ops:')
-      #     for op in summary_ops:
-      #       print(op)
-      #     train_once.summary_op = tf.summary.merge(summary_ops)
+  if step > 1:
+    if is_eval_step:
+      # deal with summary
+      if log_dir:
+        # if not hasattr(train_once, 'summary_op'):
+        #   melt.print_summary_ops()
+        #   if summary_excls is None:
+        #     train_once.summary_op = tf.summary.merge_all()
+        #   else:
+        #     summary_ops = []
+        #     for op in tf.get_collection(tf.GraphKeys.SUMMARIES):
+        #       for summary_excl in summary_excls:
+        #         if not summary_excl in op.name:
+        #           summary_ops.append(op)
+        #     print('filtered summary_ops:')
+        #     for op in summary_ops:
+        #       print(op)
+        #     train_once.summary_op = tf.summary.merge(summary_ops)
 
-      #   print('-------------summary_op', train_once.summary_op)
-        
+        #   print('-------------summary_op', train_once.summary_op)
+          
 
-      #   #train_once.summary_train_op = tf.summary.merge_all(key=melt.MonitorKeys.TRAIN)
-      #   train_once.summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
+        #   #train_once.summary_train_op = tf.summary.merge_all(key=melt.MonitorKeys.TRAIN)
+        #   train_once.summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
 
-      #   tf.contrib.tensorboard.plugins.projector.visualize_embeddings(train_once.summary_writer, projector_config)
+        #   tf.contrib.tensorboard.plugins.projector.visualize_embeddings(train_once.summary_writer, projector_config)
 
-      summary = tf.Summary()
-      # #so the strategy is on eval_interval_steps, if has eval dataset, then tensorboard evluate on eval dataset
-      # #if not have eval dataset, will evaluate on trainset, but if has eval dataset we will also monitor train loss
-      # assert train_once.summary_train_op is None
-      # if train_once.summary_train_op is not None:
-      #   summary_str = sess.run(train_once.summary_train_op, feed_dict=feed_dict)
-      #   train_once.summary_writer.add_summary(summary_str, step)
+        summary = tf.Summary()
+        # #so the strategy is on eval_interval_steps, if has eval dataset, then tensorboard evluate on eval dataset
+        # #if not have eval dataset, will evaluate on trainset, but if has eval dataset we will also monitor train loss
+        # assert train_once.summary_train_op is None
+        # if train_once.summary_train_op is not None:
+        #   summary_str = sess.run(train_once.summary_train_op, feed_dict=feed_dict)
+        #   train_once.summary_writer.add_summary(summary_str, step)
 
-      if eval_ops is None:
-        # #get train loss, for every batch train
-        # if train_once.summary_op is not None:
-        #   #timer2 = gezi.Timer('sess run')
-        #   try:
-        #     # TODO FIXME so this means one more train batch step without adding to global step counter ?! so should move it earlier 
-        #     summary_str = sess.run(train_once.summary_op, feed_dict=feed_dict)
-        #   except Exception:
-        #     if not hasattr(train_once, 'num_summary_errors'):
-        #       logging.warning('summary_str = sess.run(train_once.summary_op, feed_dict=feed_dict) fail')
-        #       train_once.num_summary_errors = 1
-        #       logging.warning(traceback.format_exc())
-        #     summary_str = ''
-        #   # #timer2.print()
-        if train_once.summary_op is not None:
+        if eval_ops is None:
+          # #get train loss, for every batch train
+          # if train_once.summary_op is not None:
+          #   #timer2 = gezi.Timer('sess run')
+          #   try:
+          #     # TODO FIXME so this means one more train batch step without adding to global step counter ?! so should move it earlier 
+          #     summary_str = sess.run(train_once.summary_op, feed_dict=feed_dict)
+          #   except Exception:
+          #     if not hasattr(train_once, 'num_summary_errors'):
+          #       logging.warning('summary_str = sess.run(train_once.summary_op, feed_dict=feed_dict) fail')
+          #       train_once.num_summary_errors = 1
+          #       logging.warning(traceback.format_exc())
+          #     summary_str = ''
+          #   # #timer2.print()
+          if train_once.summary_op is not None:
+            for summary_str in summary_strs:
+              train_once.summary_writer.add_summary(summary_str, step)
+        else:
+          # #get eval loss for every batch eval, then add train loss for eval step average loss
+          # try:
+          #   summary_str = sess.run(train_once.summary_op, feed_dict=eval_feed_dict) if train_once.summary_op is not None else ''
+          # except Exception:
+          #   if not hasattr(train_once, 'num_summary_errors'):
+          #     logging.warning('summary_str = sess.run(train_once.summary_op, feed_dict=eval_feed_dict) fail')
+          #     train_once.num_summary_errors = 1
+          #     logging.warning(traceback.format_exc())
+          #   summary_str = ''
+          #all single value results will be add to summary here not using tf.scalar_summary..
+          #summary.ParseFromString(summary_str)
           for summary_str in summary_strs:
             train_once.summary_writer.add_summary(summary_str, step)
-      else:
-        # #get eval loss for every batch eval, then add train loss for eval step average loss
-        # try:
-        #   summary_str = sess.run(train_once.summary_op, feed_dict=eval_feed_dict) if train_once.summary_op is not None else ''
-        # except Exception:
-        #   if not hasattr(train_once, 'num_summary_errors'):
-        #     logging.warning('summary_str = sess.run(train_once.summary_op, feed_dict=eval_feed_dict) fail')
-        #     train_once.num_summary_errors = 1
-        #     logging.warning(traceback.format_exc())
-        #   summary_str = ''
-        #all single value results will be add to summary here not using tf.scalar_summary..
-        #summary.ParseFromString(summary_str)
-        for summary_str in summary_strs:
-          train_once.summary_writer.add_summary(summary_str, step)
-        suffix = 'eval' if not eval_names else ''
-        melt.add_summarys(summary, eval_results, eval_names_, suffix=suffix)
+          suffix = 'eval' if not eval_names else ''
+          melt.add_summarys(summary, eval_results, eval_names_, suffix=suffix)
 
-      if ops is not None:
-        melt.add_summarys(summary, train_average_loss, names_, suffix='train_avg') 
-        ##optimizer has done this also
-        melt.add_summary(summary, learning_rate, 'learning_rate')
-        melt.add_summary(summary, melt.batch_size(), 'batch_size')
-        melt.add_summary(summary, melt.epoch(), 'epoch')
-        if steps_per_second:
-          melt.add_summary(summary, steps_per_second, 'steps_per_second')
-        if instances_per_second:
-          melt.add_summary(summary, instances_per_second, 'instances_per_second') 
-        if hours_per_epoch:
-          melt.add_summary(summary, hours_per_epoch, 'hours_per_epoch')
+        if ops is not None:
+          melt.add_summarys(summary, train_average_loss, names_, suffix='train_avg') 
+          ##optimizer has done this also
+          melt.add_summary(summary, learning_rate, 'learning_rate')
+          melt.add_summary(summary, melt.batch_size(), 'batch_size')
+          melt.add_summary(summary, melt.epoch(), 'epoch')
+          if steps_per_second:
+            melt.add_summary(summary, steps_per_second, 'steps_per_second')
+          if instances_per_second:
+            melt.add_summary(summary, instances_per_second, 'instances_per_second') 
+          if hours_per_epoch:
+            melt.add_summary(summary, hours_per_epoch, 'hours_per_epoch')
 
-      if metric_evaluate:
-        #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
-        prefix = 'step/valid'
-        if model_path:
-          prefix = 'epoch/valid'
-          if not hasattr(train_once, 'epoch_step'):
-            train_once.epoch_step = 1
-          else:
-            train_once.epoch_step += 1
-          step = train_once.epoch_step
-          
-        melt.add_summarys(summary, evaluate_results, evaluate_names, prefix=prefix)
+        if metric_evaluate:
+          #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
+          prefix = 'step/valid'
+          if model_path:
+            prefix = 'epoch/valid'
+            if not hasattr(train_once, 'epoch_step'):
+              train_once.epoch_step = 1
+            else:
+              train_once.epoch_step += 1
+            step = train_once.epoch_step
+            
+          melt.add_summarys(summary, evaluate_results, evaluate_names, prefix=prefix)
+        
+        train_once.summary_writer.add_summary(summary, step)
+        train_once.summary_writer.flush()
+
+        #timer_.print()
       
-      train_once.summary_writer.add_summary(summary, step)
-      train_once.summary_writer.flush()
-
-      #timer_.print()
-    
-    # if print_time:
-    #   full_duration = train_once.eval_timer.elapsed()
-    #   if metric_evaluate:
-    #     metric_full_duration = train_once.metric_eval_timer.elapsed()
-    #   full_duration_str = 'elapsed:{:.3f} '.format(full_duration)
-    #   #info.write('duration:{:.3f} '.format(timer.elapsed()))
-    #   duration = timer.elapsed()
-    #   info.write('duration:{:.3f} '.format(duration))
-    #   info.write(full_duration_str)
-    #   info.write('eval_time_ratio:{:.3f} '.format(duration/full_duration))
-    #   if metric_evaluate:
-    #     info.write('metric_time_ratio:{:.3f} '.format(duration/metric_full_duration))
-    # #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, info.getvalue())
-    # logging.info2('{} {} {}'.format(epoch_str, 'eval_step: %d'%step, info.getvalue()))
-    return stop
-  elif metric_evaluate:
-    summary = tf.Summary()
-    for summary_str in summary_strs:
-      train_once.summary_writer.add_summary(summary_str, step)
-    #summary.ParseFromString(evaluate_summaries)
-    summary_writer = train_once.summary_writer
-    prefix = 'step/valid'
-    if model_path:
-      prefix = 'epoch/valid'
-      if not hasattr(train_once, 'epoch_step'):
-        train_once.epoch_step = 1
-      else:
-        train_once.epoch_step += 1
-      step = train_once.epoch_step
-    #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
-    melt.add_summarys(summary, evaluate_results, evaluate_names, prefix=prefix)
-    summary_writer.add_summary(summary, step)
-    summary_writer.flush()
+      # if print_time:
+      #   full_duration = train_once.eval_timer.elapsed()
+      #   if metric_evaluate:
+      #     metric_full_duration = train_once.metric_eval_timer.elapsed()
+      #   full_duration_str = 'elapsed:{:.3f} '.format(full_duration)
+      #   #info.write('duration:{:.3f} '.format(timer.elapsed()))
+      #   duration = timer.elapsed()
+      #   info.write('duration:{:.3f} '.format(duration))
+      #   info.write(full_duration_str)
+      #   info.write('eval_time_ratio:{:.3f} '.format(duration/full_duration))
+      #   if metric_evaluate:
+      #     info.write('metric_time_ratio:{:.3f} '.format(duration/metric_full_duration))
+      # #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, info.getvalue())
+      # logging.info2('{} {} {}'.format(epoch_str, 'eval_step: %d'%step, info.getvalue()))
+      return stop
+    elif metric_evaluate:
+      summary = tf.Summary()
+      for summary_str in summary_strs:
+        train_once.summary_writer.add_summary(summary_str, step)
+      #summary.ParseFromString(evaluate_summaries)
+      summary_writer = train_once.summary_writer
+      prefix = 'step/valid'
+      if model_path:
+        prefix = 'epoch/valid'
+        if not hasattr(train_once, 'epoch_step'):
+          train_once.epoch_step = 1
+        else:
+          train_once.epoch_step += 1
+        step = train_once.epoch_step
+      #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
+      melt.add_summarys(summary, evaluate_results, evaluate_names, prefix=prefix)
+      summary_writer.add_summary(summary, step)
+      summary_writer.flush()
