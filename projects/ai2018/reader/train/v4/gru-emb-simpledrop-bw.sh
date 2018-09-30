@@ -11,7 +11,7 @@ fi
 
 # not using recurrent_dropout,bw using different dropout then fw
 model_dir=$base/temp/ai2018/reader/model/v4/gru.emb.simpledrop.bw/
-num_epochs=10
+num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir

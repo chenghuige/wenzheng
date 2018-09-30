@@ -98,6 +98,10 @@ def calc_f1(labels, predicts, ids=None, model_path=None):
   all_f1 = []
   for i in range(NUM_ATTRIBUTES):
     #f1 = f1_score(labels[:,i], np.argmax(predicts[:,i], 1) - 2, average='macro')
+    # print(labels[:,i])
+    # print(predicts[:,i])
+    # print(len(labels[:,i]))
+    # print(len(predicts[:,i]))
     scores = f1_score(labels[:,i], np.argmax(predicts[:,i], -1), average=None)
     # if FLAGS.binary_class_index is not None:
     #   scores = [scores[1]]

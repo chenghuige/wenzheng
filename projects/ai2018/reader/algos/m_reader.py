@@ -40,7 +40,12 @@ class MnemonicReader(melt.Model):
                                         trainable=FLAGS.finetune_word_embedding,
                                         vocab2_size=FLAGS.unk_vocab_size,
                                         vocab2_trainable=FLAGS.finetune_unk_vocab)
+    
     self.num_layers = FLAGS.num_layers
+    
+    if FLAGS.hop > 1:
+      assert self.num_layers == 1 and FLAGS.att_combiner == 'sfu', 'mreader must set num layers to 1 so can iterative align if you set hop > 1, and use sfu as combiner'
+
     self.num_units = FLAGS.rnn_hidden_size
     self.keep_prob = FLAGS.keep_prob
 
@@ -97,6 +102,11 @@ class MnemonicReader(melt.Model):
       # self.context_dense = keras.layers.Dense(FLAGS.emb_dim, activation=tf.nn.relu)
       # self.answer_dense = keras.layers.Dense(FLAGS.emb_dim, activation=tf.nn.relu)
 
+    if FLAGS.use_type_emb:
+      type_emb_dim = 10
+      num_types = 2
+      self.type_embedding = melt.layers.Embedding(num_types, type_emb_dim)
+
     logging.info('encoder_output_method:', FLAGS.encoder_output_method)
     logging.info('topk:', FLAGS.top_k)
     self.pooling = melt.layers.Pooling(
@@ -124,11 +134,19 @@ class MnemonicReader(melt.Model):
     c_len = melt.length(c)
     q_mask = tf.cast(q, tf.bool)
     c_mask = tf.cast(c, tf.bool)
+
     q_emb = self.embedding(q)
     c_emb = self.embedding(c)
     
     x = c_emb
     batch_size = melt.get_shape(x, 0)
+
+    if FLAGS.rnn_no_padding:
+      logging.info('------------------no padding! train or eval')
+      q_len = tf.ones([batch_size], dtype=q.dtype) * tf.cast(melt.get_shape(q, -1), q.dtype)
+      c_len = tf.ones([batch_size], dtype=c.dtype) * tf.cast(melt.get_shape(c, -1), c.dtype)
+      q_mask = tf.ones_like(q)
+      c_mask = tf.ones_like(c)
 
     if FLAGS.share_dropout:
       num_units = [melt.get_shape(x, -1) if layer == 0 else 2 * self.num_units for layer in range(self.num_layers)]
@@ -143,11 +161,13 @@ class MnemonicReader(melt.Model):
       q = self.encode(q_emb, q_len, training=training)      
 
     # helps a lot using qc att, now bidaf att worse..
+    # TODO... FIXME WRONG!  must use sfu as to iterative align gate will increase dim while sfu not
+    x = c
     for i in range(FLAGS.hop):
       if not FLAGS.use_bidaf_att:
-        x = self.att_dot_attentions[i](c, q, mask=q_mask, training=training)
+        x = self.att_dot_attentions[i](x, q, mask=q_mask, training=training)
       else:
-        x = self.att_dot_attentions[i](c, q, c_mask, q_mask, training=training)
+        x = self.att_dot_attentions[i](x, q, c_mask, q_mask, training=training)
       if FLAGS.use_att_encode:
         x = self.att_encodes[i](x, c_len, training=training)
       #x = self.match_dot_attentions[i](x, x, mask=c_mask, training=training)
@@ -161,6 +181,9 @@ class MnemonicReader(melt.Model):
 
     if FLAGS.use_type:
       x = tf.concat([x, tf.expand_dims(tf.to_float(input['type']), 1)], 1)
+    
+    if FLAGS.use_type_emb:
+      x = tf.concat([x, self.type_embedding(input['type'])], 1)
 
     # might helps ensemble
     if FLAGS.use_answer_emb:

@@ -9,8 +9,8 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/reader/model/v4/torch.gru.latt
-num_epochs=10
+model_dir=$base/temp/ai2018/reader/model/v4/torch.gru.emb.latt
+num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir

@@ -23,6 +23,7 @@ flags.DEFINE_string('model', 'Model', '')
 
 flags.DEFINE_bool('use_type', False, '')
 flags.DEFINE_bool('use_type_emb', False, '')
+flags.DEFINE_bool('use_type_rnn', False, '')
 flags.DEFINE_integer('type_emb_dim', 100, '')
 flags.DEFINE_bool('rcontent', False, '')
 
@@ -54,10 +55,6 @@ flags.DEFINE_bool('combine_query', False, '')
 
 flags.DEFINE_bool('share_dropout', True, '')
 
-flags.DEFINE_bool('mask_pooling', True, '')
-
-
-flags.DEFINE_integer('hop', 2, '')
 flags.DEFINE_bool('use_att_encode', False, 'for mreader wether to use at encode or not')
 
 flags.DEFINE_bool('use_bias', False, '')

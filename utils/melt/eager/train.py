@@ -292,12 +292,12 @@ def train(Dataset,
     test_dataset = None
   
   summary = tf.contrib.summary
-  # writer = summary.create_file_writer(FLAGS.model_dir + '/epoch')
-  # writer_train = summary.create_file_writer(FLAGS.model_dir + '/train')
-  # writer_valid = summary.create_file_writer(FLAGS.model_dir + '/valid')
-  writer = summary.create_file_writer(FLAGS.model_dir)
-  writer_train = summary.create_file_writer(FLAGS.model_dir)
-  writer_valid = summary.create_file_writer(FLAGS.model_dir)
+  # writer = summary.create_file_writer(FLAGS.log_dir + '/epoch')
+  # writer_train = summary.create_file_writer(FLAGS.log_dir + '/train')
+  # writer_valid = summary.create_file_writer(FLAGS.log_dir + '/valid')
+  writer = summary.create_file_writer(FLAGS.log_dir)
+  writer_train = summary.create_file_writer(FLAGS.log_dir)
+  writer_valid = summary.create_file_writer(FLAGS.log_dir)
   global_step = tf.train.get_or_create_global_step()
 
   learning_rate = tfe.Variable(FLAGS.learning_rate, name="learning_rate")

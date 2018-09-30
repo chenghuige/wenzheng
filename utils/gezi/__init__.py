@@ -37,6 +37,7 @@ except Exception:
 
 import traceback
 
+from gezi.segment import *
 #try:
 #  from gezi.libgezi_util import *
 #  import gezi.libgezi_util as libgezi_util

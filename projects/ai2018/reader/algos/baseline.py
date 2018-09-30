@@ -46,8 +46,10 @@ class Model(melt.Model):
 
     self.encode = wenzheng.Encoder(FLAGS.encoder_type)
 
-    self.pooling = melt.layers.MaxPooling()
-    #self.pooling = keras.layers.GlobalMaxPool1D()
+    self.pooling = melt.layers.Pooling(
+                          FLAGS.encoder_output_method, 
+                          top_k=FLAGS.top_k, 
+                          att_activation=getattr(tf.nn, FLAGS.att_activation))
 
     self.logits = keras.layers.Dense(NUM_CLASSES)
     self.logits2 = keras.layers.Dense(NUM_CLASSES)

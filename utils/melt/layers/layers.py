@@ -87,15 +87,59 @@ class TopKPooling(Layer):
                **kwargs):
     super(TopKPooling, self).__init__(**kwargs)
     self.top_k = top_k
-
-  # def compute_output_shape(self, input_shape):
-  #   return (input_shape[0], (input_shape[2] * self.top_k))
   
   def call(self, outputs, sequence_length=None, axis=1):
     x = melt.top_k_pooling(outputs, self.top_k, sequence_length, axis).values  
-    #return tf.reshape(x, [melt.get_shape(outputs, 0), -1])
     return tf.reshape(x, [-1, melt.get_shape(outputs, -1) * self.top_k])
 
+class TopKMeanPooling(Layer):
+  def __init__(self,  
+               top_k,
+               **kwargs):
+    super(TopKMeanPooling, self).__init__(**kwargs)
+    assert top_k > 1
+    self.top_k = top_k
+  
+  def call(self, outputs, sequence_length=None, axis=1):
+    x = melt.top_k_pooling(outputs, self.top_k, sequence_length, axis).values  
+    x = tf.reduce_mean(x, -1)
+    return x
+
+# not good..
+class TopKWeightedMeanPooling(Layer):
+  def __init__(self,  
+               top_k,
+               ratio=0.7,
+               **kwargs):
+    super(TopKWeightedMeanPooling, self).__init__(**kwargs)
+    assert top_k > 1
+    self.top_k = top_k
+    self.w = [1.] * self.top_k
+    for i in range(top_k - 1):
+      self.w[i + 1] = self.w[i]
+      self.w[i] *= ratio
+      self.w[i + 1] *= (1 - ratio)
+    self.w = tf.constant(self.w)
+  
+  def call(self, outputs, sequence_length=None, axis=1):
+    x = melt.top_k_pooling(outputs, self.top_k, sequence_length, axis).values  
+    x = tf.reduce_sum(x * self.w, -1)
+    return x
+
+class TopKAttentionPooling(keras.Model):
+  def __init__(self,  
+               top_k,
+               **kwargs):
+    super(TopKAttentionPooling, self).__init__(**kwargs)
+    assert top_k > 1
+    self.top_k = top_k
+    self.att = AttentionPooling()
+
+  def call(self, outputs, sequence_length=None, axis=1):
+    x = melt.top_k_pooling(outputs, self.top_k, sequence_length, axis).values  
+    x = tf.transpose(x, [0, 2, 1])
+    x = self.att(x)
+    return x
 
 # TODO check which is better tf.nn.tanh or tf.nn.relu, by paper default should be tanh
 # TODO check your topk,att cases before use relu.. seems tanh worse then relu, almost eqaul but relu a bit better and stable
@@ -139,7 +183,7 @@ class LinearAttentionPooling(keras.Model):
     self.step += 1
     logits = self.logits(x)
     alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
-    encoding = tf.reduce_sum(outputs * alphas, 1)
+    encoding = tf.reduce_sum(x * alphas, 1)
     # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
     self.alphas = tf.squeeze(alphas, -1)    
     #self.alphas = alphas
@@ -171,12 +215,18 @@ class Pooling(keras.Model):
         return LinearAttentionPooling()
       elif name == 'topk' or name == 'top_k':
         return TopKPooling(top_k)
+      elif name == 'topk_mean':
+        return TopKMeanPooling(top_k)
+      elif name == 'topk_weighted_mean':
+        return TopKWeightedMeanPooling(top_k)
+      elif name == 'topk_att':
+        return TopKAttentionPooling(top_k)
       elif name =='first':
         return FirstPooling()
       elif name == 'last':
         return LastPooling()
       else:
-        raise f'Unsupport pooling now:{name}'
+        raise ValueError(f'Unsupport pooling now:{name}')
 
     self.names = name.split(',')
     for name in self.names:

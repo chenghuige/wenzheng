@@ -39,3 +39,6 @@ flags.DEFINE_integer('decoder_rnn_hidden_size', None, '')
 
 flags.DEFINE_bool('recurrent_dropout', True, '')
 flags.DEFINE_bool('bw_dropout', False, '')
+
+flags.DEFINE_bool('rnn_padding', False, 'if True padding when train, eval always padding')
+flags.DEFINE_bool('rnn_no_padding', False, 'if True always no padding, train or eval')

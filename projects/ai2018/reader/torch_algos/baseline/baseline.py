@@ -68,8 +68,18 @@ class Gru(nn.Module):
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
-    self.encode = nn.GRU(input_size=emb_dim, hidden_size=self.num_units, batch_first=True, bidirectional=True)
     
+    #self.encode = nn.GRU(input_size=emb_dim, hidden_size=self.num_units, batch_first=True, bidirectional=True)
+    self.encode = lele.layers.StackedBRNN(
+            input_size=emb_dim,
+            hidden_size=self.num_units,
+            num_layers=self.num_layers,
+            dropout_rate=1 - FLAGS.keep_prob,
+            dropout_output=False,
+            concat_layers=False,
+            rnn_type=nn.GRU,
+            padding=FLAGS.rnn_padding,
+        )    
     ## Support mask
     #self.pooling = lele.layers.MaxPooling() 
 
@@ -80,9 +90,20 @@ class Gru(nn.Module):
                         att_activation=getattr(F, FLAGS.att_activation))
 
     # input dim not as convinient as tf..
-    pre_logits_dim = 2 * self.num_units 
-    if 'top' in FLAGS.encoder_output_method:
-        pre_logits_dim = 2 * self.num_units * FLAGS.top_k 
+    pre_logits_dim = self.pooling.output_size
+    
+    if FLAGS.use_type:
+      pre_logits_dim += 1
+
+    num_types = 2
+    if FLAGS.use_type_emb:
+      type_emb_dim = 10
+      self.type_embedding = nn.Embedding(num_types, type_emb_dim)
+      pre_logits_dim += type_emb_dim
+
+    if FLAGS.use_type_rnn:
+      self.type_embedding = nn.Embedding(num_types, emb_dim)
+
     self.logits = nn.Linear(pre_logits_dim, NUM_CLASSES)
     #self.logits = nn.Linear(emb_dim, NUM_CLASSES)
 
@@ -94,18 +115,34 @@ class Gru(nn.Module):
       x_mask = torch.zeros_like(x, dtype=torch.uint8)
 
     x = self.embedding(x)
-    
-    # prefere to use class over function
-    #x = F.dropout(x,self.drop_out, training=self.training)
-    x = self.dropout(x)
-    #print('training', self.training)
 
-    x, _ = self.encode(x)
+    if FLAGS.use_type_rnn:
+      t = self.type_embedding(input['type']).unsqueeze(1)
+      x = torch.cat([t, x], 1)
+    
+      # TODO by default touch.zeros is cpu..
+      x_mask = torch.cat([torch.zeros(x.size(0), 1, dtype=torch.uint8).cuda(), x_mask], 1)
+    
+    # # prefere to use class over function
+    # #x = F.dropout(x,self.drop_out, training=self.training)
+    # x = self.dropout(x)
+    # #print('training', self.training)
+
+    # x, _ = self.encode(x)
+
+    x = self.encode(x, x_mask)
+
     
     #x = F.max_pool2d(x, kernel_size=x.size()[2:])
     #x = torch.max(x, 1)[0]
 
     x = self.pooling(x, x_mask)
+
+    if FLAGS.use_type:
+      x = torch.cat([x, input['type'].float().unsqueeze(1)], 1)
+
+    if FLAGS.use_type_emb:
+      x = torch.cat([x, self.type_embedding(input['type'])], 1)
     
     x = self.logits(x)    
 

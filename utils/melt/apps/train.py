@@ -265,6 +265,10 @@ def init():
   if 'MODEL_DIR' in os.environ:
     FLAGS.model_dir = os.environ['MODEL_DIR']
 
+  if 'DOUBLE_BATCH' in os.environ:
+    FLAGS.batch_size *= 2
+    FLAGS.model_dir = os.path.join(os.path.dirname(FLAGS.model_dir.rstrip('/')) + '/double', os.path.basename(FLAGS.model_dir.rstrip('/')))
+
   if 'FOLD' in os.environ:
     try:
       FLAGS.fold = int(os.environ['FOLD'])
@@ -292,6 +296,14 @@ def init():
   os.system('mkdir -p %s' % FLAGS.log_dir)
   logging.set_logging_path(FLAGS.log_dir)
 
+  if 'BIG' in os.environ and int(os.environ['BIG']) == True:
+    if FLAGS.big_batch_size is not None:
+      FLAGS.batch_size = FLAGS.big_batch_size
+    if FLAGS.big_buckets is not None:
+      FLAGS.buckets = FLAGS.big_buckets
+    if FLAGS.big_batch_sizes is not None:
+      FLAGS.batch_sizes = FLAGS.big_batch_sizes
+
   # but seems not work ... still different result different run TODO FIXME
   # looks a bit fixed but not exactly..
   if FLAGS.random_seed or 'SEED' in os.environ:
@@ -303,17 +315,6 @@ def init():
   if 'VLOG' in os.environ:
     FLAGS.log_level = int(os.environ['VLOG'])
   logging.info('log_level:', FLAGS.log_level)
-
-  if 'DOUBLE_BATCH' in os.environ:
-    FLAGS.batch_size *= 2
-
-  if 'BIG' in os.environ and int(os.environ['BIG']) == True:
-    if FLAGS.big_batch_size is not None:
-      FLAGS.batch_size = FLAGS.big_batch_size
-    if FLAGS.big_buckets is not None:
-      FLAGS.buckets = FLAGS.big_buckets
-    if FLAGS.big_batch_sizes is not None:
-      FLAGS.batch_sizes = FLAGS.big_batch_sizes
 
   if 'NUM_EPOCHS' in os.environ:
     FLAGS.num_epochs = int(os.environ['NUM_EPOCHS'])

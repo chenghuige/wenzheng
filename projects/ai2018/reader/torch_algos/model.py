@@ -12,7 +12,9 @@ from __future__ import division
 from __future__ import print_function
   
 from torch_algos.rnet import Rnet
-from torch_algos.m_reader import MnemonicReader
+from torch_algos.m_reader import *
+from torch_algos.m_reader import MnemonicReader 
+MReader = MnemonicReader 
 
 # baseline
 from torch_algos.baseline.baseline import *

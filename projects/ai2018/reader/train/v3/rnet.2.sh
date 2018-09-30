@@ -10,7 +10,7 @@ if [ $FOLD ];
 fi 
 
 model_dir=$base/temp/ai2018/reader/model/v3/rnet.2/
-num_epochs=10
+num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir

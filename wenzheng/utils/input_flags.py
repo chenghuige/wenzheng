@@ -181,3 +181,8 @@ flags.DEFINE_integer('num_filters', 128, '')
 flags.DEFINE_float('label_smoothing', 0, '')
 
 flags.DEFINE_integer('finetune_emb_step', None, 'might be 45000 toxic 20 epoch')
+
+
+flags.DEFINE_bool('mask_pooling', True, '')
+flags.DEFINE_integer('hop', 2, '')
+

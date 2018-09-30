@@ -59,6 +59,8 @@ class CudnnRnn(keras.Model):
                 recurrent_dropout=True,
                 bw_dropout=False,
                 train_init_state=True,
+                concat_layers=True, 
+                output_method=OutputMethod.all, 
                 cell='gru', 
                 **kwargs):
     super(CudnnRnn, self).__init__(**kwargs)
@@ -108,6 +110,9 @@ class CudnnRnn(keras.Model):
     self.init_bw = [None] * num_layers 
 
     self.state = None
+
+    self.concat_layers = concat_layers
+    self.output_method = output_method
     
     def gru(units):
       # If you have a GPU, we recommend using the CuDNNGRU layer (it provides a 
@@ -170,9 +175,12 @@ class CudnnRnn(keras.Model):
            sequence_length, 
            mask_fws = None,
            mask_bws = None,
-           concat_layers=True, 
-           output_method=OutputMethod.all, 
+           concat_layers=None, 
+           output_method=None, 
            training=False):
+
+    concat_layers = concat_layers or self.concat_layers
+    output_mehtod = output_method or self.output_method
 
     outputs = [inputs]
 

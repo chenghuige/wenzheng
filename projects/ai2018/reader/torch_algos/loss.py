@@ -27,7 +27,6 @@ import torch
 def criterion(model, x, y):
   y_ = model(x)
   loss_fn = torch.nn.CrossEntropyLoss()
-
   # Do not need one hot
   #y = torch.zeros(y.size(0), NUM_CLASSES, dtype=torch.int64).scatter_(1, y.view(y.size(0), 1), 1)
   loss = loss_fn(y_, y)
