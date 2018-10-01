@@ -240,8 +240,9 @@ def train(Dataset,
 
   if FLAGS.fold is not None:
     inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
-
-  logging.info('inputs', inputs)
+    if FLAGS.valid_input:
+      inputs += gezi.list_files(FLAGS.valid_input)
+  logging.info('inputs', len(inputs), inputs[:100])
 
   train_dataset_ = Dataset('train')
   train_dataset = train_dataset_.make_batch(batch_size, inputs)

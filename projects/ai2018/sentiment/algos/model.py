@@ -116,6 +116,10 @@ class ModelV3(melt.Model):
     batch_size = melt.get_shape(x, 0)
     c_len = melt.length(x)
 
+    if FLAGS.rnn_no_padding:
+      logging.info('------------------no padding! train or eval')
+      c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+      
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
 
@@ -237,6 +241,10 @@ class ModelV2(melt.Model):
     batch_size = melt.get_shape(x, 0)
     c_len = melt.length(x)
 
+    if FLAGS.rnn_no_padding:
+      logging.info('------------------no padding! train or eval')
+      c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
 
@@ -302,7 +310,7 @@ class Model(melt.Model):
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       #assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
-      self.label_emb_height = NUM_CLASSES * NUM_ATTRIBUTES if not FLAGS.label_emb_height else FLAGS.label_emb_height
+      self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
       if FLAGS.use_label_emb and FLAGS.use_label_att:
         assert self.label_emb_height == NUM_CLASSES * NUM_ATTRIBUTES
       self.label_embedding = melt.layers.Embedding(self.label_emb_height, FLAGS.emb_dim)
@@ -313,6 +321,8 @@ class Model(melt.Model):
         self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
         #self.att_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=0.5, combiner=FLAGS.att_combiner)
         self.att_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+      if FLAGS.use_label_rnn:
+        self.label_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
 
     #self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
     self.encode = wenzheng.Encoder(FLAGS.encoder_type)
@@ -323,10 +333,10 @@ class Model(melt.Model):
     self.hier_encode = melt.layers.HierEncode() if FLAGS.use_hier_encode else None
 
     if FLAGS.use_self_match:
+      self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
       self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
       #self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=0.5)
-      self.match_dot_attention = melt.layers.DotAttention(hidden=self.num_units, keep_prob=self.keep_prob, combiner=FLAGS.att_combiner)
-    
+ 
     # top-k best, max,att can benfit ensemble(better then max, worse then topk-3), topk,att now best with 2layers
     logging.info('encoder_output_method:', FLAGS.encoder_output_method)
     logging.info('topk:', FLAGS.top_k)
@@ -360,6 +370,10 @@ class Model(melt.Model):
     batch_size = melt.get_shape(x, 0)
     c_len = melt.length(x)
 
+    if FLAGS.rnn_no_padding:
+      logging.info('------------------no padding! train or eval')
+      c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
 
@@ -373,6 +387,8 @@ class Model(melt.Model):
     if FLAGS.use_label_att:
       label_emb = self.label_embedding(None)
       label_seq = tf.tile(tf.expand_dims(label_emb, 0), [batch_size, 1, 1])
+      if FLAGS.use_label_rnn:
+        label_seq = self.label_encode(label_seq, tf.ones([batch_size], tf.int32) * tf.cast(melt.get_shape(label_emb, 1), tf.int32))
       x = self.att_dot_attention(x, label_seq, mask=tf.ones([batch_size, self.label_emb_height], tf.bool), training=training)
 
       if not FLAGS.simple_label_att:

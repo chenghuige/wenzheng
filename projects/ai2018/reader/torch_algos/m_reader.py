@@ -40,6 +40,9 @@ from algos.config import NUM_CLASSES
 
 import numpy as np
 
+import melt
+logging = melt.logging
+
 #v3 change to use lele.layers.CudnnRnn and recurrent + share dropout
 class MnemonicReaderV3(nn.Module):
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
@@ -159,6 +162,10 @@ class MnemonicReaderV3(nn.Module):
             c_hat = self.self_SFUs[i].forward(c_bar, torch.cat([c_tilde, c_bar * c_tilde, c_bar - c_tilde], 2))
             c_check = self.aggregate_rnns[i].forward(c_hat, x1_mask)
         
+        if self.args.pooling_no_padding:
+            #logging.info('----------pooling no padding!')
+            x1_mask = torch.zeros_like(x1, dtype=torch.uint8)
+
         c = self.pooling(c_check, x1_mask)
 
         if FLAGS.use_type_emb:
@@ -173,7 +180,7 @@ class MnemonicReaderV3(nn.Module):
 
         return x
 
-# MnemonicReader is actually V2
+# MnemonicReader is actually V2, v2 support more pooling, v2 with split got 7368
 class MnemonicReader(nn.Module):
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
     CELL_TYPES = {'lstm': nn.LSTMCell, 'gru': nn.GRUCell, 'rnn': nn.RNNCell}
@@ -285,6 +292,10 @@ class MnemonicReader(nn.Module):
             c_hat = self.self_SFUs[i].forward(c_bar, torch.cat([c_tilde, c_bar * c_tilde, c_bar - c_tilde], 2))
             c_check = self.aggregate_rnns[i].forward(c_hat, x1_mask)
         
+        if self.args.pooling_no_padding:
+            #logging.info('----------pooling no padding!')
+            x1_mask = torch.zeros_like(x1, dtype=torch.uint8)
+
         c = self.pooling(c_check, x1_mask)
 
         if FLAGS.use_type_emb:

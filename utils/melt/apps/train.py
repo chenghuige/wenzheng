@@ -105,7 +105,7 @@ flags.DEFINE_float('learning_rate', 0.5, """follow squad of ukhst
                                             notice keras set for adgrad 0.01 
                                             but seems bad perf hard to converge for some seq2seq/lstm training
                                             see textsum/train/shangpinming/seq2seq-gen-copy-switch.sh""")
-flags.DEFINE_float('min_learning_rate', 0.005, 'min learning rate used for dyanmic eval metric decay')
+flags.DEFINE_float('min_learning_rate', 5e-5, 'min learning rate used for dyanmic eval metric decay')
 
 #flags.DEFINE_float('learning_rate_decay_factor', 0.97, 'im2txt 0.5, follow nasnet using 0.97')
 flags.DEFINE_float('learning_rate_decay_factor', 0., 'im2txt 0.5, follow nasnet using 0.97')
@@ -1047,8 +1047,9 @@ def train(Dataset,
 
   if FLAGS.fold is not None:
     inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
-
-  logging.info('inputs', inputs)
+    if FLAGS.valid_input:
+      inputs += gezi.list_files(FLAGS.valid_input)
+  logging.info('inputs', len(inputs), inputs[:100])
 
   dataset = Dataset('train')
 

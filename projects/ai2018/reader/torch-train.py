@@ -40,6 +40,7 @@ def main(_):
   logging.info('Using pytorch Model:', Model)
 
   model = Model()
+  logging.info(model)
 
   train = melt.apps.get_train()
 

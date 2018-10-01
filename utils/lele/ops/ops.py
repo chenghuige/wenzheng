@@ -11,6 +11,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import torch
 from torch.autograd import Variable
 
@@ -46,4 +47,14 @@ def reverse_padded_sequence(inputs, lengths, batch_first=False):
     if batch_first:
         reversed_inputs = reversed_inputs.transpose(0, 1)
     return reversed_inputs
+
+
+#https://discuss.pytorch.org/t/how-to-tile-a-tensor/13853/4
+def tile(a, dim, n_tile):
+    init_dim = a.size(dim)
+    repeat_idx = [1] * a.dim()
+    repeat_idx[dim] = n_tile
+    a = a.repeat(*(repeat_idx))
+    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).cuda()
+    return torch.index_select(a, dim, order_index)
   

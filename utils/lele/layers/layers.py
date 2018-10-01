@@ -446,6 +446,86 @@ class SeqAttnMatch(nn.Module):
         matched_seq = alpha.bmm(y)
         return matched_seq
 
+# like tf version DotAttention is rnet
+class DotAttention(nn.Module):
+    """Given sequences X and Y, match sequence Y to each element in X.
+
+    * o_i = sum(alpha_j * y_j) for i in X
+    * alpha_j = softmax(y_j * x_i)
+    """
+
+    def __init__(self, 
+                 input_size,  
+                 input_size2,
+                 hidden,
+                 dropout_rate=0.,
+                 combiner='gate'):
+        super(DotAttention, self).__init__()
+        self.linear = nn.Linear(input_size, hidden)
+        self.linear2 = nn.Linear(input_size2, hidden)
+
+        self.hidden = hidden
+        self.combiner = combiner
+        if combiner is not None:
+            if combiner == 'gate': 
+                self.combine = Gate(input_size + input_size2, dropout_rate=dropout_rate)
+                self.output_size = input_size + input_size2
+            elif combiner == 'sfu':
+                if input_size != input_size2:
+                    self.sfu_linear = nn.Linear(input_size2, input_size)
+                else:
+                    self.sfu_linear = None
+                self.combine = SFU(input_size, 3 * input_size, dropout_rate=dropout_rate)
+                self.output_size = input_size
+            else:
+                raise ValueError(f'not support {combiner}')
+
+    def forward(self, x, y, y_mask):
+        """
+        Args:
+            x: batch * len1 * hdim
+            y: batch * len2 * hdim
+            y_mask: batch * len2 (1 for padding, 0 for true)
+        Output:
+            matched_seq: batch * len1 * hdim
+        """
+        # Project vectors
+        x_proj = self.linear(x.view(-1, x.size(2))).view(x.size(0), x.size(1), self.hidden)
+        x_proj = F.relu(x_proj)
+        y_proj = self.linear2(y.view(-1, y.size(2))).view(y.size(0), y.size(1), self.hidden)
+        y_proj = F.relu(y_proj)
+
+        #print(x_proj.shape, y_proj.shape)
+        # Compute scores
+        scores = x_proj.bmm(y_proj.transpose(2, 1))
+
+        #print(scores.shape)
+
+        #print(y_mask.shape)
+
+        # Mask padding
+        y_mask = y_mask.unsqueeze(1).expand(scores.size())
+        scores.data.masked_fill_(y_mask.data, -float('inf'))
+
+        # Normalize with softmax
+        alpha = F.softmax(scores, dim=2)
+
+        # Take weighted average
+        matched_seq = alpha.bmm(y)
+
+        if self.combiner is None:
+            return matched_seq
+        else:
+            # TODO FIXME... why is False == True  ???
+            #print(self.combiner, self.combiner is 'sfu', self.combiner == 'sfu')
+            if self.combiner == 'gate':
+                return self.combine(torch.cat([x, matched_seq], 2))
+            elif self.combiner == 'sfu':
+                if self.sfu_linear is not None:
+                    matched_seq = self.sfu_linear(matched_seq)
+
+                return self.combine(x,  torch.cat([x, x * matched_seq, x - matched_seq], 2))
+
 class SelfAttnMatch(nn.Module):
     """Given sequences X and Y, match sequence Y to each element in X.
 
@@ -637,7 +717,7 @@ class LinearSeqAttnPooling(nn.Module):
         x_flat = x.view(-1, x.size(-1))
         scores = self.linear(x_flat).view(x.size(0), x.size(1))
         scores.data.masked_fill_(x_mask.data, -float('inf'))
-        alpha = F.softmax(scores)
+        alpha = F.softmax(scores, dim=-1)
         return alpha.unsqueeze(1).bmm(x).squeeze(1)
 
 class NonLinearSeqAttnPooling(nn.Module):
@@ -660,7 +740,7 @@ class NonLinearSeqAttnPooling(nn.Module):
         """
         scores = self.FFN(x).squeeze(2)
         scores.data.masked_fill_(x_mask.data, -float('inf'))
-        alpha = F.softmax(scores)
+        alpha = F.softmax(scores, dim=-1)
         return alpha.unsqueeze(1).bmm(x).squeeze(1)
 
 class Pooling(nn.Module):
@@ -702,7 +782,7 @@ class Pooling(nn.Module):
       else:
         self.output_size += input_size
 
-    logging.info('poolings:', self.poolings)
+    #logging.info('poolings:', self.poolings)
   
   def forward(self, x, mask=None, calc_word_scores=False):
     results = []
@@ -723,9 +803,10 @@ class Gate(nn.Module):
     g = sigmoid(Wx)
     x = g * x
     """
-    def __init__(self, input_size):
+    def __init__(self, input_size, dropout_rate=0.):
         super(Gate, self).__init__()
         self.linear = nn.Linear(input_size, input_size, bias=False)
+        self.dropout_rate = dropout_rate
 
     def forward(self, x):
         """
@@ -735,6 +816,8 @@ class Gate(nn.Module):
         Output:
             res: batch * len * dim
         """
+        if self.dropout_rate:
+            x = F.dropout(x, p=self.dropout_rate, training=self.training)
         x_proj = self.linear(x)
         gate = torch.sigmoid(x)
         return x_proj * gate
@@ -745,13 +828,16 @@ class SFU(nn.Module):
     The ouput vector is expected to not only retrieve correlative information from fusion vectors,
     but also retain partly unchange as the input vector
     """
-    def __init__(self, input_size, fusion_size):
+    def __init__(self, input_size, fusion_size, dropout_rate=0.):
         super(SFU, self).__init__()
         self.linear_r = nn.Linear(input_size + fusion_size, input_size)
         self.linear_g = nn.Linear(input_size + fusion_size, input_size)
+        self.dropout_rate = dropout_rate
 
     def forward(self, x, fusions):
         r_f = torch.cat([x, fusions], 2)
+        if self.dropout_rate:
+            r_f = F.dropout(r_f, p=self.dropout_rate, training=self.training)
         r = torch.tanh(self.linear_r(r_f))
         g = torch.sigmoid(self.linear_g(r_f))
         o = g * r + (1-g) * x

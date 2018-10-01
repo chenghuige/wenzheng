@@ -47,7 +47,8 @@ def init():
 
   ids2text.init()
 
-  min_learning_rate = 1e-5
+  #min_learning_rate = 1e-5
+  min_learning_rate = FLAGS.min_learning_rate
   if FLAGS.decay_target:
     global decay
     decay_target = FLAGS.decay_target

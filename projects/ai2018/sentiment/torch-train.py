@@ -40,6 +40,8 @@ def main(_):
 
   model = getattr(base, FLAGS.model)()
 
+  logging.info(model)
+
   train = melt.apps.get_train()
 
   train(Dataset,
