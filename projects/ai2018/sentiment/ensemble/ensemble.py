@@ -36,16 +36,7 @@ ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_d
 num_attrs = len(ATTRIBUTES)
 num_classes = 4
 
-scores = np.zeros([num_attrs])
-
 num_ensembles = 0
-
-f1_scores = {}
-for i in range(num_attrs):
-  f1_scores[i] = []
-scores_list = [ ]
-weights = {}
-
 
 def parse(l):
   return np.array([float(x.strip()) for x in l[1:-1].split(',')])
@@ -85,7 +76,6 @@ idx = 2
 
 results = None
 results2 = None
-results3 = None 
 
 valid_files = glob.glob(f'{idir}/*.valid.csv')
 if not DEBUG:
@@ -95,8 +85,8 @@ else:
   print('Debug mode INFER ill write result using valid ids, just for test')
   infer_files = glob.glob(f'{idir}/*.valid.csv') 
 
-dfs = []
 weights = [] 
+scores_list = []
 for fid, file_ in enumerate(valid_files):
   df = pd.read_csv(file_)
   df= df.sort_values('id') 
@@ -104,6 +94,8 @@ for fid, file_ in enumerate(valid_files):
   predicts = df.iloc[:,idx+num_attrs:idx+2*num_attrs].values
   scores = df['score']
   scores = [parse(score) for score in scores] 
+  scores = np.array(scores)
+  scores_list.append(scores)
   #f1 = calc_f1(labels, predicts) 
   #f1 = calc_f1(labels, to_predict(scores)) 
   #f1s = calc_f1s(labels, predicts) 
@@ -113,26 +105,23 @@ for fid, file_ in enumerate(valid_files):
   weight = np.reshape(f1s, [num_attrs, 1])
   weights.append(weight) 
 
-  dfs.append(df[['id', 'score']])
-
 weights = np.array(weights)
+scores_list = np.array(scores_list)
 print('num_ensembles', len(valid_files))
 print('num_infers', len(infer_files))
   
 for i in range(num_attrs):
-  ws = weights[:,i]
+  ws = weights[:, i]
   for j in range(len(weights)):
     weights[j][i] = (weights[j][i] - np.min(ws)) / (np.max(ws)-np.min(ws)) + 0.1
 
+
 for fid, file_ in enumerate(valid_files):
-  df = dfs[fid]
-  scores = df['score']
-  scores = [parse(score) for score in scores] 
+  scores = scores_list[fid]
   if results is None:
-    results = np.zeros([len(df), num_attrs * num_classes])
-    results2 = np.zeros([len(df), num_attrs * num_classes])
-    results3 = np.zeros([len(df), num_attrs * num_classes]) 
-  scores = np.array(scores) 
+    results = np.zeros([len(scores), num_attrs * num_classes])
+    results2 = np.zeros([len(scores), num_attrs * num_classes])
+    results3 = np.zeros([len(scores), num_attrs * num_classes]) 
   weight = weights[fid]
   for i, score in enumerate(scores): 
     score = np.reshape(np.reshape(score, [num_attrs, num_classes]) * weight, [-1])
