@@ -85,6 +85,11 @@ def softmax(x, axis=0):
     res = x_exp / x_sum
     return res
 
+# https://stackoverflow.com/questions/3985619/how-to-calculate-a-logistic-sigmoid-function-in-python
+def sigmoid(x):
+  s = 1/(1+np.exp(-x))
+  return s
+
 def load_image_into_numpy_array(image):
   (im_width, im_height) = image.size
   # what about 4 channels ?  TODO

@@ -205,7 +205,7 @@ class Pooling(keras.Model):
     def get_pooling(name):
       if name == 'max':
         return MaxPooling()
-      elif name == 'mean':
+      elif name == 'mean' or name == 'avg':
         return MeanPooling()
       elif name == 'attention' or name == 'att':
         return AttentionPooling(activation=att_activation)

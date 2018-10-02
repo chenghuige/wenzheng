@@ -17,7 +17,7 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('seg_method', 'char', '')
+flags.DEFINE_string('seg_method', 'basic', '')
 flags.DEFINE_integer("max_lines", 0, "")
 
 assert FLAGS.seg_method
@@ -31,7 +31,8 @@ segmentor = Segmentor()
 
 import gezi
 
-import pandas as pd
+import pandas as pd 
+
 from projects.ai2018.sentiment.prepare import filter
 
 START_WORD = '<S>'
@@ -46,14 +47,14 @@ def seg(text, out):
   if words:
     print(' '.join(words), file=out)
 
-ifile = '/home/gezi/data/ai2018/sentiment/dianping/ratings.csv'
+ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/raw_comment_v2.csv'
 df = pd.read_csv(ifile)
 
-ofile = '/home/gezi/data/ai2018/sentiment/dianping/seg.char.txt'
+ofile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/seg.txt'
 
 with open(ofile, 'w') as out:
   num = 0
-  for comment in df['comment']:
+  for comment in df['content']:
     if num % 10000 == 0:
       print(num, file=sys.stderr)
     try:

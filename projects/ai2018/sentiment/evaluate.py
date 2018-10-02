@@ -74,16 +74,30 @@ def init():
                       min_learning_rate=min_learning_rate,
                       names=wnames)  
 
-def to_predict(logits):
-  probs = gezi.softmax(logits, 1)
-  result = np.zeros([len(probs)], dtype=np.int32)
-  for i, prob in enumerate(probs):
-    if prob[0] >= 0.6:
-      result[i] = -2
-    else:
-      result[i] = np.argmax(prob[1:]) - 1
+# def to_predict(logits):
+#   probs = gezi.softmax(logits, 1)
+#   result = np.zeros([len(probs)], dtype=np.int32)
+#   for i, prob in enumerate(probs):
+#     # it can imporve but depends 0.6 or 0.7  or 0.8 ?
+#     if prob[0] >= 0.6:
+#       result[i] = -2
+#     else:
+#       result[i] = np.argmax(prob[1:]) - 1
 
-  return result
+#   return result
+
+def to_class(predicts, thre=0.5):
+  if FLAGS.loss_type != 'hier':
+    return np.argmax(predicts, -1)
+  else:
+    result = np.zeros([len(predicts)], dtype=np.int32)
+    for i, predict in enumerate(predicts):
+      na_prob = gezi.sigmoid(predict[0])
+      if na_prob > thre:
+        result[i] = 0
+      else:
+        result[i] = np.argmax(predict[1:]) + 1
+    return result
 
 def calc_f1(labels, predicts, ids=None, model_path=None):
   classes = ['0na', '1neg', '2neu', '3pos']
@@ -103,7 +117,7 @@ def calc_f1(labels, predicts, ids=None, model_path=None):
     # print(predicts[:,i])
     # print(len(labels[:,i]))
     # print(len(predicts[:,i]))
-    scores = f1_score(labels[:,i], np.argmax(predicts[:,i], -1), average=None)
+    scores = f1_score(labels[:,i], to_class(predicts[:,i]), average=None)
     # if FLAGS.binary_class_index is not None:
     #   scores = [scores[1]]
     ## this will be a bit better imporve 0.001, I will just use when ensemble

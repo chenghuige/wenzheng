@@ -140,8 +140,8 @@ flags.DEFINE_bool('use_self_match', False, '')
 
 flags.DEFINE_bool('self_match_before_label_att', True, '')
 
-flags.DEFINE_bool('toxic_only', False, '')
-flags.DEFINE_bool('toxic_softmax_loss', False, 'for toxic and serv')
+flags.DEFINE_string('loss_type', 'normal', '')
+flags.DEFINE_bool('hier_finetune', False, '')
 
 flags.DEFINE_bool('char_only', False, '')
 flags.DEFINE_integer('char_num_layers', 1, '')

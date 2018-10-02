@@ -23,8 +23,7 @@ import sys
 import os
 from algos.weights import *
 
-def criterion(model, x, y, training=False):
-  y_ = model(x, training=training)
+def calc_loss(y, y_, training=False):
   #y += 2
   weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
   
@@ -47,6 +46,7 @@ def criterion(model, x, y, training=False):
     elif FLAGS.loss == 'focal':
       loss = melt.losses.focal_loss(y, y_)
 
+  #----------depreciated below has bug..
   if FLAGS.na_loss_ratio > 0.:
     y_ = tf.concat([y_[:,:,0:1], tf.reduce_sum(y_[:,:,1:], -1, keepdims=True)], -1)
     y_onehot = tf.one_hot(tf.to_int64(y > 0), 2)
@@ -68,3 +68,32 @@ def criterion(model, x, y, training=False):
 
   return loss
 
+
+def calc_binary_loss(y, y_, reduction=tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS):
+  return tf.losses.sigmoid_cross_entropy(tf.to_int64(y > 0), y_, reduction)
+
+# now consider simple rule level 0 loss + level 1 loss
+# not imporve, worse...
+def calc_hier_loss(y, y_):
+  binary_label = tf.to_int64(tf.equal(y, 0))
+  # sigmoid reduction by default is not None and will return result shape as label(if set None will return scalar)
+  level0_loss  = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,0])
+  mask = tf.to_float(1 - binary_label)
+  # softmax loss reduction by defualt is not None and will return scalar, set None will return shape as label
+  level1_loss = tf.losses.sparse_softmax_cross_entropy(tf.maximum(y - 1, 0), y_[:,:,1:], reduction=tf.losses.Reduction.NONE)
+
+  loss = level0_loss + level1_loss * mask
+  loss = tf.reduce_mean(loss)
+
+  return loss
+
+def criterion(model, x, y, training=False):
+  y_ = model(x, training=training)
+  if FLAGS.loss_type == 'normal':
+    return calc_loss(y, y_, training)
+  elif FLAGS.loss_type == 'binary':
+    return tf.losses.sigmoid_cross_entropy(tf.to_int64(y[:,FLAGS.binary_class_index:FLAGS.binary_class_index + 1] > 0), y_, reduction=tf.losses.Reduction.NONE)
+  elif FLAGS.loss_type == 'hier':
+    return calc_hier_loss(y, y_)
+  else:
+    raise ValueError(f'Unsupported loss type{FLAGS.loss_type}')
