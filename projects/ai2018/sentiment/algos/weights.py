@@ -52,7 +52,7 @@ def get_pos(aspect):
     end = 18
   elif aspect == 'others':
     start = 18
-    end = 19  
+    end = 20 
 
   if index is not None:
     start += index 
@@ -63,18 +63,21 @@ def get_pos(aspect):
 def parse_weights():
   if ':' in FLAGS.weights:
     weights = np.ones([NUM_ATTRIBUTES]) * FLAGS.init_weight
-    for item in FLAGS.split(','):
+    for item in FLAGS.weights.split(','):
       aspect, val = item.split(':')
       val = float(val)
       start, end = get_pos(aspect)
       if start is None:
         assert aspect in ATTRIBUTES_MAP
+        weights[ATTRIBUTES_MAP[aspect]] = val
       else:
         for i in range(start, end):
           weights[i] = val
   else:
     weights = list(map(float, FLAGS.weights.split(',')))
     assert len(weights) == NUM_ATTRIBUTES
+
+  return weights
 
 def get_weights(aspect, attr_index=None):
   if FLAGS.weights:

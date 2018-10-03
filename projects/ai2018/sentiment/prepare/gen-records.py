@@ -27,6 +27,8 @@ flags.DEFINE_bool('binary', False, '')
 flags.DEFINE_integer('limit', 5000, '')
 flags.DEFINE_integer('threads', None, '')
 flags.DEFINE_integer('num_records_', 7, '10 or 5?')
+#flags.DEFINE_integer('start_index', 0, 'set it to 1 if you have valid file which you want to put in train as fold 0')
+flags.DEFINE_bool('use_fold', False, '')
 
 import traceback
 from sklearn.utils import shuffle
@@ -55,23 +57,31 @@ def get_mode(path):
   if 'train' in path:
     return 'train'
   elif 'valid' in path:
-    return 'valid' 
+    if not FLAGS.use_fold:
+      return 'valid' 
+    else:
+      return 'train'
   elif 'test' in path:
     return 'test'
   elif '.pm' in path:
     return 'pm'
+  elif 'trans' in path:
+    return 'trans' 
   return 'train'
 
 def build_features(index):
   mode = get_mode(FLAGS.input)
 
-  out_file = os.path.dirname(FLAGS.vocab) + '/{0}/{1}.record'.format(mode, index)
+  start_index = 0 if not FLAGS.use_fold else 1
+  out_file = os.path.dirname(FLAGS.vocab) + '/{0}/{1}.record'.format(mode, index + start_index)
   os.system('mkdir -p %s' % os.path.dirname(out_file))
   print('---out_file', out_file)
   # TODO now only gen one tfrecord file 
 
   total = len(df)
-  num_records = FLAGS.num_records_ if mode is 'train' else 1
+  num_records = FLAGS.num_records_ 
+  if mode in ['valid', 'test', 'dev', 'pm']:
+    num_records = 1
   start, end = gezi.get_fold(total, num_records, index)
 
   print('infile', FLAGS.input, 'out_file', out_file)
@@ -131,7 +141,11 @@ def main(_):
   
   pool = multiprocessing.Pool()
 
-  FLAGS.num_records_ = FLAGS.num_records_ if mode is 'train' else 1
+  if mode in ['valid', 'test', 'dev', 'pm']:
+    FLAGS.num_records_ = 1
+
+  print('num records file to gen', FLAGS.num_records_)
+
   pool.map(build_features, range(FLAGS.num_records_))
   pool.close()
   pool.join()

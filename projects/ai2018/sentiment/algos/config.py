@@ -36,6 +36,7 @@ flags.DEFINE_string('model', 'Model', '')
 
 flags.DEFINE_string('loss', 'cross', '')
 
+flags.DEFINE_float('other_loss_factor', 1., '')
 flags.DEFINE_float('na_loss_ratio', 0., '')
 flags.DEFINE_bool('na_loss_ratio_add', True, '')
 flags.DEFINE_float('earth_mover_loss_ratio', 0, '')

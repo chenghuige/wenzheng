@@ -1,5 +1,5 @@
 base=./mount
-dir=$base/temp/ai2018/sentiment/tfrecord.char.glove.canyin/
+dir=$base/temp/ai2018/sentiment/tfrecord.5k.mix.glove.canyin/
 
 fold=0
 if [ $# == 1 ];
@@ -9,8 +9,8 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v4/gru.5k.canyin.char
-num_epochs=30
+model_dir=$base/temp/ai2018/sentiment/model/v4/gru.5k.canyin.mix.hier.trans
+num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
@@ -51,13 +51,14 @@ fi
 
 
 python $exe \
+        --loss_type=hier \
         --model=Model \
         --use_self_match=1 \
         --label_emb_height=20 \
         --use_label_att=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
-        --train_input=$dir/train/'*,' \
+        --train_input=$dir/train/'*,'$dir/trans/'*,' \
         --valid_input=$dir/valid/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \

@@ -86,10 +86,19 @@ def init():
 
 #   return result
 
-def to_class(predicts, thre=0.5):
-  if FLAGS.loss_type != 'hier':
-    return np.argmax(predicts, -1)
+
+def regression_to_class(predict):
+  if predict > 7:
+    return 3
+  elif predict > 5:
+    return 2
+  elif predict > 3:
+    return 1
   else:
+    return 0
+
+def to_class(predicts, thre=0.5):
+  if FLAGS.loss_type == 'hier':
     result = np.zeros([len(predicts)], dtype=np.int32)
     for i, predict in enumerate(predicts):
       na_prob = gezi.sigmoid(predict[0])
@@ -98,6 +107,11 @@ def to_class(predicts, thre=0.5):
       else:
         result[i] = np.argmax(predict[1:]) + 1
     return result
+  elif FLAGS.loss_type == 'regression':
+    return np.array([regression_to_class(x) for x in predicts])
+  else:
+    return np.argmax(predicts, -1)
+  
 
 def calc_f1(labels, predicts, ids=None, model_path=None):
   classes = ['0na', '1neg', '2neu', '3pos']
@@ -109,7 +123,7 @@ def calc_f1(labels, predicts, ids=None, model_path=None):
   names = ['f1/' + x for x in names]
   # TODO show all 20 * 4 ? not only show 20 f1
   f1_list = []
-  attr_f1 = np.zeros([num_classes])
+  class_f1 = np.zeros([num_classes])
   all_f1 = []
   for i in range(NUM_ATTRIBUTES):
     #f1 = f1_score(labels[:,i], np.argmax(predicts[:,i], 1) - 2, average='macro')
@@ -122,14 +136,14 @@ def calc_f1(labels, predicts, ids=None, model_path=None):
     #   scores = [scores[1]]
     ## this will be a bit better imporve 0.001, I will just use when ensemble
     #scores = f1_score(labels[:,i], to_predict(predicts[:,i]), average=None)
-    attr_f1 += scores
+    class_f1 += scores
     all_f1 += list(scores)
     f1 = np.mean(scores)
     f1_list.append(f1)
   f1 = np.mean(f1_list)
-  attr_f1 /= NUM_ATTRIBUTES
+  class_f1 /= NUM_ATTRIBUTES
   
-  vals = [f1] + f1_list + list(attr_f1)
+  vals = [f1] + f1_list + list(class_f1)
   
   if model_path is None:
     if FLAGS.decay_target:
@@ -162,10 +176,15 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
       df[ATTRIBUTES[i] + '_y'] = labels[:,i] - 2
   for i in range(len(ATTRIBUTES)):
     # nitice if na only then if -1 means predict na as finally should be -2
-    df[ATTRIBUTES[i]] = np.argmax(predicts[:,i], 1) - 2
+    if FLAGS.loss_type == 'regression':
+      df[ATTRIBUTES[i]] = predicts[:,i]
+    else:
+      df[ATTRIBUTES[i]] = np.argmax(predicts[:,i], 1) - 2
   if is_infer:
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
-  num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
+  num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 1
+  if FLAGS.loss_type == 'regression':
+    num_classes = 1
   df['score'] = [list(x) for x in np.reshape(predicts, [-1, NUM_ATTRIBUTES * num_classes])]
   if not is_infer:
     df['seg'] = [ids2text.ids2text(infos[id]['content'], sep='|') for id in ids]

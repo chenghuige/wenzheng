@@ -78,6 +78,7 @@ class RNet(melt.Model):
       self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
       #self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=0.5)
 
+    # TODO might try to all set use_bias=True 
     if FLAGS.use_answer_emb:
       self.context_dense = keras.layers.Dense(FLAGS.emb_dim, use_bias=False)
       self.answer_dense = keras.layers.Dense(FLAGS.emb_dim, use_bias=False)

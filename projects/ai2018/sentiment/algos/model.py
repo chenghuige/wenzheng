@@ -755,6 +755,8 @@ class Model(melt.Model):
       self.dense = None
 
     self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 1
+    if FLAGS.loss_type == 'regression':
+      self.num_classes = 1
     self.logits = keras.layers.Dense(NUM_ATTRIBUTES * self.num_classes, activation=None)
     
   def call(self, input, training=False):
@@ -812,6 +814,9 @@ class Model(melt.Model):
     # if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES * NUM_CLASSES:
     #   x = melt.adjust_lrs(x)
 
-    x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, self.num_classes])
-    
+    if FLAGS.loss_type == 'regression':
+      x = tf.nn.sigmoid(x) * 10
+    else:
+      x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, self.num_classes])
+      
     return x

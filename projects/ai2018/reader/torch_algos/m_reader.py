@@ -43,6 +43,13 @@ import numpy as np
 import melt
 logging = melt.logging
 
+def get_mask(x):
+    if FLAGS.rnn_no_padding:
+        x_mask = torch.zeros_like(x, dtype=torch.uint8)
+    else:
+        x_mask = x.eq(0)
+    return x_mask
+
 #v3 change to use lele.layers.CudnnRnn and recurrent + share dropout
 class MnemonicReaderV3(nn.Module):
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
@@ -135,12 +142,8 @@ class MnemonicReaderV3(nn.Module):
         x2_emb = self.embedding(x2)
 
         # TODO understand pytorch mask, not set to no pad
-        if self.args.rnn_no_padding:
-            x1_mask = torch.zeros_like(x1, dtype=torch.uint8)
-            x2_mask = torch.zeros_like(x2, dtype=torch.uint8)
-        else:
-            x1_mask = x1.eq(0)
-            x2_mask = x2.eq(0)
+        x1_mask = get_mask(x1)
+        x2_mask = get_mask(x2)
 
         num_units = self.encoding_rnn.num_units
         batch_size = x1.size(0)
@@ -181,6 +184,7 @@ class MnemonicReaderV3(nn.Module):
         return x
 
 # MnemonicReader is actually V2, v2 support more pooling, v2 with split got 7368
+# TODO err why wrong.. slow at beggining FIXME can just fall back to V1
 class MnemonicReader(nn.Module):
     RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
     CELL_TYPES = {'lstm': nn.LSTMCell, 'gru': nn.GRUCell, 'rnn': nn.RNNCell}
@@ -249,32 +253,34 @@ class MnemonicReader(nn.Module):
                         top_k=FLAGS.top_k, 
                         att_activation=getattr(F, FLAGS.att_activation))
 
-        pre_logits_dim = self.pooling.output_size
+        dim = self.pooling.output_size
         if FLAGS.use_type_emb:
             num_types = 2
             type_emb_dim = 10
             self.type_embedding = nn.Embedding(num_types, type_emb_dim)
-            pre_logits_dim += type_emb_dim
-            
-        self.logits = nn.Linear(pre_logits_dim, NUM_CLASSES)
-        self.logits2 = nn.Linear(pre_logits_dim, NUM_CLASSES)
+            dim += type_emb_dim
+
+        if FLAGS.use_answer_emb:
+            self.context_dense = nn.Linear(self.pooling.output_size, FLAGS.emb_dim)
+            self.answer_dense = nn.Linear(self.pooling.output_size, FLAGS.emb_dim)
+            dim += 3
+
+        self.logits = nn.Linear(dim, NUM_CLASSES)
+        self.logits2 = nn.Linear(dim, NUM_CLASSES)
 
 
     def forward(self, inputs):
         x1 = inputs['passage']
         x2 = inputs['query']
+        batch_size = x1.size(0)
 
         # Embed both document and question
         x1_emb = self.embedding(x1)
         x2_emb = self.embedding(x2)
 
         # TODO understand pytorch mask, not set to no pad
-        if self.args.rnn_no_padding:
-            x1_mask = torch.zeros_like(x1, dtype=torch.uint8)
-            x2_mask = torch.zeros_like(x2, dtype=torch.uint8)
-        else:
-            x1_mask = x1.eq(0)
-            x2_mask = x2.eq(0)
+        x1_mask = get_mask(x1)
+        x2_mask = get_mask(x2)
 
         #----- well here currently not reccurent dropout and not share dropout
         # Encode document with RNN
@@ -300,6 +306,41 @@ class MnemonicReader(nn.Module):
 
         if FLAGS.use_type_emb:
             c = torch.cat([c, self.type_embedding(inputs['type'])], 1)
+
+        if FLAGS.use_answer_emb:
+            x1 = x = c
+
+            neg = inputs['candidate_neg']
+            pos = inputs['candidate_pos']
+            na = inputs['candidate_na']
+
+            neg_mask = get_mask(neg)
+            pos_mask = get_mask(pos)
+            na_mask = get_mask(na)
+
+            neg_emb = self.embedding(neg)
+            pos_emb = self.embedding(pos)
+            na_emb = self.embedding(na)
+
+            neg = self.encoding_rnn(neg_emb, neg_mask)
+            pos = self.encoding_rnn(pos_emb, pos_mask)
+            na = self.encoding_rnn(na_emb, na_mask)
+
+            neg = self.pooling(neg, neg_mask)
+            pos = self.pooling(pos, pos_mask)
+            na = self.pooling(na, na_mask)
+
+            answer = torch.stack([neg, pos, na], 1)
+
+            # [batch_size, emb_dim]
+            x = self.context_dense(x)
+            # [batch_size, 3, emb_dim]
+            answer = self.answer_dense(answer)
+            x = answer.bmm(x.unsqueeze(1).transpose(2, 1))
+            x = x.view(batch_size, NUM_CLASSES)
+
+            x = torch.cat([x1, x], -1)
+            c = x
     
         x = self.logits(c)
 

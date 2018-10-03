@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v4/gru.5k.canyin.char
+model_dir=$base/temp/ai2018/sentiment/model/v4/gru.5k.canyin.char.addneubinary.trans
 num_epochs=30
 
 mkdir -p $model_dir/epoch 
@@ -51,13 +51,14 @@ fi
 
 
 python $exe \
+        --loss_type=add_neu_binary \
         --model=Model \
         --use_self_match=1 \
         --label_emb_height=20 \
         --use_label_att=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
-        --train_input=$dir/train/'*,' \
+        --train_input=$dir/train/'*,'$dir/trans/'*,' \
         --valid_input=$dir/valid/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \

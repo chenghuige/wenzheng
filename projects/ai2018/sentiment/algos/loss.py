@@ -23,11 +23,11 @@ import sys
 import os
 from algos.weights import *
 
-def calc_loss(y, y_, training=False):
+def calc_loss(y, y_, weights=1, training=False):
   #y += 2
-  weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
   
   #print(y_, y, weights)
+  #-----------deprciated seems per class learning rate decay do not improve
   if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
     assert FLAGS.loss == 'cross'
     #loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE)
@@ -68,16 +68,12 @@ def calc_loss(y, y_, training=False):
 
   return loss
 
-
-def calc_binary_loss(y, y_, reduction=tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS):
-  return tf.losses.sigmoid_cross_entropy(tf.to_int64(y > 0), y_, reduction)
-
 # now consider simple rule level 0 loss + level 1 loss
 # not imporve, worse...
 def calc_hier_loss(y, y_):
   binary_label = tf.to_int64(tf.equal(y, 0))
-  # sigmoid reduction by default is not None and will return result shape as label(if set None will return scalar)
-  level0_loss  = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,0])
+  # sigmoid reduction by default is not None will return scalar and if set None will return result shape as label
+  level0_loss  = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,0], reduction=tf.losses.Reduction.NONE)
   mask = tf.to_float(1 - binary_label)
   # softmax loss reduction by defualt is not None and will return scalar, set None will return shape as label
   level1_loss = tf.losses.sparse_softmax_cross_entropy(tf.maximum(y - 1, 0), y_[:,:,1:], reduction=tf.losses.Reduction.NONE)
@@ -87,13 +83,47 @@ def calc_hier_loss(y, y_):
 
   return loss
 
+#now try to add neu binary loss, if imrove can try add all binary loss for na, neg,neu,pos
+def calc_add_binary_loss(y, y_, cid, weights=1):
+  binary_label = tf.to_int64(tf.equal(y, cid))
+  # TODO verify p40 with 2 run, first one is witout reduction None so two loss scalar add, second one is like below .2, see which is better, roll back if first better
+  binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights, reduction=tf.losses.Reduction.NONE)
+  loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE) 
+  loss = loss + binary_loss * FLAGS.other_loss_factor
+  loss = tf.reduce_mean(loss)
+  return loss
+
+def calc_binary_loss(y, y_, cid, weights):
+  binary_label = tf.to_int64(tf.equal(y, cid))
+  binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights)
+  return binary_loss
+
+def calc_regression_loss(y, y_, weights=1):
+  y = y * 2 + 2
+  return tf.losses.mean_squared_error(y, y_, weights=weights)
+
+  
 def criterion(model, x, y, training=False):
   y_ = model(x, training=training)
+  weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
   if FLAGS.loss_type == 'normal':
-    return calc_loss(y, y_, training)
+    return calc_loss(y, y_, weights, training)
   elif FLAGS.loss_type == 'binary':
-    return tf.losses.sigmoid_cross_entropy(tf.to_int64(y[:,FLAGS.binary_class_index:FLAGS.binary_class_index + 1] > 0), y_, reduction=tf.losses.Reduction.NONE)
+    return tf.losses.sigmoid_cross_entropy(tf.to_int64(y[:,FLAGS.binary_class_index:FLAGS.binary_class_index + 1] > 0), y_, 
+                                           reduction=tf.losses.Reduction.NONE, weights=weights)
   elif FLAGS.loss_type == 'hier':
+    # not improve deprecated
     return calc_hier_loss(y, y_)
+  elif FLAGS.loss_type == 'add_neu_binary':
+    # neu cid is 2
+    return calc_add_binary_loss(y, y_, 2, weights)
+  elif FLAGS.loss_type.startswith('add_binary_'):
+    cid = int(FLAGS.loss_type.split('_')[-1])
+    return calc_add_binary_loss(y, y_, cid, weights)
+  elif FLAGS.loss_type.startswith('binary_'):
+    cid = int(FLAGS.loss_type.split('_')[-1])
+    return calc_binary_loss(y, y_, cid, weights)
+  elif FLAGS.loss_type == 'regression':
+    return calc_regression_loss(y, y_, weights)
   else:
     raise ValueError(f'Unsupported loss type{FLAGS.loss_type}')
