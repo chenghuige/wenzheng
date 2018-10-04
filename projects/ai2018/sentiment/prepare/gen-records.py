@@ -24,7 +24,7 @@ flags.DEFINE_string('input', './mount/data/ai2018/sentiment/valid.csv', '')
 flags.DEFINE_string('vocab_', './mount/temp/ai2018/sentiment/tfrecord/vocab.txt', 'vocabulary txt file')
 #flags.DEFINE_string('seg_method', 'basic', '') 
 flags.DEFINE_bool('binary', False, '')
-flags.DEFINE_integer('limit', 5000, '')
+flags.DEFINE_integer('limit', 3000, '')
 flags.DEFINE_integer('threads', None, '')
 flags.DEFINE_integer('num_records_', 7, '10 or 5?')
 #flags.DEFINE_integer('start_index', 0, 'set it to 1 if you have valid file which you want to put in train as fold 0')
@@ -67,6 +67,12 @@ def get_mode(path):
     return 'pm'
   elif 'trans' in path:
     return 'trans' 
+  elif 'deform' in path:
+    return 'deform'
+  elif 'canyin' in path:
+    return 'canyin'
+  elif 'dianping' in path:
+    return 'dianping'
   return 'train'
 
 def build_features(index):
@@ -86,6 +92,8 @@ def build_features(index):
 
   print('infile', FLAGS.input, 'out_file', out_file)
 
+  max_len = 0
+  max_num_ids = 0
   num = 0
   with melt.tfrecords.Writer(out_file) as writer:
     for i in range(start, end):
@@ -93,20 +101,39 @@ def build_features(index):
         row = df.iloc[i]
         id = row[0]
         content = row[1] 
+
+        #print(content, type(content))
+        if len(content) > max_len:
+          max_len = len(content)
+          print('max_len', max_len)
+
+        if len(content) > 3000:
+          print(id, content)
+          if mode not in ['test', 'valid']:
+            continue 
+
         label = list(row[2:])
         
         #label = [x + 2 for x in label]
         #num_labels = len(label)
 
-        limit = FLAGS.limit
-        content = content[:limit]
         content_ids = text2ids_(content)
+
+        if len(content_ids) < 5 and mode not in ['test', 'valid']:
+          continue
+
+        limit = FLAGS.limit
+        if len(content_ids) > max_num_ids:
+          max_num_ids = len(content_ids)
+          print('max_num_ids', max_num_ids) 
+        content_ids = content_ids[:limit]
         
         feature = {
                     'id': melt.bytes_feature(str(id)),
                     'label': melt.int64_feature(label),
                     'content':  melt.int64_feature(content_ids),
-                    'content_str': melt.bytes_feature(content),     
+                    'content_str': melt.bytes_feature(content),    
+                    'sorce': melt.bytes_feature(mode), 
                   }
 
         # TODO currenlty not get exact info wether show 1 image or 3 ...
@@ -124,7 +151,8 @@ def build_features(index):
         with total_words.get_lock():
           total_words.value += len(content_ids)
       except Exception:
-        print(traceback.format_exc(), file=sys.stderr)
+        #print(traceback.format_exc(), file=sys.stderr)
+        pass
 
 
 def main(_):  
@@ -134,7 +162,7 @@ def main(_):
   print(text2ids.ids2text(text2ids_('喜欢玩孙尚香的加我好友：2948291976')))
 
   global df
-  df = pd.read_csv(FLAGS.input)
+  df = pd.read_csv(FLAGS.input, lineterminator='\n')
 
   mode = get_mode(FLAGS.input)
 
@@ -145,6 +173,8 @@ def main(_):
     FLAGS.num_records_ = 1
 
   print('num records file to gen', FLAGS.num_records_)
+
+  #FLAGS.num_records_ = 1
 
   pool.map(build_features, range(FLAGS.num_records_))
   pool.close()

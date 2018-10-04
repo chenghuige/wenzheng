@@ -35,6 +35,12 @@ class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='train'):
     super(Dataset, self).__init__(subset)
 
+    def undersampling_filter(x, y):
+      prob = tf.cond(tf.equal(x['sorce'], 'train'), lambda: 1., lambda: FLAGS.deform_ratio)
+      acceptance = tf.less_equal(tf.random_uniform([], dtype=tf.float32), prob)
+      return acceptance
+    self.filter_fn = undersampling_filter if FLAGS.deform_ratio < 1 else None
+    
   def parser(self, example):
     """Parses a single tf.Example into image and label tensors."""
     features_dict = {
@@ -42,6 +48,7 @@ class Dataset(melt.tfrecords.Dataset):
       'content_str': tf.FixedLenFeature([], tf.string),
       'content': tf.VarLenFeature(tf.int64),
       'label': tf.FixedLenFeature([NUM_ATTRIBUTES], tf.int64),
+      'sorce':  tf.FixedLenFeature([], tf.string),
       }
 
     features = tf.parse_single_example(example, features=features_dict)

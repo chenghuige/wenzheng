@@ -485,7 +485,7 @@ def train(Dataset,
         del loss
 
       batch_size_ = list(x.values())[0].shape[0] if type(x) == type({}) else x[0].shape[0]
-      num_insts += batch_size_
+      num_insts += int(batch_size_)
       if global_step.numpy() % FLAGS.interval_steps == 0:
         #checkpoint.save(checkpoint_prefix)
         elapsed = timer.elapsed()

@@ -22,10 +22,10 @@ FLAGS = flags.FLAGS
 import sys 
 import os
 from algos.weights import *
+from algos.config import NUM_CLASSES
 
 def calc_loss(y, y_, weights=1, training=False):
   #y += 2
-  
   #print(y_, y, weights)
   #-----------deprciated seems per class learning rate decay do not improve
   if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
@@ -86,7 +86,6 @@ def calc_hier_loss(y, y_):
 #now try to add neu binary loss, if imrove can try add all binary loss for na, neg,neu,pos
 def calc_add_binary_loss(y, y_, cid, weights=1):
   binary_label = tf.to_int64(tf.equal(y, cid))
-  # TODO verify p40 with 2 run, first one is witout reduction None so two loss scalar add, second one is like below .2, see which is better, roll back if first better
   binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights, reduction=tf.losses.Reduction.NONE)
   loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE) 
   loss = loss + binary_loss * FLAGS.other_loss_factor
@@ -102,10 +101,37 @@ def calc_regression_loss(y, y_, weights=1):
   y = y * 2 + 2
   return tf.losses.mean_squared_error(y, y_, weights=weights)
 
+def calc_add_binaries_loss(y, y_, cid, weights=1):  
+  loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE) 
+  for cid in range(NUM_CLASSES):
+    binary_label = tf.to_int64(tf.equal(y, cid))
+    binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights, reduction=tf.losses.Reduction.NONE)
+    loss = loss + binary_loss * (1 / NUM_CLASSES)
+  loss = tf.reduce_mean(loss)
+  return loss
+
+def calc_binaries_only_loss(y, y_, cid, weights=1):  
+  loss = None
+  for cid in range(NUM_CLASSES):
+    binary_label = tf.to_int64(tf.equal(y, cid))
+    binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights, reduction=tf.losses.Reduction.NONE)
+    if loss is None:
+      loss = binary_loss
+    else:
+      loss = loss + binary_loss
+    
+  loss = tf.reduce_mean(loss)
+  return loss
   
 def criterion(model, x, y, training=False):
   y_ = model(x, training=training)
   weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
+
+  # only need this if we have label -1 means to mask 
+  mask = y >= 0
+  weights = weights * tf.to_float(mask)
+  y = y * tf.to_int64(mask)
+
   if FLAGS.loss_type == 'normal':
     return calc_loss(y, y_, weights, training)
   elif FLAGS.loss_type == 'binary':
@@ -125,5 +151,9 @@ def criterion(model, x, y, training=False):
     return calc_binary_loss(y, y_, cid, weights)
   elif FLAGS.loss_type == 'regression':
     return calc_regression_loss(y, y_, weights)
+  elif FLAGS.loss_type == 'add_binaries':
+    return calc_add_binaries_loss(y, y_, weights)
+  elif FLAGS.loss_type == 'binaries_only':
+    return calc_binaries_only_loss(y, y_, weights)
   else:
     raise ValueError(f'Unsupported loss type{FLAGS.loss_type}')

@@ -762,6 +762,9 @@ class Model(melt.Model):
   def call(self, input, training=False):
     x = input['content'] 
 
+    if FLAGS.content_limit and training:
+      x = x[:,:FLAGS.content_limit]
+
     c_mask = tf.cast(x, tf.bool)
     batch_size = melt.get_shape(x, 0)
     c_len = melt.length(x)

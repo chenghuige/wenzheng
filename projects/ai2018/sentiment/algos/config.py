@@ -32,6 +32,9 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_integer('content_limit', 0, '')
+flags.DEFINE_float('deform_ratio', 0.2, '')
+
 flags.DEFINE_string('model', 'Model', '')
 
 flags.DEFINE_string('loss', 'cross', '')
