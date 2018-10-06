@@ -32,8 +32,10 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+#flags.DEFINE_float('label_smoothing', 0, '')
+
 flags.DEFINE_integer('content_limit', 0, '')
-flags.DEFINE_float('deform_ratio', 0.2, '')
+flags.DEFINE_float('other_corpus_factor', 1., '')
 
 flags.DEFINE_string('model', 'Model', '')
 
@@ -67,22 +69,7 @@ flags.DEFINE_string('att_combiner', 'gate', '')
 
 flags.DEFINE_string('att_activation', 'relu', '')
 
-flags.DEFINE_bool('use_text', True, '')
-flags.DEFINE_bool('use_image', False, '')
-flags.DEFINE_bool('use_all_image', False, '')
-flags.DEFINE_bool('use_user', False, '')
-flags.DEFINE_bool('use_imtxt', False, '')
-flags.DEFINE_bool('use_image_score', False, '')
-flags.DEFINE_bool('use_image_score_emb', False, '')
-flags.DEFINE_bool('use_bias', False, '')
-
-flags.DEFINE_bool('use_image_info', False, '')
-
-flags.DEFINE_string('image_combiner', 'rnn', 'rnn, concat, sum, sfu')
-flags.DEFINE_string('user_combiner', 'concat', 'rnn, concat, sum, sfu')
-
-flags.DEFINE_string('comment_fields', 'comment', '')
-flags.DEFINE_string('comment_combiner', 'concat', '')
+flags.DEFINE_bool('loss_combine_by_scalar', False, '')
 
 flags.DEFINE_string('encoder_combiner', 'concat', '')
 

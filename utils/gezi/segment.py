@@ -222,6 +222,26 @@ class JiebaSegmentor(object):
     words = None
     if method == 'default' or method == 'basic' or method == 'exact':
       words = [x for x in jieba.cut(text, cut_all=False)]
+    elif method == 'basic_digit':
+      words = [x for x in jieba.cut(text, cut_all=False)]
+      def sep_digits(word):
+        l = []
+        s = ''
+        for c in word:
+          if c.isdigit():
+            if s:
+              l.append(s)
+            l.append(c)
+            s = ''
+          else:
+            s += c
+        if s:
+          l.append(s)
+        return l
+      l = []
+      for w in words:
+        l += sep_digits(w)
+      words = l
     elif method == 'basic_single' or method == 'exact_single':
       words = self.segment_basic_single(text)
     elif method == 'basic_single_all':

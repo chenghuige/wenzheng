@@ -42,6 +42,7 @@ from dataset import Dataset
 
 # TODO by default save all ? so do not need to change the code ? 
 # _asdict() https://stackoverflow.com/questions/26180528/python-named-tuple-to-dictionary
+# err... valid and test data share same id...
 def deal(dataset, infos):
   for x, _ in dataset:
     for key in x:
@@ -85,32 +86,43 @@ def main(_):
 
     timer = gezi.Timer('read record')
     for i, (x, y) in enumerate(dataset):
-      if i % 10 == 1:
-        print(x['passage'][0])
-        print(ids2text.ids2text(x['passage'][0], sep='|'))
-        print(x['passage'])
-        print(type(x['id'].numpy()[0]) == bytes)
-        break
+      # if i % 10 == 1:
+      #   print(x['id'])
+      #   print(x['content'][0])
+      #   print(ids2text.ids2text(x['content'][0], sep='|'))
+      #   print(x['content'])
+      #   print(type(x['id'].numpy()[0]) == bytes)
+      #   break
+      x['id'] = gezi.decode(x['id'].numpy())
+      x['content_str'] = gezi.decode(x['content_str'].numpy())
+      for j, id in enumerate(x['id']):
+        if id == '573':
+          print(id, x['content_str'][j])
   else:
-    infos = {}
-    inputs = gezi.list_files(f'{base}/valid/*record')
+    valid_infos = {}
+    test_infos = {}
+    inputs = gezi.list_files(f'{base}/train/*record')
     dataset = Dataset('valid')
     dataset = dataset.make_batch(1, inputs)
-    deal(dataset, infos)
-    print('after valid', len(infos))
+    deal(dataset, valid_infos)
+    print('after valid', len(valid_infos))
     inputs = gezi.list_files(f'{base}/test/*record')
     dataset = Dataset('test')
     dataset = dataset.make_batch(1, inputs)
-    deal(dataset, infos)
-    print('after test', len(infos))
+    deal(dataset, test_infos)
+    print('after test', len(test_infos))
 
-    for key in infos:
-      print(infos[key])
+    for key in valid_infos:
+      print(valid_infos[key])
       break
 
     ofile = f'{base}/info.pkl'
     with open(ofile, 'wb') as out:
-      pickle.dump(infos, out)    
+      pickle.dump(valid_infos, out)  
+
+    ofile = ofile.replace('.pkl', '.test.pkl')  
+    with open(ofile, 'wb') as out:
+      pickle.dump(test_infos, out)  
 
 
 if __name__ == '__main__':

@@ -81,6 +81,7 @@ def evaluate(model, dataset, eval_fn, model_path=None,
           print(*names, sep=sep, file=out)
     else:
       out = None
+
     for x, y in tqdm(dataset, total=num_steps_per_epoch, ascii=True):
       if FLAGS.torch:
         x, y = to_torch(x, y)
@@ -240,20 +241,28 @@ def train(Dataset,
 
   if FLAGS.fold is not None:
     inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
-    if FLAGS.valid_input:
-      inputs += gezi.list_files(FLAGS.valid_input)
+    # if FLAGS.valid_input:
+    #   inputs += [x for x in gezi.list_files(FLAGS.valid_input) if not x.endswith('%d.record' % FLAGS.fold)]
   logging.info('inputs', len(inputs), inputs[:100])
+  num_folds = FLAGS.num_folds or len(inputs) + 1
+
 
   train_dataset_ = Dataset('train')
   train_dataset = train_dataset_.make_batch(batch_size, inputs)
   num_examples = train_dataset_.num_examples_per_epoch('train') 
   num_all_examples = num_examples
 
-  if FLAGS.fold is not None:
-    valid_inputs = [x for x in all_inputs if x not in inputs]
-  else:
+  valid_inputs = None
+  if FLAGS.valid_input:
     valid_inputs = gezi.list_files(FLAGS.valid_input)
-  
+  else:
+    if FLAGS.fold is not None:
+      #valid_inputs = [x for x in all_inputs if x not in inputs]
+      if not FLAGS.test_aug:
+        valid_inputs = [x for x in all_inputs if not 'aug' in x and x not in inputs]
+      else:
+        valid_inputs = [x for x in all_inputs if 'aug' in x and x not in inputs]
+
   logging.info('valid_inputs', valid_inputs)
 
   if valid_inputs:
@@ -266,24 +275,30 @@ def train(Dataset,
 
   if num_examples:
     if FLAGS.fold is not None:
-      num_examples = int(num_examples * (len(inputs) / (len(inputs) + 1)))
+      num_examples = int(num_examples * (num_folds - 1) / num_folds)
     num_steps_per_epoch = -(-num_examples // batch_size)
   else:
     num_steps_per_epoch = None
+  logging.info('num_train_examples:', num_examples)
 
-  if FLAGS.fold is not None:
-    if num_examples:
-      num_valid_examples = int(num_all_examples * (1 / (len(inputs) + 1)))
-      num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
-    else:
-      num_valid_steps_per_epoch = None
-  else:
+  num_valid_examples = None
+  if FLAGS.valid_input:
     num_valid_examples = valid_dataset_.num_examples_per_epoch('valid')
-    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None
+    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None   
+  else:
+    if FLAGS.fold is not None:
+      if num_examples:
+        num_valid_examples = int(num_all_examples * (1 / num_folds))
+        num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
+      else:
+        num_valid_steps_per_epoch = None
+  logging.info('num_valid_examples:', num_valid_examples)
 
   test_inputs = gezi.list_files(FLAGS.test_input)
+  #test_inputs = [x for x in test_inputs if not 'aug' in x]
   logging.info('test_inputs', test_inputs)
   
+  num_test_examples = None
   if test_inputs:
     test_dataset_ = Dataset('test')
     test_dataset = test_dataset_.make_batch(batch_size_, test_inputs) 
@@ -291,6 +306,7 @@ def train(Dataset,
     num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
   else:
     test_dataset = None
+  logging.info('num_test_examples:', num_test_examples)
   
   summary = tf.contrib.summary
   # writer = summary.create_file_writer(FLAGS.log_dir + '/epoch')
@@ -381,7 +397,7 @@ def train(Dataset,
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs
   
-  if valid_dataset and not FLAGS.mode == 'test' and not 'QUICK' in os.environ and not 'SHOW' in os.environ:
+  if valid_dataset and not FLAGS.mode == 'test' and 'EVFIRST' in os.environ and not 'SHOW' in os.environ:
     logging.info('----------valid')
     if FLAGS.torch:
       model.eval()

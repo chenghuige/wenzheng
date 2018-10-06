@@ -9,8 +9,8 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/gru.emb/
-num_epochs=15
+model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/gru.emb/
+num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
@@ -31,17 +31,18 @@ if [ "$INFER" = "2"  ];
   fold=0
 fi
 
-
 python $exe \
+        --fold=$fold \
+        --use_label_att=0 \
+        --use_self_match=0 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
-        --train_input=$dir/train/'*,' \
-        --valid_input=$dir/valid/'*,' \
+        --train_input=$dir/train/'*,'$dir/aug.train/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
-        --word_embedding_file=$dir/emb.npy \
-        --finetune_word_embedding=0 \
         --emb_dim 300 \
+        --word_embedding_file=$dir/emb.npy \
+        --finetune_word_embedding=1 \
         --batch_size 32 \
         --encoder_type=rnn \
         --keep_prob=0.7 \

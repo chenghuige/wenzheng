@@ -29,7 +29,7 @@ flags.DEFINE_boolean("add_unknown", True, "treat ignored words as unknow")
 flags.DEFINE_boolean("save_count_info", True, "save count info to bin")
 flags.DEFINE_string("out_dir", './mount/temp/ai2018/sentiment/', "save count info to bin")
 flags.DEFINE_string("vocab_name", None, "")
-flags.DEFINE_string('seg_method', 'basic_single', '')
+flags.DEFINE_string('seg_method', 'basic_single_all', '')
 
 assert FLAGS.most_common > 0 or FLAGS.min_count > 0
 assert FLAGS.seg_method

@@ -15,13 +15,19 @@ from __future__ import print_function
 import sys 
 import os
 
-infile = './mount/data/ai2018/sentiment/train.csv'
+files = [
+         './mount/data/ai2018/sentiment/train.csv', 
+         './mount/data/ai2018/sentiment/valid.csv', 
+         './mount/data/ai2018/sentiment/test.csv'
+        ]
+            
 
 import pandas as pd
 import filter
 
-df = pd.read_csv(infile)
+for infile in files:
+  df = pd.read_csv(infile)
 
-for row in df.iterrows():
-  content = filter.filter(row[1][1])
-  print(content)
+  for row in df.iterrows():
+    content = filter.filter(row[1][1])
+    print(content)

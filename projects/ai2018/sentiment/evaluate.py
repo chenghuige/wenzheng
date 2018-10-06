@@ -33,17 +33,21 @@ from algos.config import ATTRIBUTES, NUM_ATTRIBUTES, NUM_CLASSES, CLASSES
 import pickle
 import pandas as pd
 
-infos = {}
+#since we have same ids... must use valid and test 2 infos
+valid_infos = {}
+test_infos = {}
 
 decay = None
 wnames = []
 
 
 def init():
-  global infos 
+  global valid_infos, test_infos
   global wnames
   with open(FLAGS.info_path, 'rb') as f:
-    infos = pickle.load(f)
+    valid_infos = pickle.load(f)
+  with open(FLAGS.info_path.replace('.pkl', '.test.pkl'), 'rb') as f:
+    test_infos = pickle.load(f)
 
   ids2text.init()
 
@@ -99,14 +103,16 @@ def regression_to_class(predict):
 
 def to_class(predicts, thre=0.5):
   if FLAGS.loss_type == 'hier':
-    result = np.zeros([len(predicts)], dtype=np.int32)
-    for i, predict in enumerate(predicts):
-      na_prob = gezi.sigmoid(predict[0])
-      if na_prob > thre:
-        result[i] = 0
-      else:
-        result[i] = np.argmax(predict[1:]) + 1
-    return result
+    ## TODO even hier.. still not good below...
+    # result = np.zeros([len(predicts)], dtype=np.int32)
+    # for i, predict in enumerate(predicts):
+    #   na_prob = gezi.sigmoid(predict[0])
+    #   if na_prob > thre:
+    #     result[i] = 0
+    #   else:
+    #     result[i] = np.argmax(predict[1:]) + 1
+    # return result
+    return np.argmax(predicts, -1)
   elif FLAGS.loss_type == 'regression':
     return np.array([regression_to_class(x) for x in predicts])
   else:
@@ -167,6 +173,7 @@ valid_write = None
 infer_write = None 
 
 def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
+  infos = valid_infos if not is_infer else test_infos
   df = pd.DataFrame()
   df['id'] = ids
   contents = [infos[id]['content_str'] for id in ids]

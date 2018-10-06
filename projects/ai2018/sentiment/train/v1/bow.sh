@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/bow/
+model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/bow/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -32,10 +32,10 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
+        --fold=$fold \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
-        --train_input=$dir/train/'*,' \
-        --valid_input=$dir/valid/'*,' \
+        --train_input=$dir/train/'*,'$dir/aug.train/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \

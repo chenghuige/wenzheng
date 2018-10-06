@@ -33,6 +33,7 @@ from dataset import Dataset
 import evaluate as ev
 
 def main(_):
+  FLAGS.num_folds = 8
   FLAGS.torch = True
   melt.apps.init()
   

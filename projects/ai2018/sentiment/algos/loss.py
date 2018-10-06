@@ -24,7 +24,7 @@ import os
 from algos.weights import *
 from algos.config import NUM_CLASSES
 
-def calc_loss(y, y_, weights=1, training=False):
+def calc_loss(y, y_, weights, training=False):
   #y += 2
   #print(y_, y, weights)
   #-----------deprciated seems per class learning rate decay do not improve
@@ -42,7 +42,12 @@ def calc_loss(y, y_, weights=1, training=False):
     loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights)
   else: 
     if FLAGS.loss == 'cross':
-      loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights) 
+      if not FLAGS.label_smoothing:
+        loss = tf.losses.sparse_softmax_cross_entropy(y, y_, weights=weights) 
+      else:
+        onehot_labels = tf.one_hot(y, NUM_CLASSES)
+        print('--------------using label smoothing', FLAGS.label_smoothing)
+        loss = tf.losses.softmax_cross_entropy(onehot_labels, y_, weights=weights, label_smoothing=FLAGS.label_smoothing)
     elif FLAGS.loss == 'focal':
       loss = melt.losses.focal_loss(y, y_)
 
@@ -70,25 +75,47 @@ def calc_loss(y, y_, weights=1, training=False):
 
 # now consider simple rule level 0 loss + level 1 loss
 # not imporve, worse...
-def calc_hier_loss(y, y_):
+def calc_hier_loss(y, y_, weights):
   binary_label = tf.to_int64(tf.equal(y, 0))
   # sigmoid reduction by default is not None will return scalar and if set None will return result shape as label
-  level0_loss  = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,0], reduction=tf.losses.Reduction.NONE)
+  level0_loss  = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,0], weights=weights, reduction=tf.losses.Reduction.NONE)
   mask = tf.to_float(1 - binary_label)
   # softmax loss reduction by defualt is not None and will return scalar, set None will return shape as label
-  level1_loss = tf.losses.sparse_softmax_cross_entropy(tf.maximum(y - 1, 0), y_[:,:,1:], reduction=tf.losses.Reduction.NONE)
+  level1_loss = tf.losses.sparse_softmax_cross_entropy(tf.maximum(y - 1, 0), y_[:,:,1:], weights=weights, reduction=tf.losses.Reduction.NONE)
 
   loss = level0_loss + level1_loss * mask
   loss = tf.reduce_mean(loss)
 
   return loss
 
-#now try to add neu binary loss, if imrove can try add all binary loss for na, neg,neu,pos
-def calc_add_binary_loss(y, y_, cid, weights=1):
+def calc_hier_neu_loss(y, y_, weights):
+  binary_label = tf.to_int64(tf.equal(y, 0))
+  # sigmoid reduction by default is not None will return scalar and if set None will return result shape as label
+  level0_loss  = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,0], weights=weights, reduction=tf.losses.Reduction.NONE)
+  mask = tf.to_float(1 - binary_label)
+  # softmax loss reduction by defualt is not None and will return scalar, set None will return shape as label
+  level1_loss = tf.losses.sparse_softmax_cross_entropy(tf.maximum(y - 1, 0), y_[:,:,1:], weights=weights, reduction=tf.losses.Reduction.NONE)
+
+  loss = level0_loss + level1_loss * mask
+
+  # add neu binary
+  cid = 2
   binary_label = tf.to_int64(tf.equal(y, cid))
   binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights, reduction=tf.losses.Reduction.NONE)
-  loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE) 
-  loss = loss + binary_loss * FLAGS.other_loss_factor
+  loss = loss + binary_loss
+
+  loss = tf.reduce_mean(loss)
+
+  return loss
+
+#now try to add neu binary loss, if imrove can try add all binary loss for na, neg,neu,pos
+def calc_add_binary_loss(y, y_, cids, weights):
+  reduction = tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS if FLAGS.loss_combine_by_scalar else tf.losses.Reduction.NONE
+  loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=reduction) 
+  for cid in cids:
+    binary_label = tf.to_int64(tf.equal(y, cid))
+    binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights, reduction=reduction)
+    loss = loss + binary_loss * FLAGS.other_loss_factor
   loss = tf.reduce_mean(loss)
   return loss
 
@@ -97,11 +124,11 @@ def calc_binary_loss(y, y_, cid, weights):
   binary_loss = tf.losses.sigmoid_cross_entropy(binary_label, y_[:,:,cid], weights=weights)
   return binary_loss
 
-def calc_regression_loss(y, y_, weights=1):
+def calc_regression_loss(y, y_, weights):
   y = y * 2 + 2
   return tf.losses.mean_squared_error(y, y_, weights=weights)
 
-def calc_add_binaries_loss(y, y_, cid, weights=1):  
+def calc_add_binaries_loss(y, y_, cid, weights):  
   loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE) 
   for cid in range(NUM_CLASSES):
     binary_label = tf.to_int64(tf.equal(y, cid))
@@ -110,7 +137,7 @@ def calc_add_binaries_loss(y, y_, cid, weights=1):
   loss = tf.reduce_mean(loss)
   return loss
 
-def calc_binaries_only_loss(y, y_, cid, weights=1):  
+def calc_binaries_only_loss(y, y_, cid, weights):  
   loss = None
   for cid in range(NUM_CLASSES):
     binary_label = tf.to_int64(tf.equal(y, cid))
@@ -139,13 +166,13 @@ def criterion(model, x, y, training=False):
                                            reduction=tf.losses.Reduction.NONE, weights=weights)
   elif FLAGS.loss_type == 'hier':
     # not improve deprecated
-    return calc_hier_loss(y, y_)
+    return calc_hier_loss(y, y_, weights)
   elif FLAGS.loss_type == 'add_neu_binary':
     # neu cid is 2
-    return calc_add_binary_loss(y, y_, 2, weights)
+    return calc_add_binary_loss(y, y_, [2], weights)
   elif FLAGS.loss_type.startswith('add_binary_'):
-    cid = int(FLAGS.loss_type.split('_')[-1])
-    return calc_add_binary_loss(y, y_, cid, weights)
+    cids = [int(x) for x in FLAGS.loss_type.split('_')[-1].split(',')]
+    return calc_add_binary_loss(y, y_, cids, weights)
   elif FLAGS.loss_type.startswith('binary_'):
     cid = int(FLAGS.loss_type.split('_')[-1])
     return calc_binary_loss(y, y_, cid, weights)
@@ -155,5 +182,7 @@ def criterion(model, x, y, training=False):
     return calc_add_binaries_loss(y, y_, weights)
   elif FLAGS.loss_type == 'binaries_only':
     return calc_binaries_only_loss(y, y_, weights)
+  elif FLAGS.loss_type == 'hier_neu':
+    return calc_hier_neu_loss(y, y_, weights)
   else:
     raise ValueError(f'Unsupported loss type{FLAGS.loss_type}')

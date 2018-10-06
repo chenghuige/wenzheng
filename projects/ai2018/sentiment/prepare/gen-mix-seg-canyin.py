@@ -18,7 +18,8 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 #flags.DEFINE_string('seg_method', 'basic', '')
-flags.DEFINE_integer("max_lines", 0, "")
+flags.DEFINE_integer('max_lines', 0, '')
+flags.DEFINE_string('vocab_', '/home/gezi/temp/ai2018/sentiment/vocab.5k.chars.txt', '')
 
 #assert FLAGS.seg_method
 
@@ -35,7 +36,7 @@ import pandas as pd
 
 from wenzheng.utils import text2ids
 
-vocab = '/home/gezi/temp/ai2018/sentiment/vocab.5k.chars.txt'
+vocab = FLAGS.vocab_
 text2ids.init(vocab)
 
 from text2ids import text2ids as text2ids_ 
@@ -45,6 +46,7 @@ from text2ids import text2ids as text2ids_
 START_WORD = '<S>'
 END_WORD = '</S>'
 
+FLAGS.seg_method = 'basic_digit'
 print('seg_method:', FLAGS.seg_method, file=sys.stderr)
 def seg(text, out):
   #text = filter.filter(text)
@@ -56,7 +58,7 @@ def seg(text, out):
 ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/raw_comment_v2.csv'
 df = pd.read_csv(ifile)
 
-ofile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/seg.mix.txt'
+ofile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/' + os.path.basename(FLAGS.vocab_).replace('.txt', '.mix.txt')
 
 with open(ofile, 'w') as out:
   num = 0

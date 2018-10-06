@@ -41,9 +41,10 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('id', None, '')
-flags.DEFINE_string('ifile', '/home/gezi/temp/ai2018/sentiment/model/v3/gru.5k/epoch/model.ckpt-14.00-45948.valid.csv', '')
-flags.DEFINE_string('attr', 'others_overall_experience', '')
+flags.DEFINE_string('ifile', '/home/gezi/temp/ai2018/sentiment/model/v4/gru.5k.canyin.mix.addneubinary.finetune.epoch5/epoch/model.ckpt-17.00-55794.valid.csv', '')
+flags.DEFINE_string('attr', 'others_overall_experience', 'location_distance_from_business_district')
 flags.DEFINE_float('total', 100, '')
+flags.DEFINE_string('label', None, '')
 
 import sys 
 import os
@@ -71,6 +72,7 @@ def parse(l):
   else:
     return np.array([float(x.strip()) for x in l[1:-1].split()])
 
+
 ifile = FLAGS.ifile
 attr = FLAGS.attr
 total = FLAGS.total
@@ -93,16 +95,50 @@ for _, row in df.iterrows():
   score = score[idx:idx + 4]
   prob = gezi.softmax(score)
   id = row['id']
-  if FLAGS.id and id != FLAGS.id:
-    continue
-  if label != predict or FLAGS.id:
-    print(id, score, prob)
-    print(attr, 'label:', label, 'predict:', predict)
-    print(row['content'])
-    print(row['seg'])
-    num_errs += 1
+  if FLAGS.id:
+    if id != FLAGS.id:
+      continue
+    else:
+      print(id, score)
+      print(id, prob)
+      print(attr, 'label  :', label)
+      print(attr, 'predict:', predict)
+      labels = row[2:2+num_attrs]
+      labels += 2
+      predicts = row[2+num_attrs:2+2*num_attrs]
+      predicts += 2
+      print(list(zip(ATTRIBUTES, [classes[x] for x in labels])))
+      print(list(zip(ATTRIBUTES, [classes[x] for x in predicts])))
+      print(row['content'])
+      print(row['seg'])  
+      exit(0)      
+
+  if FLAGS.label:
+    if label == FLAGS.label.upper():
+      print(id, score)
+      print(id, prob)
+      print(attr, 'label  :', label)
+      print(attr, 'predict:', predict)
+      labels = row[2:2+num_attrs]
+      labels += 2
+      predicts = row[2+num_attrs:2+2*num_attrs]
+      predicts += 2
+      print(list(zip(ATTRIBUTES, [classes[x] for x in labels])))
+      print(list(zip(ATTRIBUTES, [classes[x] for x in predicts])))
+      print(row['content'])
+      print(row['seg'])      
+      num_errs += 1
   else:
-    num_oks += 1
+    if label != predict or FLAGS.id:
+      print(id, score)
+      print(id, prob)
+      print(attr, 'label  :', label)
+      print(attr, 'predict:', predict)
+      print(row['content'])
+      print(row['seg'])
+      num_errs += 1
+    else:
+      num_oks += 1
 
   if num_errs == total:
     print('num_oks', num_oks, 'num_errs', num_errs)

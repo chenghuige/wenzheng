@@ -762,6 +762,8 @@ class Model(melt.Model):
   def call(self, input, training=False):
     x = input['content'] 
 
+    #print(input['source'])
+
     if FLAGS.content_limit and training:
       x = x[:,:FLAGS.content_limit]
 
@@ -793,7 +795,7 @@ class Model(melt.Model):
       if not FLAGS.simple_label_att:
         x = self.att_encode(x, c_len, training=training)
 
-    # pust self match at last
+    # put self match at last, selfmatch help a bit
     if FLAGS.use_self_match:
        x = self.match_dot_attention(x, x, mask=c_mask, training=training) 
        x = self.match_encode(x, c_len, training=training) 

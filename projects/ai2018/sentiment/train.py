@@ -33,8 +33,9 @@ from dataset import Dataset
 import evaluate as ev
 
 def main(_):
+  FLAGS.num_folds = 8
   melt.apps.init()
-  
+
   ev.init()
 
   model = getattr(base, FLAGS.model)()

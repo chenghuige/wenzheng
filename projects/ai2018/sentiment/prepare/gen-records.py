@@ -27,8 +27,9 @@ flags.DEFINE_bool('binary', False, '')
 flags.DEFINE_integer('limit', 3000, '')
 flags.DEFINE_integer('threads', None, '')
 flags.DEFINE_integer('num_records_', 7, '10 or 5?')
-#flags.DEFINE_integer('start_index', 0, 'set it to 1 if you have valid file which you want to put in train as fold 0')
-flags.DEFINE_bool('use_fold', False, '')
+flags.DEFINE_integer('start_index', 0, 'set it to 1 if you have valid file which you want to put in train as fold 0')
+flags.DEFINE_bool('use_fold', True, '')
+flags.DEFINE_bool('augument', False, '')
 
 import traceback
 from sklearn.utils import shuffle
@@ -54,31 +55,32 @@ df = None
 
 
 def get_mode(path):
+  mode = 'train'
   if 'train' in path:
-    return 'train'
+    mode ='train'
   elif 'valid' in path:
-    if not FLAGS.use_fold:
-      return 'valid' 
-    else:
-      return 'train'
+    mode = 'train'
   elif 'test' in path:
-    return 'test'
+    mode = 'test'
   elif '.pm' in path:
-    return 'pm'
+    mode = 'pm'
   elif 'trans' in path:
-    return 'trans' 
+    mode = 'trans' 
   elif 'deform' in path:
-    return 'deform'
+    mode = 'deform'
   elif 'canyin' in path:
-    return 'canyin'
+    mode = 'canyin'
   elif 'dianping' in path:
-    return 'dianping'
-  return 'train'
+    mode = 'dianping'
+  if FLAGS.augument:
+    mode = 'aug.' + mode
+  return mode
 
 def build_features(index):
   mode = get_mode(FLAGS.input)
 
-  start_index = 0 if not FLAGS.use_fold else 1
+  start_index = FLAGS.start_index
+
   out_file = os.path.dirname(FLAGS.vocab) + '/{0}/{1}.record'.format(mode, index + start_index)
   os.system('mkdir -p %s' % os.path.dirname(out_file))
   print('---out_file', out_file)
@@ -86,11 +88,11 @@ def build_features(index):
 
   total = len(df)
   num_records = FLAGS.num_records_ 
-  if mode in ['valid', 'test', 'dev', 'pm']:
+  if mode.split('.')[-1] in ['valid', 'test', 'dev', 'pm'] or 'valid' in FLAGS.input:
     num_records = 1
   start, end = gezi.get_fold(total, num_records, index)
 
-  print('infile', FLAGS.input, 'out_file', out_file)
+  print('total', total, 'infile', FLAGS.input, 'out_file', out_file)
 
   max_len = 0
   max_num_ids = 0
@@ -99,13 +101,17 @@ def build_features(index):
     for i in range(start, end):
       try:
         row = df.iloc[i]
-        id = row[0]
+        id = str(row[0])
+
+        if start_index > 0:
+          id == 't' + id
+
         content = row[1] 
 
         #print(content, type(content))
         if len(content) > max_len:
           max_len = len(content)
-          print('max_len', max_len)
+        #   print('max_len', max_len)
 
         if len(content) > 3000:
           print(id, content)
@@ -123,17 +129,17 @@ def build_features(index):
           continue
 
         limit = FLAGS.limit
-        if len(content_ids) > max_num_ids:
-          max_num_ids = len(content_ids)
-          print('max_num_ids', max_num_ids) 
+        # if len(content_ids) > max_num_ids:
+        #   max_num_ids = len(content_ids)
+        #   print('max_num_ids', max_num_ids) 
         content_ids = content_ids[:limit]
         
         feature = {
-                    'id': melt.bytes_feature(str(id)),
+                    'id': melt.bytes_feature(id),
                     'label': melt.int64_feature(label),
                     'content':  melt.int64_feature(content_ids),
                     'content_str': melt.bytes_feature(content),    
-                    'sorce': melt.bytes_feature(mode), 
+                    'source': melt.bytes_feature(mode), 
                   }
 
         # TODO currenlty not get exact info wether show 1 image or 3 ...
@@ -156,6 +162,7 @@ def build_features(index):
 
 
 def main(_):  
+  assert FLAGS.use_fold
   text2ids.init(FLAGS.vocab_)
   print('to_lower:', FLAGS.to_lower, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
   print(text2ids.ids2text(text2ids_('傻逼脑残B')))
@@ -169,7 +176,7 @@ def main(_):
   
   pool = multiprocessing.Pool()
 
-  if mode in ['valid', 'test', 'dev', 'pm']:
+  if mode.split('.')[-1] in ['valid', 'test', 'dev', 'pm'] or 'valid' in FLAGS.input:
     FLAGS.num_records_ = 1
 
   print('num records file to gen', FLAGS.num_records_)

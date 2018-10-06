@@ -332,7 +332,7 @@ def tf_train_flow(train_once_fn,
       logging.info('just run one step')
 
     if FLAGS.mode != 'train':
-      assert not os.path.isdir(FLAGS.model_dir)
+      assert not os.path.isdir(FLAGS.model_dir), FLAGS.model_dir  
       if 'valid' in FLAGS.mode:
         vals, names = metric_eval_fn(FLAGS.model_dir)
         logging.info(list(zip(names, vals)))
@@ -441,6 +441,7 @@ def tf_train_flow(train_once_fn,
           
           if model:
             #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
+            # TODO FIXME if restart will save from 1... again..
             checkpoint.save(checkpoint_prefix, session=sess)
             
           if freeze_graph:

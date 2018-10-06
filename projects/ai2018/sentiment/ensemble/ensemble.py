@@ -118,7 +118,9 @@ def main(_):
   # first id, sencod content ..
   idx = 2
 
+  # logits sum results
   results = None
+  # prob sum results
   results2 = None
 
   valid_files = glob.glob(f'{idir}/*.valid.csv')

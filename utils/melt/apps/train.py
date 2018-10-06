@@ -238,30 +238,11 @@ flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
 
 flags.DEFINE_boolean('torch', False, '')
 
+flags.DEFINE_boolean('test_aug', False, '')
+
 inited = None 
 
 def init():
-  if 'MODE' in os.environ:
-    FLAGS.mode = os.environ['MODE']
-
-  if 'PYTORCH'  in os.environ or 'PYT' in os.environ or 'TORCH' in os.environ:
-    FLAGS.torch = True
-
-  #if FLAGS.mode != 'train' or FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
-  # well for safe just not by default use eager mode for valid and test since some a bit complex model now still has diff graph and eager, TODO FIXME
-  # TODO torch mode should use tf eager mode reading but since some bug for gpu oom.. now just use graph mode
-  if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ or FLAGS.torch:
-  #if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
-    logging.info('-------------RUN IN EAGER MODE!')
-    if FLAGS.torch:
-      # by default tf will use all... and also set 0. not ok so set really small
-      #opts = tf.GPUOptions(per_process_gpu_memory_fraction=1e-5)
-      #conf = tf.ConfigProto(gpu_options=opts)
-      conf = tf.ConfigProto(device_count={'GPU': 0})
-      tf.enable_eager_execution(config=conf)
-    else:
-      tf.enable_eager_execution()
-
   if 'MODEL_DIR' in os.environ:
     FLAGS.model_dir = os.environ['MODEL_DIR']
 
@@ -292,9 +273,30 @@ def init():
       FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
 
   assert FLAGS.log_dir, 'you need to set log_dir or model_dir'
-  logging.info('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir)
   os.system('mkdir -p %s' % FLAGS.log_dir)
   logging.set_logging_path(FLAGS.log_dir)
+  logging.info('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir)
+
+  if 'MODE' in os.environ:
+    FLAGS.mode = os.environ['MODE']
+
+  if 'PYTORCH'  in os.environ or 'PYT' in os.environ or 'TORCH' in os.environ:
+    FLAGS.torch = True
+
+  #if FLAGS.mode != 'train' or FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
+  # well for safe just not by default use eager mode for valid and test since some a bit complex model now still has diff graph and eager, TODO FIXME
+  # TODO torch mode should use tf eager mode reading but since some bug for gpu oom.. now just use graph mode
+  if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ or FLAGS.torch:
+  #if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
+    logging.info('-------------RUN IN EAGER MODE!')
+    if FLAGS.torch:
+      # by default tf will use all... and also set 0. not ok so set really small
+      #opts = tf.GPUOptions(per_process_gpu_memory_fraction=1e-5)
+      #conf = tf.ConfigProto(gpu_options=opts)
+      conf = tf.ConfigProto(device_count={'GPU': 0})
+      tf.enable_eager_execution(config=conf)
+    else:
+      tf.enable_eager_execution()
 
   if 'BIG' in os.environ and int(os.environ['BIG']) == True:
     if FLAGS.big_batch_size is not None:
@@ -1047,9 +1049,11 @@ def train(Dataset,
 
   if FLAGS.fold is not None:
     inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
-    if FLAGS.valid_input:
-      inputs += gezi.list_files(FLAGS.valid_input)
+    # if FLAGS.valid_input:
+    #   inputs += [x for x in gezi.list_files(FLAGS.valid_input) if not x.endswith('%d.record' % FLAGS.fold)]
   logging.info('inputs', len(inputs), inputs[:100])
+
+  num_folds = FLAGS.num_folds or len(inputs) + 1
 
   dataset = Dataset('train')
 
@@ -1057,15 +1061,23 @@ def train(Dataset,
   num_all_examples = num_examples
   if num_examples:
     if FLAGS.fold is not None:
-      num_examples = int(num_examples * (len(inputs) / (len(inputs) + 1)))
+      num_examples = int(num_examples * ((num_folds - 1) / num_folds))
     num_steps_per_epoch = -(-num_examples // batch_size)
   else:
     num_steps_per_epoch = None
+  logging.info('num_train_examples:', num_examples)
 
-  if FLAGS.fold is not None:
-    valid_inputs = [x for x in all_inputs if x not in inputs]
-  else:
+  valid_inputs = None
+  if FLAGS.valid_input:
     valid_inputs = gezi.list_files(FLAGS.valid_input)
+  else:
+    if FLAGS.fold is not None:
+      #valid_inputs = [x for x in all_inputs if x not in inputs]
+      if not FLAGS.test_aug:
+        valid_inputs = [x for x in all_inputs if not 'aug' in x and x not in inputs]
+      else:
+        valid_inputs = [x for x in all_inputs if 'aug' in x and x not in inputs]
+
 
   if valid_inputs:
     valid_dataset = Dataset('valid')
@@ -1073,25 +1085,31 @@ def train(Dataset,
     valid_dataset = None
   
   logging.info('valid_inputs', valid_inputs)
-  if FLAGS.fold is not None:
-    if num_examples:
-      num_valid_examples = int(num_all_examples * (1 / (len(inputs) + 1)))
-      num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
-    else:
-      num_valid_steps_per_epoch = None
-  else:
+  num_valid_examples = None
+  if FLAGS.valid_input:
     num_valid_examples = valid_dataset.num_examples_per_epoch('valid')
-    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None
+    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None    
+  else:
+    if FLAGS.fold is not None:
+      if num_examples:
+        num_valid_examples = int(num_all_examples * (1 / num_folds))
+        num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
+      else:
+        num_valid_steps_per_epoch = None
+  logging.info('num_valid_examples:', num_valid_examples)
 
   test_inputs = gezi.list_files(FLAGS.test_input)
+  #test_inputs = [x for x in test_inputs if not 'aug' in x]
   logging.info('test_inputs', test_inputs)
   
+  num_test_examples = None
   if test_inputs:
     test_dataset = Dataset('test')
     num_test_examples = test_dataset.num_examples_per_epoch('test')
     num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
   else:
     test_dataset = None
+  logging.info('num_test_examples:', num_test_examples)
 
   #with tf.variable_scope('model') as scope:
   iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)

@@ -35,11 +35,23 @@ class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='train'):
     super(Dataset, self).__init__(subset)
 
+    def get_aug_factor():
+      global_step = tf.train.get_or_create_global_step()
+      num_examples = tf.constant(self.num_examples_per_epoch('train'), dtype=tf.int64)
+      return tf.cond(tf.equal(tf.to_int64(global_step / num_examples) % 2, 0), lambda: 0., lambda: 1.)
+
     def undersampling_filter(x, y):
-      prob = tf.cond(tf.equal(x['sorce'], 'train'), lambda: 1., lambda: FLAGS.deform_ratio)
+      #prob = tf.cond(tf.equal(x['source'], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
+      prob = tf.cond(tf.equal(tf.strings.split(x,'.').values[-1], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
+      #is_aug = tf.to_float(tf.equal(x['source'], 'augument.train'))
+      #aug_factor = get_aug_factor()
+      #prob *=  is_aug * aug_factor + (1 - is_aug) * (1 - aug_factor)      
       acceptance = tf.less_equal(tf.random_uniform([], dtype=tf.float32), prob)
       return acceptance
-    self.filter_fn = undersampling_filter if FLAGS.deform_ratio < 1 else None
+
+    
+    self.filter_fn = undersampling_filter if FLAGS.other_corpus_factor < 1 else None
+    #self.filter_fn = undersampling_filter
     
   def parser(self, example):
     """Parses a single tf.Example into image and label tensors."""
@@ -48,7 +60,7 @@ class Dataset(melt.tfrecords.Dataset):
       'content_str': tf.FixedLenFeature([], tf.string),
       'content': tf.VarLenFeature(tf.int64),
       'label': tf.FixedLenFeature([NUM_ATTRIBUTES], tf.int64),
-      'sorce':  tf.FixedLenFeature([], tf.string),
+      'source':  tf.FixedLenFeature([], tf.string),
       }
 
     features = tf.parse_single_example(example, features=features_dict)
@@ -64,5 +76,20 @@ class Dataset(melt.tfrecords.Dataset):
     y = label + 2
     if FLAGS.binary_class_index is not None:
       y = tf.to_int64(tf.equal(y, FLAGS.binary_class_index))
-    
+
     return x, y
+
+  def num_examples_per_epoch(self, mode):
+    if FLAGS.fold is not None:
+      if mode == 'train':
+        # err notice actually this is total, with fold *1/8 for valid *7/8 for train
+        return 120000  
+      elif mode == 'valid':
+        return 15000
+      else:
+        # for test testA is 15000 testB will be 200000
+        return super(Dataset, self).num_examples_per_epoch(mode)
+    else:
+       return super(Dataset, self).num_examples_per_epoch(mode)
+    
+  

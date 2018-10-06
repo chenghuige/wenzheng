@@ -224,6 +224,8 @@ def inputs(files,
     # #https://github.com/HKUST-KnowComp/R-Net/blob/master/util.py
     # #https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/utils/data_reader.py
     if bucket_boundaries:
+      # TODO remove support for length index, use use length key!
+      assert length_key is not None or length_index is not None, 'forget to set length key  or length index ?'
       if not isinstance(bucket_boundaries, (list, tuple)):
         boundaries = [int(x) for x in bucket_boundaries.split(',') if x.strip()]
       else:

@@ -25,12 +25,25 @@ from algos.weights import *
 
 import torch
 
+from torch import nn
+
+loss_fn = torch.nn.CrossEntropyLoss()
+bloss_fn = nn.BCEWithLogitsLoss()
+
 def criterion(model, x, y):
   y_ = model(x)
-  loss_fn = torch.nn.CrossEntropyLoss()
-
+  
   #print(y.shape, y_.shape)
   # without view Expected target size (32, 4), got torch.Size([32, 20])
   loss = loss_fn(y_.view(-1, model.num_classes), y.view(-1))  
+
+  if FLAGS.loss_type == 'add_neu_binary':
+    cid = 2
+    y_ = y_[:,:,cid]
+    y = (y == 2).float()
+    
+    bloss = bloss_fn(y_, y)
+    loss = loss + bloss * FLAGS.other_loss_factor
+
   return loss
 
