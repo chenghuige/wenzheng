@@ -19,7 +19,8 @@ FLAGS = flags.FLAGS
 flags.DEFINE_bool('debug', False, '')
 flags.DEFINE_string('method', 'blend', '')
 flags.DEFINE_string('idir', '.', '')
-flags.DEFINE_float('norm_factor', 0.0001, '')
+flags.DEFINE_float('factor', 0.0001, '')
+flags.DEFINE_float('thre', 0.69, '')
 
 
 import sys 
@@ -32,6 +33,7 @@ from sklearn.metrics import f1_score
 from sklearn.preprocessing import minmax_scale
 import gezi
 from tqdm import tqdm
+import math
 
 DEBUG = 0
 idir = '.'
@@ -83,17 +85,38 @@ def calc_f1_alls(labels, predicts):
   return f1, f1_list, class_f1
 
 
+class_weights = np.load('/home/gezi/temp/ai2018/sentiment/class_weights.npy')
+for i in range(len(class_weights)):
+  for j in range(4):
+    #class_weights[i][j] = math.log(class_weights[i][j])
+    #class_weights[i] = gezi.softmax(class_weights[i])
+    #class_weights[i][j] +=  math.sqrt(class_weights[i][j])
+    #class_weights[i][j] += 0.
+    #class_weights[i][j] = math.sqrt(class_weights[i][j])
+    x = 1./(1 - class_weights[i][j])
+    class_weights[i][j] = x
+    #class_weights[i][j] = x * x
+
 def to_predict(logits):
-  logits = np.reshape(logits, [-1, num_attrs, num_classes])
-  probs = gezi.softmax(logits, -1)
+  probs = np.reshape(logits, [-1, num_attrs, num_classes])
+  ## DO NOT divde !!
+  #logits = logits / num_ensembles
+  probs = gezi.softmax(probs, -1) 
+  probs *= class_weights
+
   probs = np.reshape(probs, [-1, num_classes])
   result = np.zeros([len(probs)], dtype=int)
   for i, prob in enumerate(probs):
-    # TODO try to calibrate to 0.5 ?
-    if prob[0] >= 0.6:
-      result[i] = -2
-    else:
-      result[i] = np.argmax(prob[1:]) - 1
+    # # TODO try to calibrate to 0.5 ?
+    # if prob[0] >= 0.6:
+    #   result[i] = -2
+    # else:
+    #   result[i] = np.argmax(prob[1:]) - 1
+
+    # this can also improve but not as good as per attr class weights adjust, can get 7183
+    # TODO class_weights right now still not the best!
+    #prob[0] *= 0.4
+    result[i] = np.argmax(prob) - 2
   
   result = np.reshape(result, [-1, num_attrs])
   return result
@@ -111,7 +134,7 @@ def blend_weights(weights, norm_facotr):
 
 def main(_):
   print('METHOD:', FLAGS.method)
-  print('Norm factor:', FLAGS.norm_factor)
+  print('Norm factor:', FLAGS.factor)
   DEBUG = FLAGS.debug 
   idir = FLAGS.idir
 
@@ -143,6 +166,7 @@ def main(_):
 
   weights = [] 
   scores_list = []
+  valid_files_ = []
   for fid, file_ in enumerate(valid_files):
     df = pd.read_csv(file_)
     df= df.sort_values('id') 
@@ -156,18 +180,40 @@ def main(_):
     #f1 = calc_f1(labels, to_predict(scores)) 
     #f1s = calc_f1s(labels, predicts) 
     ## to_predict better 
-    f1s = calc_f1s(labels, to_predict(scores))
-    print(fid, file_, calc_f1(labels, predicts), calc_f1(labels, to_predict(scores))) 
+    # f1_file = gezi.strip_suffix(file_, '.valid.csv') + '.f1s.npy'
+    # f1_adjusted_file = gezi.strip_suffix(file_, '.valid.csv') + '.f1s.adjust.npy'
+    # if not os.path.exists(f1_file):
+    f1s = calc_f1s(labels, predicts)
+    f1s_adjusted = calc_f1s(labels, to_predict(scores))
+      # np.save(f1_file, f1s)
+      # np.save(f1_adjusted_file, f1s_adjusted)
+    # else:
+    #   f1s = np.load(f1_file)
+    #   f1s_adjusted = np.load(f1_adjusted_file)
+    f1 = np.mean(f1s)
+    f1_adjusted = np.mean(f1s_adjusted)
+    print(fid, file_, f1, f1_adjusted) 
+    if f1 < FLAGS.thre:
+     print('ignore', file_)
+     continue
+    else:
+     valid_files_.append(file_)
+    
+    # NOTICE weighted can get 7186 while avg only 716
+    # and using original f1s score higher
     weight = np.reshape(f1s, [num_attrs, 1])
+    #weight = np.reshape(f1s_adjusted, [num_attrs, 1])
     weights.append(weight) 
 
   weights = np.array(weights)
   scores_list = np.array(scores_list)
 
-  blend_weights(weights, FLAGS.norm_factor)
+  blend_weights(weights, FLAGS.factor)
 
   # if DEBUG:
   #   print(weights)
+  valid_files = valid_files_
+  print('final num valid files', len(valid_files))
 
   for fid in tqdm(range(len(valid_files)), ascii=True):
     scores = scores_list[fid]
@@ -178,17 +224,15 @@ def main(_):
     if FLAGS.method == 'avg' or FLAGS.method == 'mean': 
       weight = 1.
     for i, score in enumerate(scores):
-      #score_ = score
-      score = np.reshape(np.reshape(score, [num_attrs, num_classes]) * weight, [-1])
+      score = np.reshape(score, [num_attrs, num_classes]) * weight
+      score = np.reshape(score, [-1])
+    
       results[i] += score
 
       # notice softmax([1,2]) = [0.26894142, 0.73105858] softmax([2,4]) = [0.11920292, 0.88079708]
       score = gezi.softmax(np.reshape(score, [num_attrs, num_classes]), -1)
-
-      # score = gezi.softmax(np.reshape(score_, [num_attrs, num_classes]), -1)
-      # score *= weight
-
       score = np.reshape(score, [-1])
+      
       results2[i] += score 
 
   adjusted_f1 = calc_f1(labels, to_predict(results))

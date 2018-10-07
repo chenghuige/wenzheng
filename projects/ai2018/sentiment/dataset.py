@@ -42,7 +42,7 @@ class Dataset(melt.tfrecords.Dataset):
 
     def undersampling_filter(x, y):
       #prob = tf.cond(tf.equal(x['source'], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
-      prob = tf.cond(tf.equal(tf.strings.split(x,'.').values[-1], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
+      prob = tf.cond(tf.equal(tf.strings.split(tf.expand_dims(x['source'], 0),'.').values[-1], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
       #is_aug = tf.to_float(tf.equal(x['source'], 'augument.train'))
       #aug_factor = get_aug_factor()
       #prob *=  is_aug * aug_factor + (1 - is_aug) * (1 - aug_factor)      

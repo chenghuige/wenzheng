@@ -762,7 +762,7 @@ class Model(melt.Model):
   def call(self, input, training=False):
     x = input['content'] 
 
-    #print(input['source'])
+    print(input['source'])
 
     if FLAGS.content_limit and training:
       x = x[:,:FLAGS.content_limit]
