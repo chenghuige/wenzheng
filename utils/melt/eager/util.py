@@ -22,12 +22,15 @@ FLAGS = flags.FLAGS
 import melt 
 logging = melt.logging
 
+import inspect
+
 def grad(model, x, y, loss_fn):
   with tf.GradientTape() as tape:
-    try:
+    if 'training' in inspect.getargspec(loss_fn).args:
       loss = loss_fn(model, x, y, training=True)
-    except Exception:
+    else:
       loss = loss_fn(model, x, y)
+
   return loss, tape.gradient(loss, model.trainable_variables)
 
 def clip_gradients(grads_and_vars, clip_ratio):

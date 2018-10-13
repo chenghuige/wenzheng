@@ -268,22 +268,38 @@ def tf_train_flow(train_once_fn,
         logging.info('Warning, epoch is diff with pre_step / num_steps_per_epoch:{}, pre_epoch:{},maybe you change batch size and we will adjust to set pre_step as {}'\
           .format(pre_step / num_steps_per_epoch, pre_epoch, fixed_pre_step))
   else:
-    logging.info('Train all start step 0')
-    #https://stackoverflow.com/questions/40220201/tensorflow-tf-initialize-all-variables-vs-tf-initialize-local-variables
-    #tf.initialize_all_variables() is a shortcut to tf.initialize_variables(tf.all_variables()), 
-    #tf.initialize_local_variables() is a shortcut to tf.initialize_variables(tf.local_variables()), 
-    #which initializes variables in GraphKeys.VARIABLES and GraphKeys.LOCAL_VARIABLE collections, respectively.
-    #init_op = tf.group(tf.global_variables_initializer(),
-    #                   tf.local_variables_initializer())   
-    #[var for var in tf.all_variables() if var.op.name.startswith(restore_scope)] will be the same as tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
-    
-    #sess.run(init_op)
+    latest_checkpoint = None
+    try:
+      latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
+      logging.info('Try start from eager trained mode, latest checkpoint:', latest_checkpoint)
+      if latest_checkpoint:
+        checkpoint.restore(latest_checkpoint).run_restore_ops(session=sess)
 
-    #like use image model, build image graph, reload first train, and then will go to same checkpoint all varaible just restore will ok
-    #for finetune from loading other model init
-    if init_fn is not None:
-      init_fn(sess)
-    
+        pre_epoch = int(latest_checkpoint.split('-')[-1])
+        pre_step = pre_epoch * num_steps_per_epoch - 1
+        # TODO should write global step.. to graph
+        #pre_step = sess.run(tf.train.get_global_step()) 
+        fixed_pre_step = pre_step
+        logging.info('Start step is:', pre_step)
+    except Exception:
+      logging.info('Something wrong with restore from eager trained model')
+    if latest_checkpoint is None:
+      logging.info('Train all start step 0')
+      #https://stackoverflow.com/questions/40220201/tensorflow-tf-initialize-all-variables-vs-tf-initialize-local-variables
+      #tf.initialize_all_variables() is a shortcut to tf.initialize_variables(tf.all_variables()), 
+      #tf.initialize_local_variables() is a shortcut to tf.initialize_variables(tf.local_variables()), 
+      #which initializes variables in GraphKeys.VARIABLES and GraphKeys.LOCAL_VARIABLE collections, respectively.
+      #init_op = tf.group(tf.global_variables_initializer(),
+      #                   tf.local_variables_initializer())   
+      #[var for var in tf.all_variables() if var.op.name.startswith(restore_scope)] will be the same as tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
+      
+      #sess.run(init_op)
+
+      #like use image model, build image graph, reload first train, and then will go to same checkpoint all varaible just restore will ok
+      #for finetune from loading other model init
+      if init_fn is not None:
+        init_fn(sess)
+      
   if gezi.env_has('METRIC'):
     l = metric_eval_fn(model_path)
     print(list(zip(l[1], l[0])))
@@ -362,7 +378,9 @@ def tf_train_flow(train_once_fn,
                            is_start=(step==start), 
                            fixed_step=fixed_step,
                            num_epochs=num_epochs,
-                           model_path=model_step_path)
+                           model_path=model_step_path,
+                           ## TODO FIXME this line will cause   tensorflow.python.framework.errors_impl.NotFoundError: Resource localhost/save_counter/N10tensorflow3VarE does not exist. 
+                          )
 
       if only_one_step:
         stop = True
@@ -410,7 +428,7 @@ def tf_train_flow(train_once_fn,
             if eval_loss >= pre_epoch_eval_loss:
               num_bad_epochs += 1
               if num_bad_epochs > num_allowed_bad_epochs:
-                logging.warning('Evaluate loss not decrease for last %d epochs'% (num_allowed_bad_epochs + 1))
+                #logging.warning('Evaluate loss not decrease for last %d epochs'% (num_allowed_bad_epochs + 1))
                 if not os.path.exists(os.path.join(epoch_dir,'model.ckpt-noimprove')):
                   model_path_ = os.path.join(epoch_dir,'model.ckpt-noimprove')
                   best_epoch_saver.save(sess, model_path_)
@@ -443,6 +461,7 @@ def tf_train_flow(train_once_fn,
             #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
             # TODO FIXME if restart will save from 1... again..
             checkpoint.save(checkpoint_prefix, session=sess)
+            #print(sess.run(checkpoint.save_counter))
             
           if freeze_graph:
             melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)

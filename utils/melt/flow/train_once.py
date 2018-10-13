@@ -170,7 +170,8 @@ def train_once(sess,
          and step % metric_eval_interval_steps == 0) or model_path):
    metric_evaluate = True
 
-  if (is_start or step == 0) and (not 'EVFIRST' in os.environ):
+  #if (is_start or step == 0) and (not 'EVFIRST' in os.environ):
+  if ((step == 0) and (not 'EVFIRST' in os.environ)) or ('QUICK' in os.environ):
     metric_evaluate = False
 
   if metric_evaluate:
@@ -435,8 +436,13 @@ def train_once(sess,
       if model_path:
         prefix = 'epoch/valid'
         if not hasattr(train_once, 'epoch_step'):
+          ## TODO.. restart will get 1 again..
+          #epoch_step = tf.Variable(0, trainable=False, name='epoch_step')
+          #epoch_step += 1
+          #train_once.epoch_step = sess.run(epoch_step) 
           train_once.epoch_step = 1
         else:
+          #epoch_step += 1
           train_once.epoch_step += 1
         step = train_once.epoch_step
       #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')

@@ -1,5 +1,5 @@
 base=./mount
-dir=$base/temp/ai2018/sentiment/tfrecord/$SRC
+dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
 
 fold=0
 if [ $# == 1 ];

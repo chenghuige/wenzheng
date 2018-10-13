@@ -37,7 +37,7 @@ python $exe \
         --use_self_match=0 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
-        --train_input=$dir/train/'*,'$dir/aug.train/'*,' \
+        --train_input=$dir/train/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \

@@ -26,6 +26,8 @@ import traceback
 
 from wenzheng.utils import input_flags 
 
+# import projects
+# algos = projects.ai2018.sentiment.algos
 #from algos.model import *
 from algos.loss import criterion
 import algos.model as base
@@ -47,7 +49,7 @@ def main(_):
   train(Dataset,
         model,  
         criterion,
-        eval_fn=ev.calc_f1, 
+        eval_fn=ev.evaluate, 
         valid_write_fn=ev.valid_write,
         infer_write_fn=ev.infer_write,
         valid_suffix='.valid.csv',

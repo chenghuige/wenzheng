@@ -19,7 +19,8 @@ FLAGS = flags.FLAGS
 flags.DEFINE_bool('debug', False, '')
 flags.DEFINE_string('method', 'blend', '')
 flags.DEFINE_string('idir', '.', '')
-flags.DEFINE_float('factor', 0.0001, '')
+flags.DEFINE_float('norm_factor', 0.0001, 'attr weights used norm factor')
+flags.DEFINE_float('ensemble_factor', 10, '')
 flags.DEFINE_float('thre', 0.69, '')
 
 
@@ -86,22 +87,33 @@ def calc_f1_alls(labels, predicts):
 
 
 class_weights = np.load('/home/gezi/temp/ai2018/sentiment/class_weights.npy')
-for i in range(len(class_weights)):
-  for j in range(4):
-    #class_weights[i][j] = math.log(class_weights[i][j])
-    #class_weights[i] = gezi.softmax(class_weights[i])
-    #class_weights[i][j] +=  math.sqrt(class_weights[i][j])
-    #class_weights[i][j] += 0.
-    #class_weights[i][j] = math.sqrt(class_weights[i][j])
-    x = 1./(1 - class_weights[i][j])
-    class_weights[i][j] = x
-    #class_weights[i][j] = x * x
+#print('class_weights', class_weights)
 
-def to_predict(logits):
-  probs = np.reshape(logits, [-1, num_attrs, num_classes])
+# for i in range(len(class_weights)):
+#   for j in range(4):
+#     #class_weights[i][j] = math.log(class_weights[i][j])
+#     #class_weights[i] = gezi.softmax(class_weights[i])
+#     #class_weights[i][j] +=  math.sqrt(class_weights[i][j])
+#     #class_weights[i][j] += 0.
+#     #class_weights[i][j] = math.sqrt(class_weights[i][j])
+#     #x = 1./(1 - class_weights[i][j])
+#     #class_weights[i][j] = x
+#     #class_weights[i][j] = x * x
+
+def to_predict(logits, weights=None, is_single=False):
   ## DO NOT divde !!
-  #logits = logits / num_ensembles
-  probs = gezi.softmax(probs, -1) 
+  if is_single:
+    factor = FLAGS.ensemble_factor
+  else:
+    if weights is None:
+      factor = 1.
+    else:
+      factor =  FLAGS.ensemble_factor / weights
+  print('factor:', factor)
+  
+  logits = np.reshape(logits, [-1, num_attrs, num_classes])
+  logits = logits * factor
+  probs = gezi.softmax(logits, -1) 
   probs *= class_weights
 
   probs = np.reshape(probs, [-1, num_classes])
@@ -132,9 +144,10 @@ def blend_weights(weights, norm_facotr):
       for j in range(len(weights)):
         weights[j][i] = ((weights[j][i] - min_ws) / gap) + norm_facotr
 
+
 def main(_):
   print('METHOD:', FLAGS.method)
-  print('Norm factor:', FLAGS.factor)
+  print('Norm factor:', FLAGS.norm_factor)
   DEBUG = FLAGS.debug 
   idir = FLAGS.idir
 
@@ -162,6 +175,7 @@ def main(_):
     
   assert len(valid_files) == len(infer_files), infer_files
 
+  global num_ensembles
   num_ensembles = len(valid_files)
 
   weights = [] 
@@ -184,7 +198,7 @@ def main(_):
     # f1_adjusted_file = gezi.strip_suffix(file_, '.valid.csv') + '.f1s.adjust.npy'
     # if not os.path.exists(f1_file):
     f1s = calc_f1s(labels, predicts)
-    f1s_adjusted = calc_f1s(labels, to_predict(scores))
+    f1s_adjusted = calc_f1s(labels, to_predict(scores, is_single=True))
       # np.save(f1_file, f1s)
       # np.save(f1_adjusted_file, f1s_adjusted)
     # else:
@@ -192,6 +206,7 @@ def main(_):
     #   f1s_adjusted = np.load(f1_adjusted_file)
     f1 = np.mean(f1s)
     f1_adjusted = np.mean(f1s_adjusted)
+    
     print(fid, file_, f1, f1_adjusted) 
     if f1 < FLAGS.thre:
      print('ignore', file_)
@@ -201,14 +216,15 @@ def main(_):
     
     # NOTICE weighted can get 7186 while avg only 716
     # and using original f1s score higher
-    weight = np.reshape(f1s, [num_attrs, 1])
-    #weight = np.reshape(f1s_adjusted, [num_attrs, 1])
+    #weight = np.reshape(f1s, [num_attrs, 1])
+    weight = np.reshape(f1s_adjusted, [num_attrs, 1])
+    
     weights.append(weight) 
 
   weights = np.array(weights)
   scores_list = np.array(scores_list)
 
-  blend_weights(weights, FLAGS.factor)
+  blend_weights(weights, FLAGS.norm_factor)
 
   # if DEBUG:
   #   print(weights)
@@ -235,7 +251,9 @@ def main(_):
       
       results2[i] += score 
 
-  adjusted_f1 = calc_f1(labels, to_predict(results))
+  sum_weights = np.sum(weights, 0)
+
+  adjusted_f1 = calc_f1(labels, to_predict(results, sum_weights))
   results = np.reshape(results, [-1, num_attrs, num_classes]) 
   predicts = np.argmax(results, -1) - 2
   f1 = calc_f1(labels, predicts)
@@ -244,7 +262,7 @@ def main(_):
   print('f1:', f1)
   print('adjusted f1:', adjusted_f1)
 
-  adjusted_f1_prob = calc_f1(labels, to_predict(results2))
+  adjusted_f1_prob = calc_f1(labels, to_predict(results2, sum_weights))
   results2 = np.reshape(results2, [-1, num_attrs, num_classes]) 
   predicts2 = np.argmax(results2, -1) - 2
   f1_prob = calc_f1(labels, predicts2)
@@ -254,7 +272,7 @@ def main(_):
   print('adjusted f1_prob:', adjusted_f1_prob)
 
   print('-----------detailed f1 infos')
-  _, adjusted_f1_probs, class_f1s = calc_f1_alls(labels, to_predict(results2))
+  _, adjusted_f1_probs, class_f1s = calc_f1_alls(labels, to_predict(results2, sum_weights))
 
   for i, attr in enumerate(ATTRIBUTES):
     print(attr, adjusted_f1_probs[i])
@@ -293,7 +311,7 @@ def main(_):
       score = np.reshape(score, [-1])
       results2[i] += score 
 
-  predicts = to_predict(results2)
+  predicts = to_predict(results2, sum_weights)
 
   if not DEBUG:
     columns = df.columns[idx:idx + num_attrs].values

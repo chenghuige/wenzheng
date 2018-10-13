@@ -61,10 +61,12 @@ class CudnnRnn(keras.Model):
                 train_init_state=True,
                 concat_layers=True, 
                 output_method=OutputMethod.all, 
+                return_state=False,
                 cell='gru', 
                 **kwargs):
     super(CudnnRnn, self).__init__(**kwargs)
     self.cell = cell
+    self.return_state = return_state
     if isinstance(cell, str):
       if cell == 'gru':
         if tf.test.is_gpu_available():
@@ -140,6 +142,9 @@ class CudnnRnn(keras.Model):
       self.gru_fws.append(gru_fw)
       self.gru_bws.append(gru_bw)
 
+    self.gru_fws = tf.contrib.checkpoint.List(self.gru_fws)
+    self.gru_bws = tf.contrib.checkpoint.List(self.gru_bws)
+
     # if self.train_init_state:
     #   for layer in range(num_layers):
     #     # well TODO! add_variable not allowed in keras.Model but using keras.layers.Layer you should not use other layers otherwise not save them
@@ -172,7 +177,7 @@ class CudnnRnn(keras.Model):
 
   def call(self, 
            inputs, 
-           sequence_length, 
+           sequence_length=None, 
            mask_fws = None,
            mask_bws = None,
            concat_layers=None, 
@@ -188,6 +193,10 @@ class CudnnRnn(keras.Model):
     keep_prob = self.keep_prob
     num_units = self.num_units
     batch_size = melt.get_batch_size(inputs)
+
+    if sequence_length is None:
+      len_ = melt.get_shape(inputs, 1)
+      sequence_length = tf.ones([batch_size,], dtype=tf.int64) * len_
 
     for layer in range(self.num_layers):
       input_size_ = melt.get_shape(inputs, -1) if layer == 0 else 2 * num_units
@@ -220,6 +229,8 @@ class CudnnRnn(keras.Model):
       else:
         inputs_fw = dropout(outputs[-1], keep_prob=keep_prob, training=training, mode=None)
 
+      # https://stackoverflow.com/questions/48233400/lstm-initial-state-from-dense-layer
+      # gru and lstm different ... state lstm need tuple (,) states as input state
       out_fw, state_fw = gru_fw(inputs_fw, init_fw)
 
       if self.train_init_state:
@@ -268,8 +279,10 @@ class CudnnRnn(keras.Model):
     res = encode_outputs(res, output_method=output_method, sequence_length=sequence_length)
 
     self.state = (state_fw, state_bw)
-
-    return res
+    if not self.return_state:
+      return res
+    else:
+      return res, self.state
 
 class CudnnRnn2(CudnnRnn):
   def __init__(self,  

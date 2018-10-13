@@ -40,7 +40,7 @@ for (_, row) in df.iterrows():
 for i in range(len(counts)):
   for j in range(4):
     #print(len(df), print(np.sum(counts[i])))
-    weights[i][j] = 1 - counts[i][j] / len(df)
+    weights[i][j] = counts[i][j] / len(df)
 #for attr, count in zip(ATTRIBUTES, counts):
 #  print(attr, [x / len(df) for x in count])
 

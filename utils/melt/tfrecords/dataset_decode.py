@@ -314,20 +314,27 @@ def inputs(files,
   #tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
     try:
       if tf.executing_eagerly():
+        # TODO store iterator for eager
         return dataset
       else:
         if repeat and not initializable:
           iterator = dataset.make_one_shot_iterator() 
+          saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+          tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
           if return_iterator:
             return iterator
           ops = iterator.get_next()
           return ops
         else:
           iterator = dataset.make_initializable_iterator()
+          saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+          tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
           return iterator
     except Exception:
       if repeat and not initializable:
         iterator = dataset.make_one_shot_iterator()
+        saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+        tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
         if return_iterator:
           return iterator
         ops = iterator.get_next()
@@ -335,4 +342,6 @@ def inputs(files,
       else:
         # if not repeat then need to init iterator each epoch
         iterator = dataset.make_initializable_iterator()
+        saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+        tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
         return iterator         

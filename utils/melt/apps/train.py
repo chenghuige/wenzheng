@@ -97,14 +97,17 @@ flags.DEFINE_boolean('write_during_train', True, '')
 flags.DEFINE_integer('eval_loops', 1, 'set to max inorder to hack for evaluation..')
 
 #----------optimize
-flags.DEFINE_string('optimizer', 'adadelta', 'follow squad of ukhst https://www.quora.com/Why-is-AdaDelta-not-favored-in-Deep-Learning-communities-while-AdaGrad-is-preferred-by-many-over-other-SGD-variants')
+#flags.DEFINE_string('optimizer', 'adadelta', 'follow squad of ukhst https://www.quora.com/Why-is-AdaDelta-not-favored-in-Deep-Learning-communities-while-AdaGrad-is-preferred-by-many-over-other-SGD-variants')
+flags.DEFINE_string('optimizer', 'adam', 'follow squad of ukhst https://www.quora.com/Why-is-AdaDelta-not-favored-in-Deep-Learning-communities-while-AdaGrad-is-preferred-by-many-over-other-SGD-variants')
 flags.DEFINE_float('momentum', 0.9, 'follow cifar10 default')
 flags.DEFINE_float('opt_epsilon', 1e-6, 'follow squad of ukhst')
-flags.DEFINE_float('learning_rate', 0.5, """follow squad of ukhst
-                                            Initial learning rate. for adgrad especially, 
-                                            notice keras set for adgrad 0.01 
-                                            but seems bad perf hard to converge for some seq2seq/lstm training
-                                            see textsum/train/shangpinming/seq2seq-gen-copy-switch.sh""")
+# flags.DEFINE_float('learning_rate', 0.5, """follow squad of ukhst
+#                                             Initial learning rate. for adgrad especially, 
+#                                             notice keras set for adgrad 0.01 
+#                                             but seems bad perf hard to converge for some seq2seq/lstm training
+#                                             see textsum/train/shangpinming/seq2seq-gen-copy-switch.sh""")
+flags.DEFINE_float('learning_rate', 0.001, """
+                                         default is adam default lr""")
 flags.DEFINE_float('min_learning_rate', 5e-5, 'min learning rate used for dyanmic eval metric decay')
 
 #flags.DEFINE_float('learning_rate_decay_factor', 0.97, 'im2txt 0.5, follow nasnet using 0.97')
@@ -240,6 +243,8 @@ flags.DEFINE_boolean('torch', False, '')
 
 flags.DEFINE_boolean('test_aug', False, '')
 
+flags.DEFINE_integer('batch_size_dim', 0, '')
+
 inited = None 
 
 def init():
@@ -272,7 +277,7 @@ def init():
     if os.path.isfile(FLAGS.model_dir + '.index'):
       FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
 
-  assert FLAGS.log_dir, 'you need to set log_dir or model_dir'
+  #assert FLAGS.log_dir, 'you need to set log_dir or model_dir'
   os.system('mkdir -p %s' % FLAGS.log_dir)
   logging.set_logging_path(FLAGS.log_dir)
   logging.info('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir)
@@ -897,8 +902,10 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
 
   if not sess:
     sess = melt.get_session()
-  
-  sess.run(iterator.initializer)
+  try:
+    sess.run(iterator.initializer)
+  except Exception:
+    pass
 
   try:
     for i in range(num_gpus):
@@ -1056,7 +1063,7 @@ def train(Dataset,
   num_folds = FLAGS.num_folds or len(inputs) + 1
 
   dataset = Dataset('train')
-
+  iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
   num_examples = dataset.num_examples_per_epoch('train') 
   num_all_examples = num_examples
   if num_examples:
@@ -1081,6 +1088,8 @@ def train(Dataset,
 
   if valid_inputs:
     valid_dataset = Dataset('valid')
+    valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
+    valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
   else:
     valid_dataset = None
   
@@ -1098,13 +1107,17 @@ def train(Dataset,
         num_valid_steps_per_epoch = None
   logging.info('num_valid_examples:', num_valid_examples)
 
-  test_inputs = gezi.list_files(FLAGS.test_input)
-  #test_inputs = [x for x in test_inputs if not 'aug' in x]
-  logging.info('test_inputs', test_inputs)
+  if FLAGS.test_input:
+    test_inputs = gezi.list_files(FLAGS.test_input)
+    #test_inputs = [x for x in test_inputs if not 'aug' in x]
+    logging.info('test_inputs', test_inputs)
+  else:
+    test_inputs = None
   
   num_test_examples = None
   if test_inputs:
     test_dataset = Dataset('test')
+    test_iter = test_dataset.make_batch(batch_size_, test_inputs)
     num_test_examples = test_dataset.num_examples_per_epoch('test')
     num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
   else:
@@ -1112,7 +1125,7 @@ def train(Dataset,
   logging.info('num_test_examples:', num_test_examples)
 
   #with tf.variable_scope('model') as scope:
-  iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
+  #iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
   batch = iter.get_next()
   x, y = melt.split_batch(batch, batch_size, num_gpus)
 
@@ -1122,14 +1135,14 @@ def train(Dataset,
   #scope.reuse_variables()
   
   if valid_dataset:
-    valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
+    #valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
     valid_batch2 = valid_iter2.get_next()
     valid_x2, valid_y2 = melt.split_batch(valid_batch2, batch_size_, num_gpus, training=False)
     valid_loss = melt.tower(lambda i: loss_fn(model, valid_x2[i], valid_y2[i], training=False), num_gpus, training=False)
     valid_loss = tf.reduce_mean(valid_loss)
     eval_ops = [valid_loss]
 
-    valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
+    #valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
     valid_batch = valid_iter.get_next()
     valid_x, valid_y = melt.split_batch(valid_batch, batch_size_, num_gpus, training=False)
 
@@ -1141,26 +1154,29 @@ def train(Dataset,
 
     if not valid_names and infer_names:
       valid_names = [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
-    metric_eval_fn = lambda model_path=None: \
-                                  evaluate(valid_ops, 
-                                           valid_iter,
-                                           num_steps=num_valid_steps_per_epoch,
-                                           num_examples=num_valid_examples,
-                                           eval_fn=eval_fn,
-                                           names=valid_names,
-                                           write_fn=valid_write_fn,
-                                           model_path=model_path,
-                                           write=write_valid,
-                                           num_gpus=num_gpus,
-                                           suffix=valid_suffix,
-                                           write_streaming=write_streaming,
-                                           sep=sep)
+    if eval_fn:
+      metric_eval_fn = lambda model_path=None: \
+                                    evaluate(valid_ops, 
+                                            valid_iter,
+                                            num_steps=num_valid_steps_per_epoch,
+                                            num_examples=num_valid_examples,
+                                            eval_fn=eval_fn,
+                                            names=valid_names,
+                                            write_fn=valid_write_fn,
+                                            model_path=model_path,
+                                            write=write_valid,
+                                            num_gpus=num_gpus,
+                                            suffix=valid_suffix,
+                                            write_streaming=write_streaming,
+                                            sep=sep)
+    else:
+      metric_eval_fn = None
   else:
     eval_ops = None 
     metric_eval_fn = None
 
   if test_dataset:
-    test_iter = test_dataset.make_batch(batch_size_, test_inputs)
+    #test_iter = test_dataset.make_batch(batch_size_, test_inputs)
     test_batch = test_iter.get_next()
     test_x, test_y = melt.split_batch(test_batch, batch_size_, num_gpus, training=False)
 

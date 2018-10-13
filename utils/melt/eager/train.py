@@ -294,9 +294,12 @@ def train(Dataset,
         num_valid_steps_per_epoch = None
   logging.info('num_valid_examples:', num_valid_examples)
 
-  test_inputs = gezi.list_files(FLAGS.test_input)
-  #test_inputs = [x for x in test_inputs if not 'aug' in x]
-  logging.info('test_inputs', test_inputs)
+  if FLAGS.test_input:
+    test_inputs = gezi.list_files(FLAGS.test_input)
+    #test_inputs = [x for x in test_inputs if not 'aug' in x]
+    logging.info('test_inputs', test_inputs)
+  else:
+    test_inputs = None
   
   num_test_examples = None
   if test_inputs:
@@ -395,9 +398,16 @@ def train(Dataset,
   #model.save('./weight3.hd5')
 
   # TODO currently not support 0.1 epoch.. like this
-  num_epochs = FLAGS.num_epochs
+  num_epochs = FLAGS.num_epochs if FLAGS.num_epochs != 0 else 1024
+
+  will_valid = valid_dataset and not FLAGS.mode == 'test' and not 'SHOW' in os.environ
+  if start_epoch == 0 and not 'EVFIRST' in os.environ and will_valid:
+    will_valid = False
+
+  if start_epoch > 0 and not 'QUICK' in os.envrion and will_valid:
+    will_valid = True 
   
-  if valid_dataset and not FLAGS.mode == 'test' and 'EVFIRST' in os.environ and not 'SHOW' in os.environ:
+  if will_valid:
     logging.info('----------valid')
     if FLAGS.torch:
       model.eval()
@@ -472,6 +482,7 @@ def train(Dataset,
   Mean =  tfe.metrics.Mean if not FLAGS.torch else PytMean
   timer = gezi.Timer()
   num_insts = 0
+
   for epoch in range(start_epoch, num_epochs):
     melt.set_global('epoch', '%.4f' % (epoch))
 
@@ -483,16 +494,22 @@ def train(Dataset,
 
     #for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
     for i, (x, y) in enumerate(train_dataset):
+      # print(x, y)
+      # continue
+
       if FLAGS.torch:
         x, y = to_torch(x, y)
 
       if not FLAGS.torch:
         loss, grads = melt.eager.grad(model, x, y, loss_fn)
+        grads, _ = tf.clip_by_global_norm(grads, FLAGS.clip_gradients)
         optimizer.apply_gradients(zip(grads, model.variables))
       else:
         optimizer.zero_grad()
         loss = loss_fn(model, x, y)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                       FLAGS.clip_gradients)
         optimizer.step()
       
       epoch_loss_avg(loss)  # add current batch loss
@@ -500,7 +517,7 @@ def train(Dataset,
       if FLAGS.torch:
         del loss
 
-      batch_size_ = list(x.values())[0].shape[0] if type(x) == type({}) else x[0].shape[0]
+      batch_size_ = list(x.values())[0].shape[FLAGS.batch_size_dim] if type(x) == type({}) else x.shape[FLAGS.batch_size_dim]
       num_insts += int(batch_size_)
       if global_step.numpy() % FLAGS.interval_steps == 0:
         #checkpoint.save(checkpoint_prefix)
@@ -516,7 +533,12 @@ def train(Dataset,
           epoch_time_info = '1epoch:[{:.2f}h]'.format(hours_per_epoch)
 
         if valid_dataset2:
-          x, y = next(iter(valid_dataset2))
+          try:
+            x, y = next(iter(valid_dataset2))
+          except Exception:
+            # TODO FIXME how.. iterate stop restart.., here hack for my iterator see projects/lm/dataset 
+            x, y = next(iter(valid_dataset2))
+
           if FLAGS.torch:
             x, y = to_torch(x, y)
             model.eval()
@@ -571,27 +593,30 @@ def train(Dataset,
       if valid_dataset and FLAGS.metric_eval_interval_steps and global_step.numpy() and global_step.numpy() % FLAGS.metric_eval_interval_steps == 0:
         if FLAGS.torch:
           model.eval()
+        vals, names = None, None
         if evaluate_fn is not None:
           vals, names = evaluate_fn(model, valid_dataset, None, num_valid_steps_per_epoch)
         elif eval_fn:
           names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:] if infer_names else None
           vals, names = evaluate(model, valid_dataset, eval_fn, None, 
-                                names, valid_write_fn, write_streaming,
-                                num_valid_steps_per_epoch, sep=sep)
-        with writer_valid.as_default(), summary.always_record_summaries():
-          for name, val in zip(names, vals):
-            summary.scalar(f'step/valid/{name}', val)
-          writer_valid.flush()
+                                 names, valid_write_fn, write_streaming,
+                                 num_valid_steps_per_epoch, sep=sep)
+        if vals and names:
+          with writer_valid.as_default(), summary.always_record_summaries():
+            for name, val in zip(names, vals):
+              summary.scalar(f'step/valid/{name}', val)
+            writer_valid.flush()
       
         if FLAGS.torch:
           for param_group in optimizer.param_groups:
             param_group['lr'] = learning_rate.numpy()
           model.train()
 
-        logging.info2('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs),  
-                      'valid_step:%d' % global_step.numpy(),
-                      'valid_metrics',
-                      ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
+        if names and vals:
+          logging.info2('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs),  
+                        'valid_step:%d' % global_step.numpy(),
+                        'valid_metrics',
+                        ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
         
       
       # if i == 5:
@@ -616,13 +641,14 @@ def train(Dataset,
           exit(0)
 
     logging.info('epoch:%d/%d' % (epoch + 1, num_epochs), 
-                 'step:%d' % global_step.numpy(), 
-                 'batch_size:[%d]' % batch_size,
-                 'lr:[%.7f]' % learning_rate.numpy(),
-                 'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
-                 'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
+                'step:%d' % global_step.numpy(), 
+                'batch_size:[%d]' % batch_size,
+                'lr:[%.7f]' % learning_rate.numpy(),
+                'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
+                'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
 
-    timer = gezi.Timer(f'save model to {checkpoint_prefix}', False)
+
+    timer = gezi.Timer(f'save model to {checkpoint_prefix}-{checkpoint.save_counter.numpy()}', False)
     checkpoint.save(checkpoint_prefix)
     if FLAGS.torch:
       state = {
@@ -640,6 +666,8 @@ def train(Dataset,
     if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:
       if FLAGS.torch:
         model.eval()
+
+      vals, names = None, None
       if evaluate_fn is not None:
         vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
       elif eval_fn:
@@ -649,10 +677,12 @@ def train(Dataset,
         vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
                                names, valid_write_fn, write_streaming,
                                num_valid_steps_per_epoch, suffix=valid_suffix, sep=sep)
-      logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
-                    'step:%d' % global_step.numpy(),
-                    'epoch_valid_metrics',
-                    ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
+
+      if vals and names:
+        logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
+                      'step:%d' % global_step.numpy(),
+                      'epoch_valid_metrics',
+                      ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
 
     with writer.as_default(), summary.always_record_summaries():
       temp = global_step.value()
@@ -661,8 +691,9 @@ def train(Dataset,
       if valid_dataset:
         if FLAGS.torch:
           model.eval()
-        for name, val in zip(names, vals):
-          summary.scalar(f'epoch/valid/{name}', val)
+        if vals and names:
+          for name, val in zip(names, vals):
+            summary.scalar(f'epoch/valid/{name}', val)
       writer.flush()
       global_step.assign(temp)
 
