@@ -78,7 +78,7 @@ def cosine(a, b):
   from numpy.linalg import norm
   return dot(a, b)/(norm(a)*norm(b))
 
-def softmax(x, axis=0):
+def softmax(x, axis=-1):
     mx = np.amax(x, axis=axis, keepdims=True)
     x_exp = np.exp(x - mx)
     x_sum = np.sum(x_exp, axis=axis, keepdims=True)

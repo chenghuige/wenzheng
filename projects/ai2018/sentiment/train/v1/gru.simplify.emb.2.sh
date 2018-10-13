@@ -1,5 +1,5 @@
 base=./mount
-dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
+dir=$base/temp/ai2018/sentiment/tfrecord/
 
 fold=0
 if [ $# == 1 ];
@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/$SRC/gru.emb/
+model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/gru.simplify.emb.2/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -44,9 +44,6 @@ python $exe \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets 600 \
-        --batch_sizes 32,16 \
-        --length_key content \
         --encoder_type=rnn \
         --keep_prob=0.7 \
         --num_layers=1 \

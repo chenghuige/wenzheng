@@ -89,16 +89,16 @@ def calc_f1_alls(labels, predicts):
 class_weights = np.load('/home/gezi/temp/ai2018/sentiment/class_weights.npy')
 #print('class_weights', class_weights)
 
-# for i in range(len(class_weights)):
-#   for j in range(4):
-#     #class_weights[i][j] = math.log(class_weights[i][j])
-#     #class_weights[i] = gezi.softmax(class_weights[i])
-#     #class_weights[i][j] +=  math.sqrt(class_weights[i][j])
-#     #class_weights[i][j] += 0.
-#     #class_weights[i][j] = math.sqrt(class_weights[i][j])
-#     #x = 1./(1 - class_weights[i][j])
-#     #class_weights[i][j] = x
-#     #class_weights[i][j] = x * x
+for i in range(len(class_weights)):
+  for j in range(4):
+    #class_weights[i][j] = math.log(class_weights[i][j])
+    #class_weights[i] = gezi.softmax(class_weights[i])
+    #class_weights[i][j] +=  math.sqrt(class_weights[i][j])
+    #class_weights[i][j] += 0.
+    #class_weights[i][j] = math.sqrt(class_weights[i][j])
+    x = class_weights[i][j]
+    class_weights[i][j] = x
+    #class_weights[i][j] = x * x
 
 def to_predict(logits, weights=None, is_single=False):
   ## DO NOT divde !!

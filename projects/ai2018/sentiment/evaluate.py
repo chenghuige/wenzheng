@@ -247,6 +247,7 @@ def calc_auc(labels, predicts, model_path=None):
   return vals, names
 
 def evaluate(labels, predicts, ids=None, model_path=None):
+  # TODO here use softmax will cause problem... not correct.. for f1
   probs = gezi.softmax(predicts)
   if FLAGS.use_class_weights:
     probs *= class_weights

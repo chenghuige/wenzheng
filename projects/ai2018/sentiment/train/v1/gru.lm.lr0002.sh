@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/$SRC/gru.emb/
+model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/$SRC/gru.lm.lr0002/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -41,12 +41,7 @@ python $exe \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
-        --word_embedding_file=$dir/emb.npy \
-        --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets 600 \
-        --batch_sizes 32,16 \
-        --length_key content \
         --encoder_type=rnn \
         --keep_prob=0.7 \
         --num_layers=1 \
@@ -60,7 +55,7 @@ python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=adam \
-        --learning_rate=0.001 \
+        --learning_rate=0.002 \
         --decay_target=f1 \
         --decay_patience=1 \
         --decay_factor=0.8 \

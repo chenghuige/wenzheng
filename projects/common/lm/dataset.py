@@ -117,6 +117,7 @@ class Dataset(melt.tfrecords.Dataset):
 
           def reset(self):
             self.i = 0
+            np.random.shuffle(self.ori_data)
             self.data = np.concatenate(self.ori_data)
             data_len = len(self.data)
             batch_len = data_len // batch_size
@@ -136,7 +137,6 @@ class Dataset(melt.tfrecords.Dataset):
               self.i += bptt
               return x, y
             else:
-              np.random.shuffle(self.ori_data)
               self.reset()
               raise StopIteration()
 
