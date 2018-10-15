@@ -20,7 +20,7 @@ flags.DEFINE_bool('debug', False, '')
 flags.DEFINE_string('method', 'blend', '')
 flags.DEFINE_string('idir', '.', '')
 flags.DEFINE_float('norm_factor', 0.0001, 'attr weights used norm factor')
-flags.DEFINE_float('ensemble_factor', 10, '')
+flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 72532 so.. a bit dangerous')
 flags.DEFINE_float('thre', 0.69, '')
 
 
@@ -97,24 +97,31 @@ for i in range(len(class_weights)):
     #class_weights[i][j] += 0.
     #class_weights[i][j] = math.sqrt(class_weights[i][j])
     x = class_weights[i][j]
-    class_weights[i][j] = x
-    #class_weights[i][j] = x * x
+    # If using prob adjust just set x for logits seems x^3 better
+    #class_weights[i][j] = x 
+    class_weights[i][j] = x * x * x 
 
-def to_predict(logits, weights=None, is_single=False):
+#class_weights = gezi.softmax(class_weights)
+print('class_weights', class_weights)
+
+def to_predict(logits, weights=None, is_single=False, adjust=True):
   ## DO NOT divde !!
   if is_single:
-    factor = FLAGS.ensemble_factor
+    factor = FLAGS.logits_factor
   else:
     if weights is None:
       factor = 1.
     else:
-      factor =  FLAGS.ensemble_factor / weights
+      factor =  FLAGS.logits_factor / weights
   print('factor:', factor)
   
   logits = np.reshape(logits, [-1, num_attrs, num_classes])
-  logits = logits * factor
-  probs = gezi.softmax(logits, -1) 
-  probs *= class_weights
+  if adjust:
+    logits = logits * factor
+    probs = gezi.softmax(logits, -1) 
+    probs *= class_weights
+  else:
+    probs = logits
 
   probs = np.reshape(probs, [-1, num_classes])
   result = np.zeros([len(probs)], dtype=int)
@@ -208,7 +215,7 @@ def main(_):
     f1_adjusted = np.mean(f1s_adjusted)
     
     print(fid, file_, f1, f1_adjusted) 
-    if f1 < FLAGS.thre:
+    if f1_adjusted < FLAGS.thre:
      print('ignore', file_)
      continue
     else:
@@ -246,7 +253,12 @@ def main(_):
       results[i] += score
 
       # notice softmax([1,2]) = [0.26894142, 0.73105858] softmax([2,4]) = [0.11920292, 0.88079708]
-      score = gezi.softmax(np.reshape(score, [num_attrs, num_classes]), -1)
+      score = np.reshape(score, [num_attrs, num_classes])
+      
+      #score *= FLAGS.logits_factor
+      score = gezi.softmax(score, -1)
+      #score *= class_weights
+
       score = np.reshape(score, [-1])
       
       results2[i] += score 
@@ -271,16 +283,24 @@ def main(_):
   print('f1_prob:', f1_prob)
   print('adjusted f1_prob:', adjusted_f1_prob)
 
-  print('-----------detailed f1 infos')
-  _, adjusted_f1_probs, class_f1s = calc_f1_alls(labels, to_predict(results2, sum_weights))
+  print('-----------detailed f1 infos (ensemble by prob)')
+  _, adjusted_f1_probs, class_f1s = calc_f1_alls(labels, to_predict(results2, sum_weights, adjust=False))
 
   for i, attr in enumerate(ATTRIBUTES):
     print(attr, adjusted_f1_probs[i])
   for i, cls in enumerate(CLASSES):
     print(cls, class_f1s[i])
 
+  print('-----------detailed f1 infos (ensemble by logits)')
+  _, adjusted_f1s, class_f1s = calc_f1_alls(labels, to_predict(results, sum_weights))
+
+  for i, attr in enumerate(ATTRIBUTES):
+    print(attr, adjusted_f1s[i])
+  for i, cls in enumerate(CLASSES):
+    print(cls, class_f1s[i])
 
   print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
+  print(f'adjusted f1:[{adjusted_f1}]')
 
   #-------------infer
   print('------------infer')
@@ -311,7 +331,8 @@ def main(_):
       score = np.reshape(score, [-1])
       results2[i] += score 
 
-  predicts = to_predict(results2, sum_weights)
+  #predicts = to_predict(results2, sum_weights)
+  predicts = to_predict(results, sum_weights)
 
   if not DEBUG:
     columns = df.columns[idx:idx + num_attrs].values
@@ -341,6 +362,7 @@ def main(_):
   if DEBUG:
     print('check blend result', calc_f1(df.iloc[:, idx:idx + num_attrs].values, predicts))
   print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
+  print(f'adjusted f1:[{adjusted_f1}]')
 
 
   print('out:', ofile)

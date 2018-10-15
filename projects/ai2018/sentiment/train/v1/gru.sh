@@ -42,9 +42,6 @@ python $exe \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
         --batch_size 32 \
-        --buckets 1200 \
-        --batch_sizes 32,16 \
-        --length_key content \
         --encoder_type=rnn \
         --keep_prob=0.7 \
         --num_layers=1 \

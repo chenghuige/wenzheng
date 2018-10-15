@@ -56,9 +56,11 @@ class ModelV2(nn.Module):
             hidden_size=self.num_units,
             num_layers=self.num_layers,
             dropout_rate=1 - FLAGS.keep_prob,
+            recurrent_dropout=FLAGS.recurrent_dropout,
+            bw_dropout=FLAGS.bw_dropout,
             dropout_output=False,
-            concat_layers=False,
-            rnn_type=nn.GRU,
+            concat_layers=FLAGS.concat_layers,
+            rnn_type=FLAGS.cell,
             padding=FLAGS.rnn_padding,
         )    
 
@@ -111,7 +113,8 @@ class Model(nn.Module):
     self.num_units = FLAGS.rnn_hidden_size
     self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
 
-    # well, here CudnnRnn works so bad...
+    factor = self.num_layers if FLAGS.concat_layers else 1
+
     Rnn = lele.layers.StackedBRNN if not FLAGS.torch_cudnn_rnn else lele.layers.CudnnRnn
     self.encode = Rnn(
             input_size=emb_dim,
@@ -119,8 +122,9 @@ class Model(nn.Module):
             num_layers=self.num_layers,
             dropout_rate=1 - FLAGS.keep_prob,
             dropout_output=False,
-            concat_layers=True,
-            rnn_type=nn.GRU,
+            recurrent_dropout=FLAGS.recurrent_dropout,
+            concat_layers=FLAGS.concat_layers,
+            rnn_type=FLAGS.cell,
             padding=FLAGS.rnn_padding,
         )    
 
@@ -128,22 +132,24 @@ class Model(nn.Module):
       self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
       self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
 
-      self.att_dot_attention = lele.layers.DotAttention(input_size=2 * self.num_units * self.num_layers, 
-                                                        input_size2=FLAGS.emb_dim,
-                                                        hidden=self.num_units, 
-                                                        dropout_rate=1 - FLAGS.keep_prob, 
-                                                        combiner=FLAGS.att_combiner)
-
-      self.att_encode = Rnn(
-            input_size=self.att_dot_attention.output_size,
-            hidden_size=self.num_units,
-            num_layers=1,
-            dropout_rate=1 - FLAGS.keep_prob,
-            dropout_output=False,
-            concat_layers=False,
-            rnn_type=nn.GRU,
-            padding=FLAGS.rnn_padding,
-        )    
+      self.att_dot_attentions = nn.ModuleList()
+      self.att_encodes = nn.ModuleList()
+      for i in range(FLAGS.label_hop):
+        self.att_dot_attentions.append(lele.layers.DotAttention(input_size=2 * self.num_units * factor, 
+                                                                input_size2=FLAGS.emb_dim,
+                                                                hidden=self.num_units, 
+                                                                dropout_rate=1 - FLAGS.keep_prob, 
+                                                                combiner=FLAGS.att_combiner))
+        self.att_encodes.append(Rnn(
+              input_size=self.att_dot_attentions[-1].output_size,
+              hidden_size=self.num_units,
+              num_layers=1,
+              dropout_rate=1 - FLAGS.keep_prob,
+              dropout_output=False,
+              concat_layers=False,
+              rnn_type=FLAGS.cell,
+              padding=FLAGS.rnn_padding,
+          ))
 
     if FLAGS.use_self_match:
       self.match_dot_attention = lele.layers.DotAttention(input_size=2 * self.num_units, 
@@ -158,13 +164,13 @@ class Model(nn.Module):
             dropout_rate=1 - FLAGS.keep_prob,
             dropout_output=False,
             concat_layers=False,
-            rnn_type=nn.GRU,
+            rnn_type=FLAGS.cell,
             padding=FLAGS.rnn_padding,
         )    
 
     self.pooling = lele.layers.Pooling(
                         FLAGS.encoder_output_method, 
-                        input_size= 2 * self.num_units,
+                        input_size= 2 * self.num_units * factor,
                         top_k=FLAGS.top_k, 
                         att_activation=getattr(F, FLAGS.att_activation))
 
@@ -190,8 +196,10 @@ class Model(nn.Module):
     if FLAGS.use_label_att:
       label_emb = self.label_embedding.weight
       label_seq = lele.tile(label_emb.unsqueeze(0), 0, batch_size)
-      x = self.att_dot_attention(x, label_seq, torch.zeros(batch_size, self.label_emb_height).byte().cuda())
-      x = self.att_encode(x, x_mask)
+      # TODO label rnn 
+      for i in range(FLAGS.label_hop):
+        x = self.att_dot_attentions[i](x, label_seq, torch.zeros(batch_size, self.label_emb_height).byte().cuda())
+        x = self.att_encodes[i](x, x_mask)
 
     if FLAGS.use_self_match:
        x = self.match_dot_attention(x, x, x_mask) 
@@ -223,23 +231,23 @@ class MReader(nn.Module):
     self.num_units = FLAGS.rnn_hidden_size
     self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
 
-    # well, here CudnnRnn works so bad...
-    Rnn = lele.layers.StackedBRNN
+    Rnn = lele.layers.StackedBRNN if not FLAGS.torch_cudnn_rnn else lele.layers.CudnnRnn
     self.encode = Rnn(
             input_size=emb_dim,
             hidden_size=self.num_units,
-            num_layers=1,
+            num_layers=self.num_layers,
             dropout_rate=1 - FLAGS.keep_prob,
             dropout_output=False,
-            concat_layers=True,
-            rnn_type=nn.GRU,
+            recurrent_dropout=FLAGS.recurrent_dropout,
+            concat_layers=FLAGS.concat_layers,
+            rnn_type=FLAGS.cell,
             padding=FLAGS.rnn_padding,
         )    
 
-  
     self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
     self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
   
+    assert not FLAGS.concat_layers
     doc_hidden_size = 2 * self.num_units
 
     # here linear better or another rnn is better ?
@@ -252,8 +260,8 @@ class MReader(nn.Module):
             num_layers=1,
             dropout_rate=1 - FLAGS.keep_prob,
             dropout_output=False,
-            concat_layers=True,
-            rnn_type=nn.GRU,
+            concat_layers=False,
+            rnn_type=FLAGS.cell,
             padding=FLAGS.rnn_padding,
         )    
 
@@ -273,14 +281,14 @@ class MReader(nn.Module):
       self.self_SFUs.append(layers.SFU(doc_hidden_size, 3 * doc_hidden_size))
       # aggregating
       self.aggregate_rnns.append(
-          layers.StackedBRNN(
+          Rnn(
               input_size=doc_hidden_size,
               hidden_size=self.num_units,
               num_layers=1,
               dropout_rate=1 - FLAGS.keep_prob,
               dropout_output=False,
               concat_layers=False,
-              rnn_type=nn.GRU,
+              rnn_type=FLAGS.cell,
               padding=FLAGS.rnn_padding,
           )
       )
@@ -337,4 +345,28 @@ class MReader(nn.Module):
     x = x.view([-1, NUM_ATTRIBUTES, self.num_classes])
 
     return x
+
+class Fastai(nn.Module):
+  def __init__(self):
+    super(Fastai, self).__init__()
+    vocabulary.init()
+    vocab_size = vocabulary.get_vocab_size() 
+    emb_dim = FLAGS.emb_dim 
+    self.num_classes = NUM_CLASSES
+    self.model = lele.fastai.text.classifier(vocab_size, NUM_ATTRIBUTES * self.num_classes, emb_sz=emb_dim,
+                                             nl=FLAGS.num_layers,
+                                             embedding_weight=FLAGS.word_embedding_file)
+
+  def forward(self, input, training=False):
+    x = input['content']
+    # TODO ..
+    #x = x.permute(1, 0)
+    x = x.transpose(0, 1)
+    x = self.model(x)
+    
+    x = x[0]
+    x = x.view([-1, NUM_ATTRIBUTES, self.num_classes])
+
+    return x
+
   

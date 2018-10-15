@@ -321,6 +321,7 @@ def train(Dataset,
   global_step = tf.train.get_or_create_global_step()
 
   learning_rate = tfe.Variable(FLAGS.learning_rate, name="learning_rate")
+  
   tf.add_to_collection('learning_rate', learning_rate)
 
   learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
@@ -397,6 +398,8 @@ def train(Dataset,
   #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
   #model.save('./weight3.hd5')
 
+  learning_rate.assign(learning_rate * FLAGS.learning_rate_start_factor)
+
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs if FLAGS.num_epochs != 0 else 1024
 
@@ -404,7 +407,7 @@ def train(Dataset,
   if start_epoch == 0 and not 'EVFIRST' in os.environ and will_valid:
     will_valid = False
 
-  if start_epoch > 0 and not 'QUICK' in os.envrion and will_valid:
+  if start_epoch > 0 and not 'QUICK' in os.environ and will_valid:
     will_valid = True 
   
   if will_valid:

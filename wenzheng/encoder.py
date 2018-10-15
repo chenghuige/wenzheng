@@ -40,6 +40,8 @@ class Encoder(melt.Model):
     self.bw_dropout = FLAGS.bw_dropout
 
     logging.info(f'encoder:{type}')
+    logging.info('encoder recurrent dropout:{}'.format(self.recurrent_dropout))
+    logging.info('encoder bw dropout:{}'.format(self.bw_dropout))
     logging.info('encoder num_layers:{}'.format(self.num_layers))
     logging.info('encoder num_units:{}'.format(self.num_units))
     logging.info('encoder keep_prob:{}'.format(self.keep_prob))
@@ -49,7 +51,7 @@ class Encoder(melt.Model):
         encode = None
       elif type == 'gru' or type == 'rnn' or type == 'lstm':
         if type == 'rnn':
-          type = 'gru'
+          type = FLAGS.cell or 'gru'
         encode = melt.layers.CudnnRnn(num_layers=self.num_layers, 
                                       num_units=self.num_units, 
                                       keep_prob=self.keep_prob,

@@ -37,10 +37,12 @@ for (_, row) in df.iterrows():
   for i, label in enumerate(labels):
     counts[i][label + 2] += 1
     
+print('counts:', counts)
 for i in range(len(counts)):
   for j in range(4):
-    #print(len(df), print(np.sum(counts[i])))
-    weights[i][j] = counts[i][j] / len(df)
+    #weights[i][j] =  1. / counts[i][j] 
+    weights[i][j] =  len(df) / counts[i][j] 
+print('weights', weights)
 #for attr, count in zip(ATTRIBUTES, counts):
 #  print(attr, [x / len(df) for x in count])
 

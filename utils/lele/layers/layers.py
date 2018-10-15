@@ -28,6 +28,7 @@ class CudnnRnn(nn.Module):
     Differs from standard PyTorch library in that it has the option to save
     and concat the hidden states between layers. (i.e. the output hidden size
     for each sequence input is num_layers * hidden_size).
+    for hkust tf rent, reccruent dropout, bw drop out, concat layers and rnn padding
     """
 
     def __init__(self, input_size, hidden_size, num_layers,
@@ -46,6 +47,10 @@ class CudnnRnn(nn.Module):
         self.bw_dropout = bw_dropout
         self.fws = nn.ModuleList()
         self.bws = nn.ModuleList()
+        
+        if type(rnn_type) == str:
+            rnn_type=nn.GRU if rnn_type == 'gru' else nn.LSTM
+
         self.num_units = []
         for i in range(num_layers):
             input_size = input_size if i == 0 else 2 * hidden_size
@@ -79,6 +84,7 @@ class CudnnRnn(nn.Module):
         outputs = [x]
         for i in range(self.num_layers):
             rnn_input = outputs[-1]
+            mask = None
             if self.dropout_rate > 0:
                 if not self.recurrent_dropout:              
                     rnn_input_ = F.dropout(rnn_input,
@@ -91,19 +97,18 @@ class CudnnRnn(nn.Module):
                                          training=self.training)
                     else:
                         mask = fw_masks[i]
-                
                     rnn_input_ = rnn_input * mask
-            else:
-                rnn_input_ = rnn_input
+                
+           
             # Forward
             fw_output = self.fws[i](rnn_input_)[0]
 
-            if self.dropout_rate > 0:
+            mask = None
+            if self.dropout_rate > 0 and self.bw_dropout:
                 if not self.recurrent_dropout:
-                   if self.bw_dropout:
-                        rnn_input = F.dropout(rnn_input,
-                                              p=self.dropout_rate,
-                                              training=self.training)
+                    rnn_input_ = F.dropout(rnn_input,
+                                            p=self.dropout_rate,
+                                            training=self.training)
                 else:
                     if bw_masks is None:
                         mask = F.dropout(torch.ones(1, batch_size, self.num_units[i]).cuda(),
@@ -111,11 +116,14 @@ class CudnnRnn(nn.Module):
                                                     training=self.training)
                     else:
                         mask = bw_masks[i]
-            else:
-                rnn_input_ = rnn_input
+                    rnn_input_ = rnn_input * mask
 
             rnn_input_ = lele.reverse_padded_sequence(rnn_input_, length)
+
             bw_output = self.bws[i](rnn_input_)[0]
+            
+            bw_output = lele.reverse_padded_sequence(bw_output, length)
+
             outputs.append(torch.cat([fw_output, bw_output], 2))
 
         # Concat hidden layers
@@ -146,7 +154,8 @@ class StackedBRNN(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, num_layers,
-                 dropout_rate=0, dropout_output=False, rnn_type=nn.LSTM,
+                 dropout_rate=0, recurrent_dropout=False,
+                 dropout_output=False, rnn_type=nn.LSTM,
                  concat_layers=False, padding=False):
         super(StackedBRNN, self).__init__()
         self.padding = padding
@@ -155,8 +164,13 @@ class StackedBRNN(nn.Module):
         self.num_layers = num_layers
         self.concat_layers = concat_layers
         self.rnns = nn.ModuleList()
+        self.recurrent_dropout = recurrent_dropout
+        if type(rnn_type) is str:
+            rnn_type=nn.GRU if rnn_type == 'gru' else nn.LSTM
+        self.num_units = []
         for i in range(num_layers):
             input_size = input_size if i == 0 else 2 * hidden_size
+            self.num_units.append(input_size)
             self.rnns.append(rnn_type(input_size, hidden_size,
                                       num_layers=1,
                                       bidirectional=True))
@@ -189,6 +203,7 @@ class StackedBRNN(nn.Module):
         """Faster encoding that ignores any padding."""
         # Transpose batch and sequence dims
         x = x.transpose(0, 1)
+        batch_size = x.size(1)
 
         # Encode all layers
         outputs = [x]
@@ -197,9 +212,16 @@ class StackedBRNN(nn.Module):
 
             # Apply dropout to hidden input
             if self.dropout_rate > 0:
-                rnn_input = F.dropout(rnn_input,
-                                      p=self.dropout_rate,
-                                      training=self.training)
+                if not self.recurrent_dropout:
+                    rnn_input = F.dropout(rnn_input,
+                                        p=self.dropout_rate,
+                                        training=self.training)
+                else:
+                    mask = F.dropout(torch.ones(1, batch_size, self.num_units[i]).cuda(),
+                                     p=self.dropout_rate,
+                                     training=self.training)
+                    rnn_input = rnn_input * mask
+
             # Forward
             rnn_output = self.rnns[i](rnn_input)[0]
             outputs.append(rnn_output)
@@ -239,6 +261,7 @@ class StackedBRNN(nn.Module):
 
         # Transpose batch and sequence dims
         x = x.transpose(0, 1)
+        batch_size = x.size(1)
 
         # Pack it up
         rnn_input = nn.utils.rnn.pack_padded_sequence(x, lengths)
@@ -250,9 +273,15 @@ class StackedBRNN(nn.Module):
 
             # Apply dropout to input
             if self.dropout_rate > 0:
-                dropout_input = F.dropout(rnn_input.data,
-                                          p=self.dropout_rate,
-                                          training=self.training)
+                if not self.recurrent_dropout:
+                    dropout_input = F.dropout(rnn_input.data,
+                                            p=self.dropout_rate,
+                                            training=self.training)
+                else:
+                    mask = F.dropout(torch.ones(1, batch_size, self.num_units[i]).cuda(),
+                                     p=self.dropout_rate,
+                                     training=self.training)
+                    dropout_input = rnn_input.data * mask
                 rnn_input = nn.utils.rnn.PackedSequence(dropout_input,
                                                         rnn_input.batch_sizes)
             outputs.append(self.rnns[i](rnn_input)[0])
@@ -670,10 +699,10 @@ class MaxPooling(nn.Module):
             return torch.max(x, 1)[0]
         else:
             # x_mask = x_mask.unsqueeze(-1).expand(x.size())
-            # # TODO FIXME why torch.max with inf will ause nan..
             # x.data.masked_fill_(x_mask.data, -float('inf'))
             # return torch.max(x, 1)[0]
-            # https://medium.com/@sonicboom8/sentiment-analysis-with-variable-length-sequences-in-pytorch-6241635ae130
+            # # https://medium.com/@sonicboom8/sentiment-analysis-with-variable-length-sequences-in-pytorch-6241635ae130
+            # # shold be same as above or use F.adaptive_max_pool1d and slightly slower
             lengths = (1 - x_mask).sum(1)
             return torch.cat([torch.max(i[:l], dim=0)[0].view(1,-1) for i,l in zip(x, lengths)], dim=0) 
 
@@ -687,12 +716,24 @@ class TopKPooling(nn.Module):
             return torch.topk(x, k=self.top_k, dim=1)[0].view(x.size(0), -1)
         else:
             # x_mask = x_mask.unsqueeze(-1).expand(x.size())
-            # # TODO FIXME why torch.max with inf will ause nan..
             # x.data.masked_fill_(x_mask.data, -float('inf'))
-            # return torch.max(x, 1)[0]
+            # return torch.topk(x, k=self.top_k, dim=1)[0].view(x.size(0), -1)
+            #FIXME below not ok
+            #return F.adaptive_max_pool1d(x, self.top_k).view(x.size(0), -1)
             # https://medium.com/@sonicboom8/sentiment-analysis-with-variable-length-sequences-in-pytorch-6241635ae130
             lengths = (1 - x_mask).sum(1)
             return torch.cat([torch.topk(i[:l], k=self.top_k, dim=0)[0].view(1,-1) for i,l in zip(x, lengths)], dim=0).view(x.size(0), -1)
+
+class LastPooling(nn.Module):
+    def __init__(self):
+        super(LastPooling, self).__init__()
+
+    def forward(self, x, x_mask):
+        if x_mask is None or x_mask.data.sum() == 0:
+            return x[:,-1,:]
+        else:
+            lengths = (1 - x_mask).sum(1)
+            return torch.cat([i[l - 1,:] for i,l in zip(x, lengths)], dim=0).view(x.size(0), -1)
 
 class LinearSeqAttnPooling(nn.Module):
     """Self attention over a sequence:

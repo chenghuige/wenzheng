@@ -109,6 +109,7 @@ flags.DEFINE_float('opt_epsilon', 1e-6, 'follow squad of ukhst')
 flags.DEFINE_float('learning_rate', 0.001, """
                                          default is adam default lr""")
 flags.DEFINE_float('min_learning_rate', 5e-5, 'min learning rate used for dyanmic eval metric decay')
+flags.DEFINE_float('learning_rate_start_factor', 1., '')
 
 #flags.DEFINE_float('learning_rate_decay_factor', 0.97, 'im2txt 0.5, follow nasnet using 0.97')
 flags.DEFINE_float('learning_rate_decay_factor', 0., 'im2txt 0.5, follow nasnet using 0.97')
@@ -233,7 +234,6 @@ flags.DEFINE_integer('big_batch_size', None, '')
 flags.DEFINE_boolean('adjust_global_step', False, '')
 
 flags.DEFINE_boolean('eager', False, '')
-
 
 flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
                                            setting to 1 may be faster but less randomness

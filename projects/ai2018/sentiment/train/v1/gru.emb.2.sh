@@ -1,5 +1,5 @@
 base=./mount
-dir=$base/temp/ai2018/sentiment/tfrecord/
+dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
 
 fold=0
 if [ $# == 1 ];
@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/gru.emb.2/
+model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/$SRC/gru.emb.2/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -37,7 +37,7 @@ python $exe \
         --use_self_match=0 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
-        --train_input=$dir/train/'*,'$dir/aug.train/'*,' \
+        --train_input=$dir/train/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \

@@ -44,9 +44,6 @@ python $exe \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets 600 \
-        --batch_sizes 32,16 \
-        --length_key content \
         --encoder_type=rnn \
         --keep_prob=0.7 \
         --num_layers=1 \

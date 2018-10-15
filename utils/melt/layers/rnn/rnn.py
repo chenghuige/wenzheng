@@ -156,6 +156,10 @@ class CudnnRnn(keras.Model):
       # TODO name is not very ok... without scope ...
       self.init_fw_layer = InitStates(num_layers, num_units, 'init_fw')
       self.init_bw_layer = InitStates(num_layers, num_units, 'init_bw')
+      if self.cell == 'lstm':
+        self.init_fw2_layer = InitStates(num_layers, num_units, 'init_fw2')
+        self.init_bw2_layer = InitStates(num_layers, num_units, 'init_bw2')
+
 
   def set_dropout_mask(self, mask_fw, mask_bw):
     self.dropout_mask_fw = mask_fw 
@@ -207,6 +211,8 @@ class CudnnRnn(keras.Model):
         #init_fw = tf.tile(self.init_fw[layer], [batch_size, 1])
         #init_fw = tf.tile(self.init_fw_layer(layer), [batch_size, 1])
         init_fw = self.init_fw_layer(layer, batch_size)
+        if self.cell == 'lstm':
+          init_fw = (init_fw, self.init_fw2_layer(layer, batch_size))
       else:
         init_fw = None
 
@@ -230,13 +236,19 @@ class CudnnRnn(keras.Model):
         inputs_fw = dropout(outputs[-1], keep_prob=keep_prob, training=training, mode=None)
 
       # https://stackoverflow.com/questions/48233400/lstm-initial-state-from-dense-layer
-      # gru and lstm different ... state lstm need tuple (,) states as input state
-      out_fw, state_fw = gru_fw(inputs_fw, init_fw)
+      # gru and lstm different ... state lstm need tuple (,) states as input state\
+      if self.cell == 'gru':
+        out_fw, state_fw = gru_fw(inputs_fw, init_fw)
+      else:
+        out_fw, state_fw1, state_fw2 = gru_fw(inputs_fw, init_fw)
+        state_fw = (state_fw1, state_fw2)
 
       if self.train_init_state:
         #init_bw = tf.tile(self.init_bw[layer], [batch_size, 1])
         #init_bw = tf.tile(self.init_bw_layer(layer), [batch_size, 1])
         init_bw = self.init_bw_layer(layer, batch_size)
+        if self.cell == 'lstm':
+          init_bw = (init_bw, self.init_bw2_layer(layer, batch_size))
       else:
         init_bw = None
 
@@ -265,7 +277,12 @@ class CudnnRnn(keras.Model):
       inputs_bw = tf.reverse_sequence(
           inputs_bw, seq_lengths=sequence_length, seq_axis=1, batch_axis=0)
 
-      out_bw, state_bw = gru_bw(inputs_bw, init_bw)
+      if self.cell == 'gru': 
+        out_bw, state_bw = gru_bw(inputs_bw, init_bw)
+      else:
+        out_bw, state_bw1, state_bw2 = gru_bw(inputs_bw, init_bw)
+        state_bw = (state_bw1, state_bw2)
+           
       out_bw = tf.reverse_sequence(
           out_bw, seq_lengths=sequence_length, seq_axis=1, batch_axis=0)
 

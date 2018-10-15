@@ -185,4 +185,5 @@ flags.DEFINE_integer('finetune_emb_step', None, 'might be 45000 toxic 20 epoch')
 
 flags.DEFINE_bool('mask_pooling', True, '')
 flags.DEFINE_integer('hop', 2, '')
+flags.DEFINE_integer('label_hop', 1, '')
 

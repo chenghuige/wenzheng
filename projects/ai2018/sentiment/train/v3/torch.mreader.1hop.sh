@@ -39,6 +39,8 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
+        --concat_layers=0 \
+        --recurrent_dropout=0 \
         --use_label_rnn=0 \
         --hop=1 \
         --att_combiner='sfu' \
@@ -62,8 +64,9 @@ python $exe \
         --batch_sizes 32,16 \
         --length_key content \
         --encoder_type=rnn \
+        --cell=lstm \
         --keep_prob=0.7 \
-        --num_layers=2 \
+        --num_layers=1 \
         --rnn_hidden_size=200 \
         --encoder_output_method=topk,att \
         --eval_interval_steps 1000 \

@@ -20,7 +20,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('rnn_method', 'forward', '0 forward, 1 backward, 2 bidirectional')
 flags.DEFINE_string('rnn_output_method', 'max', '0 sumed vec, 1 last vector, 2 first vector, 3 all here first means first to original sequence')
 
-flags.DEFINE_string('cell', 'basic_lstm', 'might set to lstm_block which is faster, or lstm_block_fused, cudnn_lstm even faster')
+flags.DEFINE_string('cell', 'gru', 'might set to lstm_block which is faster, or lstm_block_fused, cudnn_lstm even faster')
 flags.DEFINE_string('cudnn_cell', None, 'gru or lstm')
 flags.DEFINE_string('encoder_cell',  None, 'might set to lstm_block which is faster, or lstm_block_fused, cudnn_lstm even faster')
 flags.DEFINE_string('decoder_cell', None, 'might set to lstm_block which is faster, or lstm_block_fused, cudnn_lstm even faster')
@@ -37,7 +37,7 @@ flags.DEFINE_integer('rnn_hidden_size', 512, 'rnn cell state hidden size, follow
 flags.DEFINE_integer('encoder_rnn_hidden_size', None, '')
 flags.DEFINE_integer('decoder_rnn_hidden_size', None, '')
 
-flags.DEFINE_bool('recurrent_dropout', True, '')
+flags.DEFINE_bool('recurrent_dropout', False, '')
 flags.DEFINE_bool('bw_dropout', False, '')
 
 flags.DEFINE_bool('rnn_padding', False, 'if True padding when train, eval always padding')
@@ -46,3 +46,5 @@ flags.DEFINE_bool('pooling_no_padding', False, 'if True always not consider padd
 
 # for pytorch..
 flags.DEFINE_bool('torch_cudnn_rnn', False, 'pytorch using CudnnRnn or StackRnn')
+
+flags.DEFINE_bool('concat_layers', True, 'by default concat layers as hkust rnet did')

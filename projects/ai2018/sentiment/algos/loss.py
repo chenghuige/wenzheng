@@ -24,6 +24,8 @@ import os
 from algos.weights import *
 from algos.config import NUM_CLASSES
 
+#from evaluate import load_class_weights
+
 def calc_loss(y, y_, weights, training=False):
   #y += 2
   #print(y_, y, weights)
@@ -159,6 +161,10 @@ def criterion(model, x, y, training=False):
   weights = weights * tf.to_float(mask)
   y = y * tf.to_int64(mask)
 
+  # if FLAGS.use_class_weights:
+  #   weights = load_class_weights()
+  #   print('--------------', weights)
+    
   if FLAGS.loss_type == 'normal':
     return calc_loss(y, y_, weights, training)
   elif FLAGS.loss_type == 'binary':

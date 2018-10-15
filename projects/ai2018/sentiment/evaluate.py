@@ -17,7 +17,12 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('info_path', None, '')
 flags.DEFINE_bool('auc_need_softmax', True, '')
+
 flags.DEFINE_bool('use_class_weights', False, '')
+flags.DEFINE_string('class_weights_path', './mount/temp/ai2018/sentiment/class_weights.npy', '')
+flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 72532 so.. a bit dangerous')
+
+flags.DEFINE_bool('show_detail', False, '')
 
 #from sklearn.utils.extmath import softmax
 from sklearn.metrics import f1_score, log_loss, roc_auc_score
@@ -48,11 +53,21 @@ num_classes = len(classes)
 
 class_weights = None
 
+def load_class_weights():
+  global class_weights
+  if class_weights is None:
+    class_weights = np.load(FLAGS.class_weights_path)
+    for i in range(len(class_weights)):
+      for j in range(num_classes):
+        x = class_weights[i][j]
+        class_weights[i][j] = x * x * x 
+  return class_weights
+
+
 def init():
   global valid_infos, test_infos
   global wnames
-  global class_weights
-  class_weights = np.load('/home/gezi/temp/ai2018/sentiment/class_weights.npy')
+  load_class_weights()
 
   with open(FLAGS.info_path, 'rb') as f:
     valid_infos = pickle.load(f)
@@ -129,13 +144,13 @@ def to_class(predicts, thre=0.5):
   else:
     return np.argmax(predicts, -1)
   
-def calc_f1(labels, predicts, model_path=None):
+def calc_f1(labels, predicts, model_path=None, name = 'f1'):
   names = ['mean'] + ATTRIBUTES + classes
   num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
   if FLAGS.binary_class_index is not None:
     names = ['mean'] + ATTRIBUTES + ['not', classes[FLAGS.binary_class_index]] 
 
-  names = ['f1/' + x for x in names]
+  names = [f'{name}/' + x for x in names]
   # TODO show all 20 * 4 ? not only show 20 f1
   f1_list = []
   class_f1 = np.zeros([num_classes])
@@ -163,7 +178,7 @@ def calc_f1(labels, predicts, model_path=None):
   vals = [f1] + f1_list + list(class_f1)
 
   if model_path is None:
-    if FLAGS.decay_target and 'f1' in FLAGS.decay_target:
+    if FLAGS.decay_target and FLAGS.decay_target == name:
       if  FLAGS.num_learning_rate_weights <= 1:
         target = f1
       elif FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES * NUM_CLASSES:
@@ -193,7 +208,7 @@ def calc_loss(labels, predicts, model_path=None):
   vals = [np.mean(losses)] + losses
 
   if model_path is None:
-    if FLAGS.decay_target and 'loss' in FLAGS.decay_target:
+    if FLAGS.decay_target and FLAGS.decay_target == 'loss':
       if  FLAGS.num_learning_rate_weights <= 1:
         target = loss
       elif FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
@@ -231,7 +246,7 @@ def calc_auc(labels, predicts, model_path=None):
   vals = [auc] + aucs_list + list(class_aucs)
 
   if model_path is None:
-    if FLAGS.decay_target and 'auc' in FLAGS.decay_target:
+    if FLAGS.decay_target and FLAGS.decay_target == 'auc':
       if  FLAGS.num_learning_rate_weights <= 1:
         target = auc
       elif FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
@@ -249,10 +264,15 @@ def calc_auc(labels, predicts, model_path=None):
 def evaluate(labels, predicts, ids=None, model_path=None):
   # TODO here use softmax will cause problem... not correct.. for f1
   probs = gezi.softmax(predicts)
-  if FLAGS.use_class_weights:
-    probs *= class_weights
 
+  adjusted_probs = gezi.softmax(predicts * FLAGS.logits_factor) * class_weights
+
+  #vals, names = calc_f1(labels, predicts, model_path)
   vals, names = calc_f1(labels, probs, model_path)
+
+  vals_adjusted, names_adjusted = calc_f1(labels, adjusted_probs, model_path, name='adjusted_f1')
+  vals += vals_adjusted 
+  names += names_adjusted
   
   vals_loss, names_loss = calc_loss(labels, probs, model_path)
   vals += vals_loss 
@@ -304,7 +324,7 @@ def infer_write(ids, predicts, ofile, ofile2):
   return write(ids, None, predicts, ofile, ofile2, is_infer=True)
 
 if __name__ == '__main__':
-  class_weights = np.load('/home/gezi/temp/ai2018/sentiment/class_weights.npy')
+  load_class_weights()
 
   df = pd.read_csv(sys.argv[1])
 
@@ -340,8 +360,9 @@ if __name__ == '__main__':
 
   vals, names = evaluate(labels, predicts)
 
-  for name, val in zip(names, vals):
-    print(name, val)
+  if FLAGS.show_detail:
+    for name, val in zip(names, vals):
+      print(name, val)
 
   print('---------------------------------')
   for name, val in zip(names, vals):
