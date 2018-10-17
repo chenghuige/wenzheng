@@ -305,14 +305,14 @@ class JiebaSegmentor(object):
 Segmentor = JiebaSegmentor
 
 
-if gezi.encoding == 'gbk' or gezi.env_has('BAIDU_SEG'):
+if gezi.encoding == 'gbk' or gezi.env_has('BSEG'):
   import libgezi
   import libsegment
   seg = libsegment.Segmentor
 
   segment_char = segment_gbk_char 
 
-  class BaiduSegmentor(object):
+  class BSegmentor(object):
     def __init__(self, data='./data/wordseg', conf='./conf/scw.conf'):
       assert six.PY2, 'baidu segmentor now only support py2'
       seg.Init(data_dir=data, conf_path=conf)
@@ -410,6 +410,11 @@ if gezi.encoding == 'gbk' or gezi.env_has('BAIDU_SEG'):
       results += [word for word in seg.Segment(text, libsegment.SEG_BASIC)]
       return results  
 
+    def segment_phrase_single_all(self, text):
+      results = [word for word in segment_char(text, cn_only=False)]
+      results += [word for word in seg.Segment(text)]
+      return results  
+
     def segment_merge_newword_single(self, text):
       results = [word for word in get_single_cns(text)]
       results += [word for word in seg.Segment(text, libsegment.SEG_MERGE_NEWWORD)]
@@ -439,10 +444,32 @@ if gezi.encoding == 'gbk' or gezi.env_has('BAIDU_SEG'):
         l = seg.Segment(text)
       elif method == 'basic':
         l = seg.Segment(text, libsegment.SEG_BASIC)
+      elif method == 'basic_digit':
+        words = seg.Segment(text, libsegment.SEG_BASIC)
+        def sep_digits(word):
+          l = []
+          s = ''
+          for c in word:
+            if c.isdigit():
+              if s:
+                l.append(s)
+              l.append(c)
+              s = ''
+            else:
+              s += c
+          if s:
+            l.append(s)
+          return l
+        l = []
+        for w in words:
+          l += sep_digits(w)
+        words = l
       elif method == 'basic_single':
         l = self.segment_basic_single(text)
       elif method == 'basic_single_all':
         l = self.segment_basic_single_all(text)
+      elif method == 'phrase_single_all':
+        l = self.segment_phrase_single_all(text)
       elif method == 'merge_newword':
         l = seg.Segment(text, libsegment.SEG_MERGE_NEWWORD)
       elif method == 'merge_newword_single':
@@ -465,7 +492,7 @@ if gezi.encoding == 'gbk' or gezi.env_has('BAIDU_SEG'):
       return [x.decode('gbk').encode('utf8') for x in l]
 
 
-  Segmentor = BaiduSegmentor
+  Segmentor = BSegmentor
 
 
 import threading

@@ -19,16 +19,36 @@ import glob
 
 model_dir = sys.argv[1]
 
-best_score = 0
+key = 'adjusted_f1'
+
+if len(sys.argv) > 2:
+  key = sys.argv[2]
+
+print('key', key)
+
+def parse(x, key='adjusted_f1'):
+  idx = x.index('epoch:')
+  idx2 = x.index(' ', idx)
+  epoch = int(float(line[idx:idx2].split('/')[0].split(':')[1]))
+  
+  idx = x.index(f'{key}/mean:')
+  idx2 = x.index("'", idx)
+  score = float(x[idx:idx2].split(':')[-1])
+
+  return epoch, score
+
+best_score = 0 if key != 'loss' else 1e10
 best_epoch = None
 
+if key != 'loss':
+  cmp = lambda x, y: x > y 
+else:
+  cmp = lambda x, y: x < y
 
 def deal(line):
   global best_score, best_epoch
-  x = line.split(' ', 5)
-  epoch = int(float(x[3].split(':')[-1].split('/')[0]))
-  score = float(x[-1].split(',')[0].split(':')[-1].rstrip('\'')) 
-  if score > best_score:
+  epoch, score = parse(line, key)
+  if cmp(score, best_score):
     best_score = score
     best_epoch = epoch
 

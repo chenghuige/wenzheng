@@ -79,7 +79,7 @@ flags.DEFINE_boolean('experiment_rnn_decoder', False, '')
 #----------strategy 
 
 flags.DEFINE_string('seg_method', 'basic', '')
-flags.DEFINE_boolean('feed_single', False, '')
+#flags.DEFINE_boolean('feed_single', False, '')
 
 flags.DEFINE_boolean('gen_predict', True, '')
 

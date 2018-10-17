@@ -31,6 +31,8 @@ logging = melt.logging
 import numpy as np
 import lele
 layers = lele.layers
+import gezi
+import os
 
 #ModelV2 using cudnnrnn, not to use
 class ModelV2(nn.Module):
@@ -214,6 +216,7 @@ class Model(nn.Module):
     return x
   
 # MReader with hop==1 can be viewed as rnet also
+# NOTICE mainly use this one
 class MReader(nn.Module):
   def __init__(self):
     super(MReader, self).__init__()
@@ -225,15 +228,51 @@ class MReader(nn.Module):
     self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
                                                 emb_dim, 
                                                 FLAGS.word_embedding_file, 
-                                                FLAGS.finetune_word_embedding)
+                                                trainable=FLAGS.finetune_word_embedding)
+
+    char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
+    if os.path.exists(char_vocab_file):
+      FLAGS.use_char = True
+      char_vocab = gezi.Vocabulary(char_vocab_file)
+      logging.info('using char vocab:', char_vocab_file)
+      self.char_embedding = wenzheng.pyt.get_embedding(char_vocab.size(), 
+                                                       emb_dim, 
+                                                       FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None,  
+                                                       trainable=FLAGS.finetune_char_embedding)
+    else:
+      self.char_embedding = self.embedding
 
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
     self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
 
     Rnn = lele.layers.StackedBRNN if not FLAGS.torch_cudnn_rnn else lele.layers.CudnnRnn
-    self.encode = Rnn(
+
+    if FLAGS.use_char:
+      self.char_encode = Rnn(
             input_size=emb_dim,
+            hidden_size=self.num_units,
+            num_layers=1,
+            dropout_rate=1 - FLAGS.keep_prob,
+            dropout_output=False,
+            recurrent_dropout=FLAGS.recurrent_dropout,
+            concat_layers=False,
+            rnn_type=FLAGS.cell,
+            padding=FLAGS.rnn_padding,
+        )    
+
+      self.char_pooling = lele.layers.Pooling(FLAGS.char_output_method, input_size= 2 * self.num_units)
+      if FLAGS.char_combiner == 'sfu':
+        self.char_sfu_combine = lele.layers.SFU(emb_dim, 3 * emb_dim, dropout_rate=1 - FLAGS.keep_prob)
+        encode_input_size = emb_dim
+      else:
+        # concat
+        encode_input_size = emb_dim + 2 * self.num_units
+    else:
+      encode_input_size = emb_dim
+
+    self.encode = Rnn(
+            input_size=encode_input_size,
             hidden_size=self.num_units,
             num_layers=self.num_layers,
             dropout_rate=1 - FLAGS.keep_prob,
@@ -244,11 +283,11 @@ class MReader(nn.Module):
             padding=FLAGS.rnn_padding,
         )    
 
-    self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
-    self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
-  
     assert not FLAGS.concat_layers
     doc_hidden_size = 2 * self.num_units
+    
+    self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
+    self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
 
     # here linear better or another rnn is better ?
     if not FLAGS.use_label_rnn:
@@ -310,11 +349,29 @@ class MReader(nn.Module):
     #print(x.shape)
     x_mask = x.eq(0)
     batch_size = x.size(0)
+    max_c_len = x.size(1)
 
     if FLAGS.rnn_no_padding:
       x_mask = torch.zeros_like(x, dtype=torch.uint8)
 
     x = self.embedding(x)
+
+    # TODO
+    if FLAGS.use_char:
+      cx = input['chars']
+      cx = cx.view(batch_size * max_c_len, FLAGS.char_limit)
+      cx_mask = cx.eq(0)
+      if FLAGS.rnn_no_padding:
+        cx_mask = torch.zeros_like(cx, dtype=torch.uint8)
+      cx = self.char_embedding(cx)
+      cx = self.char_encode(cx, cx_mask)
+      cx = self.char_pooling(cx, cx_mask)
+      cx = cx.view(batch_size, max_c_len, 2 * self.num_units)
+
+      if FLAGS.char_combiner == 'concat':
+        x = torch.cat([x, cx], 2)
+      elif FLAGS.char_combiner == 'sfu':
+        x = self.char_sfu_combine(x, cx)
 
     x = self.encode(x, x_mask)
 
@@ -329,6 +386,7 @@ class MReader(nn.Module):
     c_check = x
     q = label_seq
     
+    #print(c_check.shape, q.shape, x2_mask.shape)
     for i in range(FLAGS.hop):
       q_tilde = self.interactive_aligners[i].forward(c_check, q, x2_mask)
       c_bar = self.interactive_SFUs[i].forward(c_check, torch.cat([q_tilde, c_check * q_tilde, c_check - q_tilde], 2))

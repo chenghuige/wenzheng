@@ -32,16 +32,16 @@ def calc_loss(y, y_, weights, training=False):
   #-----------deprciated seems per class learning rate decay do not improve
   if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
     assert FLAGS.loss == 'cross'
-    #loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE)
-    # loss = melt.adjust_lrs(loss)
-    #loss = tf.reduce_mean(loss)
+    loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights, reduction=tf.losses.Reduction.NONE)
+    loss = melt.adjust_lrs(loss)
+    loss = tf.reduce_mean(loss)
     #print('--------------weights', weights)
 
     # if weights == 1:
     #   weights = tf.ones([FLAGS.num_learning_rate_weights], dtype=tf.float32)
-    weights = tf.expand_dims(weights *  tf.get_collection('learning_rate_weights')[-1], 0)
+    #weights = tf.expand_dims(weights *  tf.get_collection('learning_rate_weights')[-1], 0)
     #  FIXME weights actually is per example adjust not for classes.. should be of shape [batch_size]
-    loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights)
+    #loss = tf.losses.sparse_softmax_cross_entropy(logits=y_, labels=y, weights=weights)
   else: 
     if FLAGS.loss == 'cross':
       if not FLAGS.label_smoothing:

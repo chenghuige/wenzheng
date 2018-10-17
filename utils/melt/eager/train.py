@@ -218,6 +218,7 @@ def train(Dataset,
           valid_suffix='.valid',
           infer_suffix='.infer',
           write_streaming=False,
+          optimizer=None,
           sep=','):
   if FLAGS.torch:
     #torch.cuda.set_device(0)  # set the device back to 0
@@ -343,7 +344,7 @@ def train(Dataset,
   checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
 
   if not FLAGS.torch:
-    optimizer = melt.get_optimizer(FLAGS.optimizer)(learning_rate)
+    optimizer = optimizer or melt.get_optimizer(FLAGS.optimizer)(learning_rate)
     
     # TODO...
     if  learning_rate_weights is None:
@@ -370,7 +371,7 @@ def train(Dataset,
     start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint else 0
   else:
     # TODO torch with learning rate adjust
-    optimizer = torch.optim.Adamax(model.parameters(), lr=FLAGS.learning_rate)
+    optimizer = optimizer or torch.optim.Adamax(model.parameters(), lr=FLAGS.learning_rate)
 
     if latest_checkpoint:
       checkpoint = torch.load(latest_checkpoint + '.pyt')
@@ -399,15 +400,17 @@ def train(Dataset,
   #model.save('./weight3.hd5')
 
   learning_rate.assign(learning_rate * FLAGS.learning_rate_start_factor)
+  if learning_rate_weights is not None:
+    learning_rate_weights.assign(learning_rate_weights * FLAGS.learning_rate_start_factor)
 
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs if FLAGS.num_epochs != 0 else 1024
 
-  will_valid = valid_dataset and not FLAGS.mode == 'test' and not 'SHOW' in os.environ
+  will_valid = valid_dataset and not FLAGS.mode == 'test' and not 'SHOW' in os.environ and not 'QUICK' in os.environ
   if start_epoch == 0 and not 'EVFIRST' in os.environ and will_valid:
     will_valid = False
 
-  if start_epoch > 0 and not 'QUICK' in os.environ and will_valid:
+  if start_epoch > 0 and will_valid:
     will_valid = True 
   
   if will_valid:
@@ -509,7 +512,10 @@ def train(Dataset,
         optimizer.apply_gradients(zip(grads, model.variables))
       else:
         optimizer.zero_grad()
-        loss = loss_fn(model, x, y)
+        if 'training' in inspect.getargspec(loss_fn).args:
+          loss = loss_fn(model, x, y, training=True)
+        else:
+          loss = loss_fn(model, x, y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(),
                                        FLAGS.clip_gradients)

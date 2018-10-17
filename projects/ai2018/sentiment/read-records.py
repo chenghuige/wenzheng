@@ -114,6 +114,7 @@ def main(_):
 
     for key in valid_infos:
       print(valid_infos[key])
+      print(ids2text.ids2text(valid_infos[key]['content']))
       break
 
     ofile = f'{base}/info.pkl'

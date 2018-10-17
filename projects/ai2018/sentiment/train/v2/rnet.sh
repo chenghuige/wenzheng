@@ -32,6 +32,8 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
+        --concat_layers=1 \
+        --recurrent_dropout=1 \
         --label_emb_height=20 \
         --fold=$fold \
         --use_label_att=1 \
@@ -46,6 +48,7 @@ python $exe \
         --finetune_word_embedding=1 \
         --batch_size 32 \
         --encoder_type=rnn \
+        --cell=gru \
         --keep_prob=0.7 \
         --num_layers=2 \
         --rnn_hidden_size=200 \

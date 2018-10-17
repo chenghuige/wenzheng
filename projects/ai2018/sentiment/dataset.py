@@ -30,6 +30,7 @@ logging = melt.logging
 from wenzheng.utils import vocabulary
 
 from algos.config import NUM_ATTRIBUTES
+import prepare.config
 
 class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='train'):
@@ -48,7 +49,6 @@ class Dataset(melt.tfrecords.Dataset):
       #prob *=  is_aug * aug_factor + (1 - is_aug) * (1 - aug_factor)      
       acceptance = tf.less_equal(tf.random_uniform([], dtype=tf.float32), prob)
       return acceptance
-
     
     self.filter_fn = undersampling_filter if FLAGS.other_corpus_factor < 1 else None
     #self.filter_fn = undersampling_filter
@@ -59,9 +59,13 @@ class Dataset(melt.tfrecords.Dataset):
       'id':  tf.FixedLenFeature([], tf.string),
       'content_str': tf.FixedLenFeature([], tf.string),
       'content': tf.VarLenFeature(tf.int64),
+      'chars': tf.VarLenFeature(tf.int64),
       'label': tf.FixedLenFeature([NUM_ATTRIBUTES], tf.int64),
       'source':  tf.FixedLenFeature([], tf.string),
       }
+
+    #if FLAGS.use_char:
+    #features_dict['chars'] = tf.VarLenFeature(tf.int64)
 
     features = tf.parse_single_example(example, features=features_dict)
 
@@ -71,6 +75,11 @@ class Dataset(melt.tfrecords.Dataset):
       content = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), content, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
     features['content'] = content
     label = features['label']
+
+    #if FLAGS.use_char:
+    chars = features['chars']
+    chars = melt.sparse_tensor_to_dense(chars)
+    features['chars'] = chars
 
     x = features
     y = label + 2

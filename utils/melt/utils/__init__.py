@@ -12,7 +12,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import melt.utils.logging   
+#import melt.utils.logging   
+import gezi.melt.logging 
 
 from melt.utils.embsim import EmbeddingSim
 

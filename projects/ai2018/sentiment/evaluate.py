@@ -94,13 +94,14 @@ def init():
         decay = WeightDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
-                      decay_start_epoch=1,
+                      decay_start_epoch=FLAGS.decay_start_epoch_,
                       min_learning_rate=min_learning_rate)
       else:
         decay = WeightsDecay(patience=FLAGS.decay_patience, 
                       decay=FLAGS.decay_factor, 
                       cmp=cmp,
                       min_learning_rate=min_learning_rate,
+                      decay_start_epoch=FLAGS.decay_start_epoch_,
                       names=wnames)  
 
 
@@ -205,7 +206,8 @@ def calc_loss(labels, predicts, model_path=None):
   for i in range(NUM_ATTRIBUTES):
     loss = log_loss(labels[:,i], predicts[:,i])
     losses.append(loss)
-  vals = [np.mean(losses)] + losses
+  loss = np.mean(losses)
+  vals = [loss] + losses
 
   if model_path is None:
     if FLAGS.decay_target and FLAGS.decay_target == 'loss':
@@ -310,6 +312,7 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
     num_classes = 1
   df['score'] = [list(x) for x in np.reshape(predicts, [-1, NUM_ATTRIBUTES * num_classes])]
   if not is_infer:
+    # TODO FIXME new run, seg fild seems luanma.. only on p40 new run..
     df['seg'] = [ids2text.ids2text(infos[id]['content'], sep='|') for id in ids]
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
   if is_infer:

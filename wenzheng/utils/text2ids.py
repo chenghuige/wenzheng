@@ -140,7 +140,7 @@ def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False,
             pad=True, append_start=False, append_end=False, to_lower=True,
             max_words=None, norm_digit=True, norm_all_digit=False,
             multi_grid=None, remove_space=True, encode_unk=None, feed_single_en=False,
-            digit_to_chars=False, unk_vocab_size=None):
+            digit_to_chars=False, unk_vocab_size=None, return_words=False):
   """
   default params is suitable for bow
   for sequence method may need seg_method prhase and feed_single=True,
@@ -155,7 +155,7 @@ def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False,
   if remove_space:
     words = [x for x in words if x.strip()]
 
-  return words2ids(words, 
+  ids = words2ids(words, 
                    feed_single=feed_single, 
                    allow_all_zero=allow_all_zero, 
                    pad=pad, 
@@ -169,6 +169,10 @@ def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False,
                    feed_single_en=feed_single_en,
                    digit_to_chars=digit_to_chars,
                    unk_vocab_size=unk_vocab_size)
+  if not return_words:
+    return ids 
+  else:
+    return ids, words
 
 def ids2words(text_ids, print_end=True):
   #print('@@@@@@@@@@text_ids', text_ids)
@@ -239,7 +243,7 @@ def ids2words(text_ids, print_end=True):
         break
     else:
       #break
-      words.append(f'<UNK:{id}>')
+      words.append('<UNK:{}>'.format(id))
   return words
 
 def ids2text(text_ids, sep=' ', print_end=True):

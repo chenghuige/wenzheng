@@ -1,8 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import six 
+if six.PY2:
+  import sys 
+  reload(sys) # Python2.5 初始化后会删除 sys.setdefaultencoding 这个方法，我们需要重新载入 
+  sys.setdefaultencoding('utf-8')
+
 from copy import deepcopy
 import re
+
 
 try:
     import psyco
@@ -116,7 +123,7 @@ class StatesMachine(object):
         return new
 
     def feed(self, char, map):
-        node = map[self.pool+char]
+        node = map[self.pool+char] 
 
         if node.have_child:
             if node.is_tail:

@@ -1,3 +1,6 @@
-import projects.ai2018
-import projects.kaggle
-import projects.feed
+import projects.ai2018 
+try:
+  import projects.kaggle
+  import projects.feed
+except Exception:
+  pass

@@ -10,4 +10,11 @@ not use ./gen-seg-canyin.py for this project for we do not want to consider more
 
 do also for dianping and train/valid/test data  
 
-we will use all these data as word embedding pretrain  
+we will use all these data as word embedding pretrain   
+
+sh ./gen-vocab-v2.sh will use simple just basic seg   
+NOTICE this is depreceated for v2
+just use same vocab as v1, v2 only diff when gen tfrecord will not feed single and will has char embedding   
+
+since v2 word + char concat prove to be better then seg basic + single so try to further try seperate word and char embedding as V3  
+the script ./run-noemb-v3.sh is the same as ./run-noemb-v2.sh be sure you have char_vocab.txt under tfrecord dir   

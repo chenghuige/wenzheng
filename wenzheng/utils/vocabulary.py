@@ -31,8 +31,8 @@ flags.DEFINE_bool('vocab_append', False, '')
 flags.DEFINE_integer('vocab_max_words', None, '')
 flags.DEFINE_integer('vocab_min_count', None, '')
 
-import melt, gezi
-logging = melt.logging
+import gezi
+logging = gezi.logging
 
 vocab = None 
 vocab_size = None

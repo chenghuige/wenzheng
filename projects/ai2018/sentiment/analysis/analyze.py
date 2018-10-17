@@ -41,10 +41,11 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('id', None, '')
-flags.DEFINE_string('ifile', '/home/gezi/temp/ai2018/sentiment/model/v4/gru.5k.canyin.mix.addneubinary.finetune.epoch5/epoch/model.ckpt-17.00-55794.valid.csv', '')
-flags.DEFINE_string('attr', 'others_overall_experience', 'location_distance_from_business_district')
+flags.DEFINE_string('ifile', '/home/gezi/temp/ai2018/sentiment/model/v2/0/submit6/ensemble.valid.debug.csv', '')
+flags.DEFINE_string('attr', 'location_distance_from_business_district', 'location_distance_from_business_district, others_overall_experience')
 flags.DEFINE_float('total', 100, '')
 flags.DEFINE_string('label', None, '')
+flags.DEFINE_string('key', 'score', '')
 
 import sys 
 import os
@@ -90,7 +91,7 @@ for _, row in df.iterrows():
   label = classes[label]
   predict = row[attr] + 2
   predict = classes[predict]
-  score = row['score']
+  score = row[FLAGS.key]
   score = parse(score)
   score = score[idx:idx + 4]
   prob = gezi.softmax(score)

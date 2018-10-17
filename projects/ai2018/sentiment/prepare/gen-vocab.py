@@ -44,10 +44,10 @@ import sys,os
 #reload(sys)
 #sys.setdefaultencoding('utf8')
 import numpy as np
-import melt
 
 from gezi import Segmentor
 segmentor = Segmentor()
+print(segmentor, file=sys.stderr)
 
 import gezi
 

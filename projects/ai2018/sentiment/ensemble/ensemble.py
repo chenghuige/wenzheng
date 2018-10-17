@@ -55,7 +55,12 @@ num_classes = 4
 num_ensembles = 0
 
 def parse(l):
-  return np.array([float(x.strip()) for x in l[1:-1].split(',')])
+  if ',' in l:
+    # this is list save (list of list)
+    return np.array([float(x.strip()) for x in l[1:-1].split(',')])
+  else:
+    # this numpy save (list of numpy array)
+    return np.array([float(x.strip()) for x in l[1:-1].split(' ') if x.strip()])
 
 def calc_f1(labels, predicts):
   f1_list = []
@@ -86,7 +91,10 @@ def calc_f1_alls(labels, predicts):
   return f1, f1_list, class_f1
 
 
-class_weights = np.load('/home/gezi/temp/ai2018/sentiment/class_weights.npy')
+class_weights_path = './class_weights.npy'
+if not os.path.exists(class_weights_path):
+  class_weights_path = '/home/gezi/temp/ai2018/sentiment/class_weights.npy'
+class_weights = np.load(class_weights_path)
 #print('class_weights', class_weights)
 
 for i in range(len(class_weights)):
@@ -105,18 +113,18 @@ for i in range(len(class_weights)):
 print('class_weights', class_weights)
 
 def to_predict(logits, weights=None, is_single=False, adjust=True):
-  ## DO NOT divde !!
-  if is_single:
-    factor = FLAGS.logits_factor
-  else:
-    if weights is None:
-      factor = 1.
-    else:
-      factor =  FLAGS.logits_factor / weights
-  print('factor:', factor)
-  
   logits = np.reshape(logits, [-1, num_attrs, num_classes])
+  ## DO NOT divde !!
   if adjust:
+    if is_single:
+      factor = FLAGS.logits_factor
+    else:
+      if weights is None:
+        factor = 1.
+      else:
+        factor =  FLAGS.logits_factor / weights
+    print('factor:', factor)
+
     logits = logits * factor
     probs = gezi.softmax(logits, -1) 
     probs *= class_weights
@@ -255,8 +263,11 @@ def main(_):
       # notice softmax([1,2]) = [0.26894142, 0.73105858] softmax([2,4]) = [0.11920292, 0.88079708]
       score = np.reshape(score, [num_attrs, num_classes])
       
+      # this not work because *weight already..
       #score *= FLAGS.logits_factor
+      
       score = gezi.softmax(score, -1)
+      
       #score *= class_weights
 
       score = np.reshape(score, [-1])
@@ -274,7 +285,7 @@ def main(_):
   print('f1:', f1)
   print('adjusted f1:', adjusted_f1)
 
-  adjusted_f1_prob = calc_f1(labels, to_predict(results2, sum_weights))
+  adjusted_f1_prob = calc_f1(labels, to_predict(results2, sum_weights, adjust=False))
   results2 = np.reshape(results2, [-1, num_attrs, num_classes]) 
   predicts2 = np.argmax(results2, -1) - 2
   f1_prob = calc_f1(labels, predicts2)
@@ -364,14 +375,28 @@ def main(_):
   print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
   print(f'adjusted f1:[{adjusted_f1}]')
 
-
   print('out:', ofile)
   df.to_csv(ofile, index=False, encoding="utf_8_sig")
 
+  print('---------------results', results.shape)
+  df['score'] = [x for x in results] 
+  factor =  FLAGS.logits_factor / sum_weights
+  print('--------sum_weights', sum_weights)
+  print('--------factor', factor)
+  logits = np.reshape(results, [-1, num_attrs, num_classes])
+  # DO NOT USE *=... will change results...
+  logits = logits * factor
+  probs = gezi.softmax(logits, -1) 
+  probs *= class_weights
+  logits = np.reshape(logits, [-1, num_attrs * num_classes])
+  print('---------------logits', logits.shape)
+  print('----results', results)
+  print('----logits', logits)
+  df['logits'] = [x for x in logits] 
+  probs = np.reshape(probs, [-1, num_attrs * num_classes])
+  print('---------------probs', probs.shape)
+  df['probs'] = [x for x in probs]
 
-  results2 = results2 / num_ensembles
-  results2 = [x for x in results2]
-  df['score'] = results2 
   if not DEBUG:
     ofile = os.path.join(idir, 'ensemble.infer.debug.csv')
   else:

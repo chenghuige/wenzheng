@@ -112,9 +112,7 @@ class WeightDecay(object):
       self.patience += 1
       # epoch is set during training loop
       epoch = melt.epoch()
-      # TODO why not print ..
-      logging.info('patience', self.patience)
-      #print(epoch, self.decay_start_epoch)
+      logging.info('patience:', self.patience)
       if epoch < self.decay_start_epoch:
         return
       if self.patience >= self.max_patience:
@@ -165,6 +163,7 @@ class WeightsDecay(object):
                min_learning_rate=None,
                initial_learning_rate=None,
                initial_score=None,
+               decay_start_epoch=0,
                sess=None):
     import melt.utils.logging as logging
     if not tf.executing_eagerly():
@@ -201,6 +200,8 @@ class WeightsDecay(object):
 
     self.min_weight = min_weight
 
+    self.decay_start_epoch = decay_start_epoch
+
     if not self.min_weight:
       self.min_weight = min_learning_rate / (initial_learning_rate or FLAGS.learning_rate)
 
@@ -234,14 +235,21 @@ class WeightsDecay(object):
       else:
         self.cmp = lambda x, y: x < y
       logging.info('decay cmp:', self.cmp)
+      
+        # epoch is set during training loop
+    epoch = melt.epoch()
 
     for i, score in enumerate(scores):
       if self.scores is None or self.cmp(score, self.scores[i]):
         self.scores[i] = score 
         self.patience[i] = 0
       else:
-        self.patience[i] += 1
+        self.patience[i] += 1        
+        
         logging.info('patience_%s %d' % (self.names[i], self.patience[i]))
+        if epoch < self.decay_start_epoch:
+          continue
+
         if self.patience[i] >= self.max_patience:
           self.count[i] += 1
           self.patience[i] = 0

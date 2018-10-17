@@ -62,7 +62,7 @@ python $exe \
         --freeze_graph=1 \
         --optimizer=adam \
         --learning_rate=0.001 \
-        --decay_targe=adjusted_f1 \
+        --decay_target=adjusted_f1 \
         --decay_patience=1 \
         --decay_factor=0.8 \
         --num_epochs=$num_epochs \

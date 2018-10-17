@@ -4,3 +4,4 @@ try:
   import lele.fastai 
 except Exception:
   pass
+from lele.util import *

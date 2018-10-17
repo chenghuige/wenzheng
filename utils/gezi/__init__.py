@@ -59,3 +59,8 @@ try:
 except Exception:
   print(traceback.format_exc(), file=sys.stderr) 
 
+try:
+  import gezi.melt
+  from gezi.melt import *
+except Exception:
+  print(traceback.format_exc(), file=sys.stderr)  

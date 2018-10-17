@@ -1,7 +1,10 @@
 import wenzheng.utils
-import wenzheng.embedding 
-from wenzheng.embedding import *
-import wenzheng.encoder
-from wenzheng.encoder import * 
+try:
+  import wenzheng.embedding 
+  from wenzheng.embedding import *
+  import wenzheng.encoder
+  from wenzheng.encoder import * 
 
-import wenzheng.pyt
+  import wenzheng.pyt
+except Exception:
+  pass

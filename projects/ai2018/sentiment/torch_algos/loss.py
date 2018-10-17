@@ -22,21 +22,31 @@ import sys
 import os
 
 from algos.weights import *
+from algos.config import NUM_CLASSES
 
+import lele
 import torch
 
 from torch import nn
 
 loss_fn = torch.nn.CrossEntropyLoss()
+loss_fn2 = torch.nn.CrossEntropyLoss(reduction='none')
 bloss_fn = nn.BCEWithLogitsLoss()
 
-def criterion(model, x, y):
+def criterion(model, x, y, training=False):
   y_ = model(x)
   
   #print(y.shape, y_.shape)
   # without view Expected target size (32, 4), got torch.Size([32, 20])
-  loss = loss_fn(y_.view(-1, model.num_classes), y.view(-1))  
-
+  if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
+    loss = loss_fn2(y_.view(-1, model.num_classes), y.view(-1)).view(-1, NUM_ATTRIBUTES)
+    # stop some gradients due to learning_rate weights
+    loss = lele.adjust_lrs(loss)
+    loss = loss.mean()
+  else:
+    loss = loss_fn(y_.view(-1, model.num_classes), y.view(-1))  
+  
+  # depreciated add neu binary not help final ensemble
   if FLAGS.loss_type == 'add_neu_binary':
     cid = 2
     y_ = y_[:,:,cid]

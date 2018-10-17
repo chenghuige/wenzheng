@@ -553,7 +553,7 @@ class DotAttention(nn.Module):
                 if self.sfu_linear is not None:
                     matched_seq = self.sfu_linear(matched_seq)
 
-                return self.combine(x,  torch.cat([x, x * matched_seq, x - matched_seq], 2))
+                return self.combine(x,  torch.cat([matched_seq, x * matched_seq, x - matched_seq], 2))
 
 class SelfAttnMatch(nn.Module):
     """Given sequences X and Y, match sequence Y to each element in X.
@@ -877,6 +877,26 @@ class SFU(nn.Module):
 
     def forward(self, x, fusions):
         r_f = torch.cat([x, fusions], 2)
+        if self.dropout_rate:
+            r_f = F.dropout(r_f, p=self.dropout_rate, training=self.training)
+        r = torch.tanh(self.linear_r(r_f))
+        g = torch.sigmoid(self.linear_g(r_f))
+        o = g * r + (1-g) * x
+        return o
+
+class SFUCombiner(nn.Module):
+    """Semantic Fusion Unit
+    The ouput vector is expected to not only retrieve correlative information from fusion vectors,
+    but also retain partly unchange as the input vector
+    """
+    def __init__(self, input_size, fusion_size, dropout_rate=0.):
+        super(SFUCombiner, self).__init__()
+        self.linear_r = nn.Linear(input_size + fusion_size, input_size)
+        self.linear_g = nn.Linear(input_size + fusion_size, input_size)
+        self.dropout_rate = dropout_rate
+
+    def forward(self, x, y):
+        r_f = torch.cat([x, y, x * y, x - y], 2)
         if self.dropout_rate:
             r_f = F.dropout(r_f, p=self.dropout_rate, training=self.training)
         r = torch.tanh(self.linear_r(r_f))

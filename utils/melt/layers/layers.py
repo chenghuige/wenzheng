@@ -226,7 +226,7 @@ class Pooling(keras.Model):
       elif name == 'last':
         return LastPooling()
       else:
-        raise ValueError(f'Unsupport pooling now:{name}')
+        raise ValueError('Unsupport pooling now:%s' % name)
 
     self.names = name.split(',')
     for name in self.names:

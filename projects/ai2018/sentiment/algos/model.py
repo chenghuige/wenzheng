@@ -25,9 +25,12 @@ from wenzheng.utils import vocabulary
 
 from algos.config import NUM_CLASSES, NUM_ATTRIBUTES
 from algos.weights import *
+import prepare.config
 
 import melt
 logging = melt.logging
+import gezi 
+
 import numpy as np
 
 #same as ModelV2 but this is pytorch Mreader like attention(light attention)
@@ -422,7 +425,6 @@ class RNetV4(melt.Model):
     
     return x
 
-
 # same as RNetV2 but is gate + sfu
 class RNetV3(melt.Model):
   def __init__(self):
@@ -686,6 +688,7 @@ class RNetV2(melt.Model):
     return x
 
 # currently Model as v1 is best v2 not improve, Model is like RNet
+# NOTICE mainly use this one
 class Model(melt.Model):
   def __init__(self):
     super(Model, self).__init__()
@@ -701,6 +704,27 @@ class Model(melt.Model):
                                         FLAGS.emb_dim, 
                                         FLAGS.word_embedding_file, 
                                         trainable=FLAGS.finetune_word_embedding)
+
+    char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
+    if os.path.exists(char_vocab_file):
+      FLAGS.use_char = True
+      char_vocab = gezi.Vocabulary(char_vocab_file)
+      logging.info('using char vocab:', char_vocab_file)
+      self.char_embedding = wenzheng.Embedding(char_vocab.size(), 
+                                               FLAGS.emb_dim, 
+                                               FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None, 
+                                               trainable=FLAGS.finetune_char_embedding)
+    else:
+      self.char_embedding = self.embedding
+
+    #self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
+    self.encode = wenzheng.Encoder(FLAGS.encoder_type)
+
+    if FLAGS.use_char:
+      self.char_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob, cell=FLAGS.cell)
+      self.char_pooling = melt.layers.Pooling(FLAGS.char_output_method)
+      if FLAGS.char_combiner == 'sfu':
+        self.char_sfu_combine = melt.layers.SemanticFusionCombine(keep_prob=self.keep_prob)
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       #assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
@@ -718,8 +742,6 @@ class Model(melt.Model):
       if FLAGS.use_label_rnn:
         self.label_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob, cell=FLAGS.cell)
 
-    #self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
-    self.encode = wenzheng.Encoder(FLAGS.encoder_type)
     
     #self.multiplier = 2 if self.encode.bidirectional else 1
 
@@ -769,14 +791,29 @@ class Model(melt.Model):
 
     c_mask = tf.cast(x, tf.bool)
     batch_size = melt.get_shape(x, 0)
-    c_len = melt.length(x)
+    c_len, max_c_len = melt.length2(x)
 
     if FLAGS.rnn_no_padding:
       logging.info('------------------no padding! train or eval')
-      c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+      #c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+      c_len = max_c_len
 
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
+
+    if FLAGS.use_char:
+      cx = input['chars']
+      cx = tf.reshape(cx, [batch_size * max_c_len, FLAGS.char_limit])
+      chars_len = melt.length(cx)
+      cx = self.char_embedding(cx)
+      cx = self.char_encode(cx, chars_len, training=training)
+      cx = self.char_pooling(cx, chars_len)
+      cx = tf.reshape(cx, [batch_size, max_c_len, 2 * self.num_units])
+
+      if FLAGS.char_combiner == 'concat':
+        x = tf.concat([x, cx], axis=2)
+      elif FLAGS.char_combiner == 'sfu':
+        x = self.char_sfu_combine(x, cx, training=training)
 
     x = self.encode(x, c_len, training=training)
     #x = self.encode(x)
