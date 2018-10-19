@@ -1,5 +1,5 @@
 base=./mount
-dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
+dir=$base/temp/ai2018/sentiment.jieba/tfrecords/$SRC
 
 fold=0
 if [ $# == 1 ];
@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/$SRC/gru.char/
+model_dir=$base/temp/ai2018/sentiment.jieba/model/v1/$fold/$SRC/gru.char/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -35,6 +35,9 @@ python $exe \
         --use_char=1 \
         --char_combiner=concat \
         --fold=$fold \
+        --concat_layers=1 \
+        --recurrent_dropout=1 \
+        --rnn_no_padding=0 \
         --use_label_att=0 \
         --use_self_match=0 \
         --vocab $dir/vocab.txt \
@@ -58,8 +61,9 @@ python $exe \
         --freeze_graph=1 \
         --optimizer=adam \
         --learning_rate=0.001 \
-        --decay_target=f1 \
+        --decay_target=loss \
         --decay_patience=1 \
         --decay_factor=0.8 \
+        --decay_start_epoch_=2. \
         --num_epochs=$num_epochs \
 

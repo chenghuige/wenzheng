@@ -657,7 +657,7 @@ def train(Dataset,
                 'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
 
 
-    timer = gezi.Timer(f'save model to {checkpoint_prefix}-{checkpoint.save_counter.numpy()}', False)
+    timer = gezi.Timer(f'save model to {checkpoint_prefix}-{checkpoint.save_counter.numpy() + 1}', False)
     checkpoint.save(checkpoint_prefix)
     if FLAGS.torch:
       state = {

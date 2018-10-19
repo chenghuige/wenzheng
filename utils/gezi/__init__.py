@@ -55,6 +55,11 @@ from gezi.segment import *
 #  pass
 
 try:
+  from gezi.libgezi_util import *
+except Exception:
+  print(traceback.format_exc(), file=sys.stderr)
+
+try:
   import gezi.metrics
 except Exception:
   print(traceback.format_exc(), file=sys.stderr) 

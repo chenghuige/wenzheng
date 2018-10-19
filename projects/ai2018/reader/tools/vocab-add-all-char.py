@@ -22,7 +22,7 @@ for line in open(sys.argv[1]):
   print(word, count, sep='\t')
 
 for line in open(sys.argv[2]):
-  word = line.rstrip('\n')
+  word, count = line.rstrip('\n').split('\t')
   if word not in words:
     print(word, 1, sep='\t')
 

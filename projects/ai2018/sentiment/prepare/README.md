@@ -17,4 +17,10 @@ NOTICE this is depreceated for v2
 just use same vocab as v1, v2 only diff when gen tfrecord will not feed single and will has char embedding   
 
 since v2 word + char concat prove to be better then seg basic + single so try to further try seperate word and char embedding as V3  
-the script ./run-noemb-v3.sh is the same as ./run-noemb-v2.sh be sure you have char_vocab.txt under tfrecord dir   
+the script ./run-noemb-v3.sh is the same as ./run-noemb-v2.sh be sure you have char_vocab.txt under tfrecord dir    
+
+
+3 seg method
+1.char  char only 
+2.word.feed  basic + digit + feed_sginle  only consider first 6k top freq word 
+3.word.basic  basic  

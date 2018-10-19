@@ -30,16 +30,10 @@ from gezi import Segmentor
 segmentor = Segmentor()
 
 import gezi
+assert gezi.env_has('JIEBA_POS')
 
 import pandas as pd
 from projects.ai2018.sentiment.prepare import filter
-
-from wenzheng.utils import text2ids
-
-vocab = '/home/gezi/temp/ai2018/sentiment/vocab.5k.chars.txt'
-text2ids.init(vocab)
-
-from text2ids import text2ids as text2ids_ 
 
 START_WORD = '<S>'
 END_WORD = '</S>'
@@ -53,10 +47,10 @@ def seg(text, out):
   if words:
     print(' '.join(words), file=out)
 
-ifile = '/home/gezi/data/ai2018/sentiment/dianping/ratings.csv'
+ifile = '/home/gezi/data/ai2018/sentiment/dianping/train.csv'
 df = pd.read_csv(ifile)
 
-ofile = '/home/gezi/data/ai2018/sentiment/dianping/seg.txt'
+ofile = '/home/gezi/data/ai2018/sentiment/dianping/seg.char.txt'
 
 with open(ofile, 'w') as out:
   num = 0

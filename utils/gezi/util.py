@@ -27,14 +27,36 @@ import re
 
 import gezi
 
-
-def to_simplify(sentence):
-  sentence = gezi.langconv.Converter('zh-hans').convert(sentence)
-  return sentence
-
+# ## Well not work well, so fall back to use py2 bseg 
+# def to_simplify(sentence):
+#   sentence = gezi.langconv.Converter('zh-hans').convert(sentence).replace('馀', '余')
+#   return sentence
 
 # def parse_list_str(input, sep=','):
 #   return np.array([float(x.strip()) for x in input[1:-1].split(sep) if x.strip()])
+
+# https://stackoverflow.com/questions/43146528/how-to-extract-all-the-emojis-from-text
+# def extract_emojis(sentence):
+#   import emoji
+#   allchars = [str for str in sentence]
+#   l = [c for c in allchars if c in emoji.UNICODE_EMOJI]
+#   return l
+
+def extract_emojis(content):
+  import emoji
+  emojis_list=map(lambda x:''.join(x.split()),emoji.UNICODE_EMOJI.keys())
+  r = re.compile('|'.join(re.escape(p) for p in emojis_list))
+  return r.sub(r'',content)
+
+def remove_emojis(sentence):
+  import emoji
+  allchars = [str for str in sentence]
+  l = [c for c in allchars if c not in emoji.UNICODE_EMOJI]
+  return ''.join(l)
+
+def is_emoji(w):
+  import emoji
+  return w in emoji.UNICODE_EMOJI
 
 def dict2namedtuple(thedict, name):
   thenametuple = namedtuple(name, [])

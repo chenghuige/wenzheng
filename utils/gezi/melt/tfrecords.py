@@ -14,12 +14,11 @@ from __future__ import print_function
 
 import sys 
 import os
-import tensorflow as tf
-
 import random  
 
 class Writer(object):
   def __init__(self, file, buffer_size=None):
+    import tensorflow as tf
     random.seed(12345)
     self.count = 0
     self.buffer_size = buffer_size

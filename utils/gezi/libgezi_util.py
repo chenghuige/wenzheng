@@ -14,6 +14,7 @@ from __future__ import print_function
 
 import six
 import gezi.nowarning
+import os
 
 """
 @TODO gezi should remove boost.python dependence
@@ -21,6 +22,88 @@ now has libgezi_util and segment  depend on boost.python
 """
 #@FIXME this might casue double free at the end, conflict with numpy in virutal env
 import gezi
+chnormalizer = None
+
+def to_simplify_(sentence):
+  assert six.PY2
+  global chnormalizer
+  import libchnormalizer
+  if not chnormalizer:
+    path = '/home/gezi/soft/bseg/data/ccode/'
+    if not os.path.exists(path):
+      path = './data/ccode'
+    chnormalizer = libchnormalizer.ChNormalizer()
+    chnormalizer.Load(path)
+  return chnormalizer.ToSimplified(sentence.decode('utf8', 'ignore').encode('gbk', 'ignore')).decode('gbk', 'ignore').encode('utf8', 'ignore')
+
+def to_simplify(sentence):
+  assert six.PY2
+  global chnormalizer
+  import libchnormalizer
+  if not chnormalizer:
+    path = '/home/gezi/soft/bseg/data/ccode/'
+    if not os.path.exists(path):
+      path = './data/ccode'
+    chnormalizer = libchnormalizer.ChNormalizer()
+    chnormalizer.Load(path)  
+  res = []
+  l = []
+  sentence = sentence.decode('utf8')
+  for ch in sentence:
+    try:
+      gbk_ch = ch.encode('gbk')
+      l.append(gbk_ch)
+    except Exception:
+      if l:
+        chs = chnormalizer.ToSimplified(''.join(l)).decode('gbk').encode('utf8')
+        l = []
+        res.append(chs)
+      res.append(ch.encode('utf8'))
+  if l:
+    chs = chnormalizer.ToSimplified(''.join(l)).decode('gbk').encode('utf8')
+    res.append(chs)
+  return ''.join(res)
+
+
+def normalize_(sentence, to_lower=True, to_simplify=True, to_half=True):
+  assert six.PY2
+  global chnormalizer
+  import libchnormalizer
+  if not chnormalizer:
+    path = '/home/gezi/soft/bseg/data/ccode/'
+    if not os.path.exists(path):
+      path = './data/ccode'
+    chnormalizer = libchnormalizer.ChNormalizer()
+    chnormalizer.Load(path)  
+  return chnormalizer.Normalize(sentence.decode('utf8', 'ignore').encode('gbk', 'ignore'), toLower=to_lower, toSimplified=to_simplify, toHalf=to_half).decode('gbk', 'ignore').encode('utf8', 'ignore')
+
+def normalize(sentence, to_lower=True, to_simplify=True, to_half=True):
+  assert six.PY2
+  global chnormalizer
+  import libchnormalizer
+  if not chnormalizer:
+    path = '/home/gezi/soft/bseg/data/ccode/'
+    if not os.path.exists(path):
+      path = './data/ccode'
+    chnormalizer = libchnormalizer.ChNormalizer()
+    chnormalizer.Load(path)  
+  res = []
+  l = []
+  sentence = sentence.decode('utf8')
+  for ch in sentence:
+    try:
+      gbk_ch = ch.decode('utf8').encode('gbk')
+      l.append(gbk_ch)
+    except Exception:
+      if l:
+        chs = chnormalizer.Normalize(''.join(l), toLower=to_lower, toSimplified=to_simplify, toHalf=to_half).decode('gbk').encode('utf8')
+        l = []
+        res.append(chs)
+      res.append(ch.encode('utf8'))
+  if l:
+    chs = chnormalizer.Normalize(''.join(l), toLower=to_lower, toSimplified=to_simplify, toHalf=to_half).decode('gbk').encode('utf8')
+    res.append(chs)
+  return ''.join(res)
 
 if gezi.encoding == 'gbk' or gezi.env_has('BAIDU_SEG'):
   import libgezi # must include this not sure why..

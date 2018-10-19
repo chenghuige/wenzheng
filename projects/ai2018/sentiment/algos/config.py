@@ -32,6 +32,10 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_integer('char_min_count', 50, '')
+flags.DEFINE_integer('tag_min_count', 500, '')
+
+flags.DEFINE_integer('num_finetune_words', None, '')
 #flags.DEFINE_float('label_smoothing', 0, '')
 
 flags.DEFINE_integer('content_limit', 0, '')

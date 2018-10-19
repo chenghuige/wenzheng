@@ -59,7 +59,10 @@ class Dataset(melt.tfrecords.Dataset):
       'id':  tf.FixedLenFeature([], tf.string),
       'content_str': tf.FixedLenFeature([], tf.string),
       'content': tf.VarLenFeature(tf.int64),
-      'chars': tf.VarLenFeature(tf.int64),
+      'char': tf.VarLenFeature(tf.int64),
+      'pos': tf.VarLenFeature(tf.int64),
+      'ner': tf.VarLenFeature(tf.int64),
+      'wlen': tf.VarLenFeature(tf.int64),
       'label': tf.FixedLenFeature([NUM_ATTRIBUTES], tf.int64),
       'source':  tf.FixedLenFeature([], tf.string),
       }
@@ -77,9 +80,21 @@ class Dataset(melt.tfrecords.Dataset):
     label = features['label']
 
     #if FLAGS.use_char:
-    chars = features['chars']
+    chars = features['char']
     chars = melt.sparse_tensor_to_dense(chars)
-    features['chars'] = chars
+    features['char'] = chars
+
+    pos = features['pos']
+    pos = melt.sparse_tensor_to_dense(pos)
+    features['pos'] = pos
+
+    ner = features['ner']
+    ner = melt.sparse_tensor_to_dense(ner)
+    features['ner'] = ner
+
+    wlen = features['wlen']
+    wlen = melt.sparse_tensor_to_dense(wlen)
+    features['wlen'] = wlen
 
     x = features
     y = label + 2

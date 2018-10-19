@@ -38,8 +38,11 @@ import glob
 import json
 import pandas as pd
 
+import jieba.posseg
+
 from gezi import Vocabulary
 import gezi
+#assert gezi.env_has('JIEBA_POS')
 from gezi import melt
 
 from text2ids import text2ids as text2ids_
@@ -48,6 +51,7 @@ import wenzheng
 from wenzheng.utils import text2ids
 
 import config
+from projects.ai2018.sentiment.prepare import filter
 
 import multiprocessing
 from multiprocessing import Value, Manager
@@ -58,6 +62,12 @@ df = None
 
 vocab = None
 char_vocab = None
+pos_vocab = None
+ner_vocab = None
+
+seg_result = None
+pos_result = None
+ner_result = None
 
 def get_mode(path):
   mode = 'train'
@@ -108,17 +118,30 @@ def build_features(index):
         row = df.iloc[i]
         id = str(row[0])
 
+        if seg_result:
+          words = seg_result[id]
+        if pos_result:
+          pos = pos_result[id]
+        if ner_result:
+          ner = ner_result[id]
+
         if start_index > 0:
           id == 't' + id
-
+  
         content = row[1] 
+        content_ori = content
+        content = filter.filter(content)
 
         label = list(row[2:])
         
         #label = [x + 2 for x in label]
         #num_labels = len(label)
 
-        content_ids, words = text2ids_(content, return_words=True)
+        if not seg_result:
+          content_ids, words = text2ids_(content, preprocess=False, return_words=True)
+          assert len(content_ids) == len(words)
+        else:
+          content_ids = [vocab.id(x) for x in words]
 
         if len(content_ids) > max_len:
           max_len = len(content_ids)
@@ -133,7 +156,8 @@ def build_features(index):
           continue
 
         content_ids = content_ids[:FLAGS.word_limit]
-        
+        words = words[:FLAGS.word_limit]
+
         if FLAGS.use_char:
           chars = [list(word) for word in words]
           char_ids = np.zeros([len(content_ids), FLAGS.char_limit], dtype=np.int32)
@@ -150,12 +174,34 @@ def build_features(index):
         else:
           char_ids = [0]
 
+        if pos_vocab:
+          assert pos
+          pos = pos[:FLAGS.word_limit]
+          pos_ids = [pos_vocab.id(x) for x in pos]
+        else:
+          pos_ids = [0]
+
+        if ner_vocab:
+          assert ner 
+          if pos_vocab:
+            assert len(pos) == len(ner)         
+          ner = ner[:FLAGS.word_limit]
+
+          ner_ids = [ner_vocab.id(x) for x in ner]
+        else:
+          ner_ids = [0]
+
+        wlen = [len(word) for word in words]
+
         feature = {
                     'id': melt.bytes_feature(id),
                     'label': melt.int64_feature(label),
                     'content':  melt.int64_feature(content_ids),
-                    'content_str': melt.bytes_feature(content), 
-                    'chars': melt.int64_feature(char_ids),
+                    'content_str': melt.bytes_feature(content_ori), 
+                    'char': melt.int64_feature(char_ids),
+                    'pos': melt.int64_feature(pos_ids),
+                    'ner': melt.int64_feature(ner_ids),
+                    'wlen': melt.int64_feature(wlen),
                     'source': melt.bytes_feature(mode), 
                   }
 
@@ -179,22 +225,65 @@ def build_features(index):
 
 
 def main(_):  
+  mode = get_mode(FLAGS.input)
+
   assert FLAGS.use_fold
   text2ids.init(FLAGS.vocab_)
-  global vocab, char_vocab
+  global vocab, char_vocab, pos_vocab, seg_result, pos_result, ner_result
   vocab = text2ids.vocab
   char_vocab_file = FLAGS.vocab_.replace('vocab.txt', 'char_vocab.txt')
   if os.path.exists(char_vocab_file):
+    print('char vocab exists')
     char_vocab = Vocabulary(char_vocab_file)
+  pos_vocab_file = FLAGS.vocab_.replace('vocab.txt', 'pos_vocab.txt')
+  if os.path.exists(pos_vocab_file):
+    print('pos vocab exists')
+    pos_vocab = Vocabulary(pos_vocab_file)
+  ner_vocab_file = FLAGS.vocab_.replace('vocab.txt', 'ner_vocab.txt')
+  if os.path.exists(ner_vocab_file):
+    print('ner vocab exists')
+    ner_vocab = Vocabulary(ner_vocab_file)
+  
+  mode_ = 'train'
+  if 'valid' in FLAGS.input:
+    mode_ = 'valid'
+  elif 'test' in FLAGS.input:
+    mode_ = 'test'
+  else:
+    assert 'train' in FLAGS.input
+
+  seg_file = FLAGS.vocab_.replace('vocab.txt', '%s.seg.txt' % mode_)
+  if os.path.exists(seg_file):
+    seg_result = {}
+    pos_result = {}
+    for line in open(seg_file):
+      id, segs = line.rstrip('\n').split('\t', 1)
+      segs = segs.split('\x09')
+      if '|' in segs[0]:
+        l = [x.split('|') for x in segs]
+        segs, pos = list(zip(*l))
+      seg_result[id] = segs
+      pos_result[id] = pos
+
+  ner_file = FLAGS.vocab_.replace('vocab.txt', '%s.ner.txt' % mode_)
+  if os.path.exists(ner_file):
+    seg_result = {}
+    ner_result = {}
+    for line in open(seg_file):
+      id, segs = line.rstirp('\n').split('\t', 1)
+      segs = segs.split('\x09')
+      if '|' in segs[0]:
+        l = [x.split('|') for x in segs]
+        segs, ner = list(zip(*l))
+      seg_result[id] = segs
+      ner_result[id] = ner
+
   print('to_lower:', FLAGS.to_lower, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
   print(text2ids.ids2text(text2ids_('傻逼脑残B')))
   print(text2ids.ids2text(text2ids_('喜欢玩孙尚香的加我好友：2948291976')))
 
   global df
   df = pd.read_csv(FLAGS.input, lineterminator='\n')
-
-  mode = get_mode(FLAGS.input)
-
   
   pool = multiprocessing.Pool()
 

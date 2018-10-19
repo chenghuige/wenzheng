@@ -35,6 +35,8 @@ import torch_algos.model as base
 from dataset import Dataset
 import evaluate as ev
 
+from torch_algos.model import freeze_embedding
+
 def main(_):
   FLAGS.num_folds = 8
   FLAGS.torch = True
@@ -43,6 +45,8 @@ def main(_):
   ev.init()
 
   model = getattr(base, FLAGS.model)()
+  if FLAGS.num_finetune_words:
+    model.embedding.register_backward_hook(freeze_embedding)
 
   logging.info(model)
 

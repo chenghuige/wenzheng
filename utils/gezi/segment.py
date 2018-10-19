@@ -15,6 +15,8 @@ from __future__ import print_function
 import gezi.nowarning
 import gezi
 import sys
+import os 
+
 #sys.path.append("./predeal")
 #import traceback
 try:
@@ -183,14 +185,116 @@ def tokenize_filter_empty(text):
 
 try:
   import jieba 
+  import jieba.posseg
 except Exception:
   pass 
 
 segment_char = segment_utf8_char
 segment_pinyin = segment_utf8_pinyin
 
+stanford_nlp = None
+
+# NOTICE emoji will cause segment error for stanford nlp
+# https://stackoverflow.com/questions/43146528/how-to-extract-all-the-emojis-from-text
+def init_stanford_nlp(path='/home/gezi/soft/stanford-corenlp', lang='zh'):
+#def init_stanford_nlp(path='/stanford-corenlp', lang='zh'):
+  global stanford_nlp
+  if not stanford_nlp:
+    from stanfordcorenlp import StanfordCoreNLP 
+    if not os.path.exists(path):
+      path = './stanford-corenlp'
+      if not os.path.exists(path):
+        stanford_nlp = StanfordCoreNLP('http://localhost', port=8818, lang=lang, memory='8g')
+    if not stanford_nlp:    
+      import logging
+      stanford_nlp = StanfordCoreNLP(path, lang=lang, memory='8g')
+
+def cut(text, type='word'):
+  if type == 'word':
+    return word_cut(text)
+  elif type == 'pos':
+    return pos_cut(text)
+  elif type == 'ner':
+    return ner_cut(text)
+  else:
+    raise ValueError('bad type: %s' % type)
+
+# HACK for emoji stanford nlp
+
+def is_emoji_en(word):
+  for w in word:
+    if not (w == '_' or (w <= 'z' and w >= 'a')):
+      return False
+  return True
+
+def hack_stanford_emoji(l):
+  import emoji
+  res = []
+  for i in range(len(l) - 2):
+    if l[i] == ':' and l[i+2] == ':' and  is_emoji_en(l[i + 1]):
+      res.append(emoji.emojize(':%s:' % l[i + 1]))
+      i + 2
+    else:
+      res.append(l[i])
+  return res
+
+def hack_stanford_emoji2(l):
+  import emoji
+  res = []
+  for i in range(len(l) - 2):
+    x, _ = l[i]
+    x2, _ = l[i + 1]
+    x3, _ = l[i + 2]
+    if x == ':' and x3 == ':' and  is_emoji_en(x2):
+      res.append((emoji.emojize(':%s:' % x2), 'EMOJI'))
+      i + 2
+    else:
+      res.append(l[i])
+  return res
+
+def word_cut(text):
+  if gezi.env_has('STANFORD_NLP'):
+    import emoji
+    init_stanford_nlp()
+    l = stanford_nlp.word_tokenize(emoji.demojize(text))
+    return hack_stanford_emoji(l)
+
+  # TODO make a switch since jieba.posseg is much slower... then jieba.cut
+  if gezi.env_has('JIEBA_POS'):
+    l = jieba.posseg.cut(text)
+    return [word for word, tag in l]
+  else:
+    return jieba.cut(text)
+
+def pos_cut(text):
+  if gezi.env_has('STANFORD_NLP'):
+    import emoji
+    init_stanford_nlp()
+    l = stanford_nlp.pos_tag(emoji.demojize(text))
+    res = hack_stanford_emoji2(l)
+  else:
+    res = list(jieba.posseg.cut(text))
+  
+  for i in range(len(res)):
+    w, t = res[i]
+    if w == '\x01' or w == '\x02' or w == '\x03':
+      res[i] = (w, 'sep')
+  return res
+
+def ner_cut(text):
+  import emoji
+  init_stanford_nlp()
+  l = stanford_nlp.ner(emoji.demojize(text))
+  res = hack_stanford_emoji2(l)
+
+  for i in range(len(res)):
+    w, t = res[i]
+    if w == '\x01' or w == '\x02' or w == '\x03':
+      res[i] = (w, 'sep')
+  return res
+
 #TODO hack how to better deal? now for c++ part must be str..
-#TODO py3
+#TODO JiebaSegmentor can be Stanford nlp seg mentor if set STANFORD_NLP in env, so only to diff from BZegmentor
 class JiebaSegmentor(object):
   def __init__(self):
     pass
@@ -198,19 +302,19 @@ class JiebaSegmentor(object):
   def segment_basic_single(self, text):
     #results = [word for word in get_single_cns(text)]
     results = [word for word in segment_char(text, cn_only=True)]
-    results += [word for word in jieba.cut(text)]
+    results += [word for word in cut(text)]
     return results  
 
   def segment_basic_single_all(self, text):
     #results = [word for word in get_single_cns(text)]
     results = [word for word in segment_char(text, cn_only=False)]
-    results += [word for word in jieba.cut(text)]
+    results += [word for word in cut(text)]
     return results  
 
   def segment_full_single(self, text):
     #results = [word for word in get_single_cns(text)]
     results = [word for word in segment_char(text, cn_only=True)]
-    results += [word for word in jieba.cut_for_search(text)]
+    results += [word for word in cut_for_search(text)]
     return results  
 
   def Segment(self, text, method='basic'):
@@ -221,9 +325,9 @@ class JiebaSegmentor(object):
 
     words = None
     if method == 'default' or method == 'basic' or method == 'exact':
-      words = [x for x in jieba.cut(text, cut_all=False)]
+      words = [x for x in cut(text)]
     elif method == 'basic_digit':
-      words = [x for x in jieba.cut(text, cut_all=False)]
+      words = [x for x in cut(text)]
       def sep_digits(word):
         l = []
         s = ''
@@ -247,9 +351,9 @@ class JiebaSegmentor(object):
     elif method == 'basic_single_all':
       words = self.segment_basic_single_all(text)
     elif method == 'search':
-      words = jieba.cut_for_search(text)
+      words = cut_for_search(text)
     elif method == 'cut_all':
-      words = jieba.cut(text, cut_all=True)
+      words = cut(text, cut_all=True)
     elif method == 'all' or method == 'full':
       words = self.segment_full_single(text)
     elif method == 'en':
@@ -279,13 +383,13 @@ class JiebaSegmentor(object):
       from pypinyin import lazy_pinyin as pinyin
       return  segment_char(text) + ['<S>'] + [''.join(pinyin(x)).strip() for x in text if x.strip()]
     elif method == 'word_char':
-      return [x for x in jieba.cut(text, cut_all=False)] + ['<S>'] + segment_char(text)
+      return [x for x in cut(text, cut_all=False)] + ['<S>'] + segment_char(text)
     elif method == 'word_char_pinyin':
       from pypinyin import lazy_pinyin as pinyin
-      return [x for x in jieba.cut(text, cut_all=False)] + ['<S>'] + segment_char(text) + ['<S>'] + [x.strip() for x in pinyin(text)]
+      return [x for x in cut(text, cut_all=False)] + ['<S>'] + segment_char(text) + ['<S>'] + [x.strip() for x in pinyin(text)]
     elif method == 'word_char_pinyin2':
       from pypinyin import lazy_pinyin as pinyin
-      return [x for x in jieba.cut(text, cut_all=False)] + ['<S>'] + segment_char(text) + ['<S>'] + [''.join(pinyin(x)).strip() for x in text if x.strip()]
+      return [x for x in cut(text, cut_all=False)] + ['<S>'] + segment_char(text) + ['<S>'] + [''.join(pinyin(x)).strip() for x in text if x.strip()]
     elif method == 'tab':
       words = text.strip().split('\t')
     elif method == 'white_space':

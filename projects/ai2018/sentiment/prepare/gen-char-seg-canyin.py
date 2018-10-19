@@ -47,8 +47,8 @@ def seg(text, out):
   if words:
     print(' '.join(words), file=out)
 
-ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/raw_comment_v2.csv'
-df = pd.read_csv(ifile)
+ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/train.csv'
+df = pd.read_csv(ifile, lineterminator='\n')
 
 ofile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/seg.char.txt'
 

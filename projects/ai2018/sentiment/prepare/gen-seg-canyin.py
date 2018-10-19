@@ -31,7 +31,7 @@ segmentor = Segmentor()
 
 import gezi
 
-import pandas as pd 
+import pandas as pd
 
 from projects.ai2018.sentiment.prepare import filter
 
@@ -47,7 +47,7 @@ def seg(text, out):
   if words:
     print(' '.join(words), file=out)
 
-ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/raw_comment_v2.csv'
+ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/train.csv'
 df = pd.read_csv(ifile)
 
 ofile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/seg.txt'

@@ -34,6 +34,11 @@ layers = lele.layers
 import gezi
 import os
 
+def freeze_embedding(self, grad_input, grad_output):
+  #print(grad_input)
+  #print(grad_output)
+  grad_output[0][FLAGS.num_finetune_words:, :] = 0
+
 #ModelV2 using cudnnrnn, not to use
 class ModelV2(nn.Module):
   def __init__(self):
@@ -228,7 +233,7 @@ class MReader(nn.Module):
     self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
                                                 emb_dim, 
                                                 FLAGS.word_embedding_file, 
-                                                trainable=FLAGS.finetune_word_embedding)
+                                                FLAGS.finetune_word_embedding)
 
     char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
     if os.path.exists(char_vocab_file):
@@ -263,7 +268,8 @@ class MReader(nn.Module):
 
       self.char_pooling = lele.layers.Pooling(FLAGS.char_output_method, input_size= 2 * self.num_units)
       if FLAGS.char_combiner == 'sfu':
-        self.char_sfu_combine = lele.layers.SFU(emb_dim, 3 * emb_dim, dropout_rate=1 - FLAGS.keep_prob)
+        self.char_fc = nn.Linear(2 * self.num_units, emb_dim)
+        self.char_sfu_combine = lele.layers.SFUCombiner(emb_dim, 3 * emb_dim, dropout_rate=1 - FLAGS.keep_prob)
         encode_input_size = emb_dim
       else:
         # concat
@@ -371,6 +377,7 @@ class MReader(nn.Module):
       if FLAGS.char_combiner == 'concat':
         x = torch.cat([x, cx], 2)
       elif FLAGS.char_combiner == 'sfu':
+        cx = self.char_fc(cx)
         x = self.char_sfu_combine(x, cx)
 
     x = self.encode(x, x_mask)

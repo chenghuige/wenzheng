@@ -30,8 +30,10 @@ from gezi import Segmentor
 segmentor = Segmentor()
 
 import gezi
+assert gezi.env_has('JIEBA_POS')
 
 import pandas as pd
+
 from projects.ai2018.sentiment.prepare import filter
 
 START_WORD = '<S>'
@@ -46,21 +48,24 @@ def seg(text, out):
   if words:
     print(' '.join(words), file=out)
 
-ifile = '/home/gezi/data/ai2018/sentiment/dianping/ratings.csv'
-df = pd.read_csv(ifile)
+ifiles = ['/home/gezi/data/ai2018/sentiment/train.csv',
+          '/home/gezi/data/ai2018/sentiment/valid.csv',
+          '/home/gezi/data/ai2018/sentiment/test.csv']
 
-ofile = '/home/gezi/data/ai2018/sentiment/dianping/seg.txt'
+ofile = '/home/gezi/data/ai2018/sentiment/seg.txt'
 
 with open(ofile, 'w') as out:
   num = 0
-  for comment in df['comment']:
-    if num % 10000 == 0:
-      print(num, file=sys.stderr)
-    try:
-      seg(comment, out)
-    except Exception:
-      continue
-    num += 1
-    if num == FLAGS.max_lines:
-      break
+  for ifile in ifiles:
+    df = pd.read_csv(ifile)
+    for comment in df['content']:
+      if num % 10000 == 0:
+        print(num, file=sys.stderr)
+      try:
+        seg(comment, out)
+      except Exception:
+        continue
+      num += 1
+      if num == FLAGS.max_lines:
+        break
 

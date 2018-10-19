@@ -28,9 +28,10 @@ from wenzheng.utils.text2ids import text2ids as to_ids
 import wenzheng
   
 # TODO check 2018.10.01 add multi grid
-def text2ids(text, return_words=False):
+def text2ids(text, preprocess=True, return_words=False):
   wenzheng.utils.text2ids.init()
-  text = filter.filter(text)
+  if preprocess:
+    text = filter.filter(text)
   return to_ids(text, 
                 seg_method=FLAGS.seg_method, 
                 feed_single=FLAGS.feed_single,

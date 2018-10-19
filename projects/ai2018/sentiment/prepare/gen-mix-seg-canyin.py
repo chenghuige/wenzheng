@@ -19,7 +19,7 @@ FLAGS = flags.FLAGS
 
 #flags.DEFINE_string('seg_method', 'basic', '')
 flags.DEFINE_integer('max_lines', 0, '')
-flags.DEFINE_string('vocab_', '/home/gezi/temp/ai2018/sentiment/vocab.5k.chars.txt', '')
+flags.DEFINE_string('vocab_', '/home/gezi/temp/ai2018/sentiment/vocab.min500.chars.txt', '')
 
 #assert FLAGS.seg_method
 
@@ -31,6 +31,7 @@ from gezi import Segmentor
 segmentor = Segmentor()
 
 import gezi
+assert gezi.env_has('JIEBA_POS')
 
 import pandas as pd 
 
@@ -42,6 +43,7 @@ text2ids.init(vocab)
 from text2ids import text2ids as text2ids_ 
 
 #import filter
+from projects.ai2018.sentiment.prepare import filter
 
 START_WORD = '<S>'
 END_WORD = '</S>'
@@ -55,21 +57,25 @@ def seg(text, out):
   if words:
     print(' '.join(words), file=out)
 
-ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/raw_comment_v2.csv'
+ifile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/comment_raw_v2/train.csv'
 df = pd.read_csv(ifile)
 
-ofile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/' + os.path.basename(FLAGS.vocab_).replace('.txt', '.mix.txt')
+ofile = '/home/gezi/data/ai2018/sentiment/sentiment_classify_data/seg.mix.txt'
 
+num_errs = 0
 with open(ofile, 'w') as out:
   num = 0
   for comment in df['content']:
     if num % 10000 == 0:
       print(num, file=sys.stderr)
-    #try:
-    seg(comment, out)
-    #except Exception:
-    #  continue
+    try:
+      seg(comment, out)
+    except Exception:
+      num_errs += 1
+      continue
     num += 1
     if num == FLAGS.max_lines:
       break
+
+  print('num_errs', num_errs)
 

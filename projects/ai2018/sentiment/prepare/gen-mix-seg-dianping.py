@@ -19,7 +19,7 @@ FLAGS = flags.FLAGS
 
 #flags.DEFINE_string('seg_method', 'basic', '')
 flags.DEFINE_integer("max_lines", 0, "")
-flags.DEFINE_string('vocab_', '/home/gezi/temp/ai2018/sentiment/vocab.5k.chars.txt', '')
+flags.DEFINE_string('vocab_', '/home/gezi/temp/ai2018/sentiment/vocab.min500.chars.txt', '')
 
 
 #assert FLAGS.seg_method
@@ -32,6 +32,7 @@ from gezi import Segmentor
 segmentor = Segmentor()
 
 import gezi
+assert gezi.env_has('JIEBA_POS')
 
 import pandas as pd 
 
@@ -43,6 +44,7 @@ text2ids.init(vocab)
 from text2ids import text2ids as text2ids_ 
 
 #import filter
+from projects.ai2018.sentiment.prepare import filter
 
 START_WORD = '<S>'
 END_WORD = '</S>'
@@ -57,15 +59,15 @@ def seg(text, out):
     print(' '.join(words), file=out)
 
 
-ifile = '/home/gezi/data/ai2018/sentiment/dianping/ratings.csv'
+ifile = '/home/gezi/data/ai2018/sentiment/dianping/train.csv'
 df = pd.read_csv(ifile)
 
-ofile = '/home/gezi/data/ai2018/sentiment/dianping/' + os.path.basename(FLAGS.vocab_).replace('.txt', '.mix.txt')
+ofile = '/home/gezi/data/ai2018/sentiment/dianping/seg.mix.txt'
 
 
 with open(ofile, 'w') as out:
   num = 0
-  for comment in df['comment']:
+  for comment in df['content']:
     if num % 10000 == 0:
       print(num, file=sys.stderr)
     try:

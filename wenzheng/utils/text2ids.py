@@ -153,7 +153,9 @@ def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False,
     text = text.lower()
   words = Segmentor.Segment(text, seg_method)
   if remove_space:
-    words = [x for x in words if x.strip()]
+    #words = [x for x in words if x.strip()]
+    # change to remove duplicate space
+    words = [x for i, x in enumerate(words) if not (i < len(words) - 1 and not(x.strip()) and not(words[i + 1].strip()))]
 
   ids = words2ids(words, 
                    feed_single=feed_single, 

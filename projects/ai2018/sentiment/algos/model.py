@@ -700,22 +700,44 @@ class Model(melt.Model):
     self.num_units = FLAGS.rnn_hidden_size if FLAGS.encoder_type != 'convnet' else FLAGS.num_filters
     self.keep_prob = FLAGS.keep_prob
 
+    vocab2_size = 0
+    if FLAGS.num_finetune_words:
+      vocab2_size = vocab_size - FLAGS.num_finetune_words
+      vocab_size = FLAGS.num_finetune_words
+
     self.embedding = wenzheng.Embedding(vocab_size, 
                                         FLAGS.emb_dim, 
                                         FLAGS.word_embedding_file, 
-                                        trainable=FLAGS.finetune_word_embedding)
+                                        trainable=FLAGS.finetune_word_embedding,
+                                        vocab2_size=vocab2_size)
 
-    char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
-    if os.path.exists(char_vocab_file):
-      FLAGS.use_char = True
-      char_vocab = gezi.Vocabulary(char_vocab_file)
-      logging.info('using char vocab:', char_vocab_file)
-      self.char_embedding = wenzheng.Embedding(char_vocab.size(), 
-                                               FLAGS.emb_dim, 
-                                               FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None, 
-                                               trainable=FLAGS.finetune_char_embedding)
-    else:
-      self.char_embedding = self.embedding
+    if FLAGS.use_char:
+      char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
+      if os.path.exists(char_vocab_file):
+        char_vocab = gezi.Vocabulary(char_vocab_file)
+        logging.info('using char vocab:', char_vocab_file)
+        self.char_embedding = wenzheng.Embedding(char_vocab.size(), 
+                                                FLAGS.emb_dim, 
+                                                FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None, 
+                                                trainable=FLAGS.finetune_char_embedding)
+      else:
+        self.char_embedding = self.embedding
+
+    if FLAGS.use_pos:
+      pos_vocab_file = FLAGS.vocab.replace('vocab.txt', 'pos_vocab.txt')
+      assert os.path.exists(pos_vocab_file)
+      pos_vocab = gezi.Vocabulary(pos_vocab_file)
+      logging.info('using pos vocab:', pos_vocab_file)
+      self.pos_embedding = wenzheng.Embedding(pos_vocab.size(), 
+                                              FLAGS.tag_emb_dim)
+
+    if FLAGS.use_ner:
+      ner_vocab_file = FLAGS.vocab.replace('vocab.txt', 'ner_vocab.txt')
+      assert os.path.exists(ner_vocab_file)
+      ner_vocab = gezi.Vocabulary(ner_vocab_file)
+      logging.info('using ner vocab:', ner_vocab_file)
+      self.ner_embedding = wenzheng.Embedding(ner_vocab.size(), 
+                                              FLAGS.tag_emb_dim)
 
     #self.encode = melt.layers.CudnnRnn(num_layers=self.num_layers, num_units=self.num_units, keep_prob=self.keep_prob)
     self.encode = wenzheng.Encoder(FLAGS.encoder_type)
@@ -802,7 +824,7 @@ class Model(melt.Model):
     x = self.embedding(x)
 
     if FLAGS.use_char:
-      cx = input['chars']
+      cx = input['char']
       cx = tf.reshape(cx, [batch_size * max_c_len, FLAGS.char_limit])
       chars_len = melt.length(cx)
       cx = self.char_embedding(cx)
@@ -814,6 +836,16 @@ class Model(melt.Model):
         x = tf.concat([x, cx], axis=2)
       elif FLAGS.char_combiner == 'sfu':
         x = self.char_sfu_combine(x, cx, training=training)
+
+    if FLAGS.use_pos:
+      px = input['pos']
+      px = self.pos_embedding(px)
+      x = tf.concat([x, px], axis=2)
+
+    if FLAGS.use_ner:
+      nx = input['ner']
+      nx = self.ner_embedding(nx)
+      x = tf.concat([x, nx], axis=2)
 
     x = self.encode(x, c_len, training=training)
     #x = self.encode(x)

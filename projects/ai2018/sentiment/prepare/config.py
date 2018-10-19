@@ -19,3 +19,4 @@ FLAGS = flags.FLAGS
 flags.DEFINE_bool('use_char', False, '')
 flags.DEFINE_integer('char_limit', 6, '')
 flags.DEFINE_integer('word_limit', 3000, '')
+#flags.DEFINE_bool('use_pos', False, '')

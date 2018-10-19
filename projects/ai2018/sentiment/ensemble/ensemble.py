@@ -90,7 +90,6 @@ def calc_f1_alls(labels, predicts):
   class_f1 /= NUM_ATTRIBUTES
   return f1, f1_list, class_f1
 
-
 class_weights_path = './class_weights.npy'
 if not os.path.exists(class_weights_path):
   class_weights_path = '/home/gezi/temp/ai2018/sentiment/class_weights.npy'

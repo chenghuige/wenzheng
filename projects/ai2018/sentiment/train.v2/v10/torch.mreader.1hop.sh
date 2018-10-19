@@ -16,7 +16,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v7/$fold/$SRC/torch.mreader.1hop/
+model_dir=$base/temp/ai2018/sentiment/model/v10/$fold/$SRC/torch.mreader.1hop/
 num_epochs=30
 
 mkdir -p $model_dir/epoch 
@@ -65,7 +65,7 @@ python $exe \
         --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \
-        --cell=gru \
+        --cell=lstm \
         --keep_prob=0.7 \
         --num_layers=1 \
         --rnn_hidden_size=200 \
@@ -82,6 +82,6 @@ python $exe \
         --decay_target=loss \
         --decay_patience=1 \
         --decay_factor=0.8 \
-        --decay_start_epoch_=3. \
+        --decay_start_epoch_=2. \
         --num_epochs=$num_epochs \
 

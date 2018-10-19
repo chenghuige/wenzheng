@@ -17,6 +17,9 @@ from __future__ import print_function
 now single thread... slow
 """
 
+import sys,os
+#os.environ['JIEBA_POS'] = '1'
+
 import tensorflow as tf
 
 flags = tf.app.flags
@@ -34,13 +37,14 @@ flags.DEFINE_string('seg_method', 'basic_single_all', '')
 assert FLAGS.most_common > 0 or FLAGS.min_count > 0
 assert FLAGS.seg_method
 
+import traceback
+
 from gezi import WordCounter 
 
 counter = WordCounter(
     most_common=FLAGS.most_common,
     min_count=FLAGS.min_count)
 
-import sys,os
 #reload(sys)
 #sys.setdefaultencoding('utf8')
 import numpy as np
@@ -50,6 +54,13 @@ segmentor = Segmentor()
 print(segmentor, file=sys.stderr)
 
 import gezi
+#assert gezi.env_has('JIEBA_POS')
+
+logging = gezi.logging
+
+logging.init('/tmp')
+
+from projects.ai2018.sentiment.prepare import filter
 
 START_WORD = '<S>'
 END_WORD = '</S>'
@@ -62,10 +73,15 @@ for line in sys.stdin:
   if num % 10000 == 0:
     print(num, file=sys.stderr)
   text = line.rstrip()
-  #text = text.lower()
-  words = segmentor.Segment(text, FLAGS.seg_method)
+  text = filter.filter(text)
+  try:
+    words = segmentor.Segment(text, FLAGS.seg_method)
+  except Exception:
+    print(num, '-----------fail', text)
+    print(traceback.format_exc())
+    continue
   if num % 10000 == 0:
-    print(text, '|'.join(words), len(words), file=sys.stderr)
+    logging.info(text, '|'.join(words), len(words))
   counter.add(START_WORD)
   for word in words:
     counter.add(word)

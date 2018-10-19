@@ -20,13 +20,17 @@ import numpy as np
 import torch
 from torch import nn
 
+import gezi
+logging = gezi.logging
+
 def get_embedding(vocab_size, 
                   embedding_dim=None, 
                   embedding_weight=None, 
                   trainable=True, 
                   padding_idx=0,
-                  vocab2_size=None, 
+                  vocab2_size=0, 
                   vocab2_trainable=False):
+  logging.info('vocab_size:', vocab_size, 'embedding_weight', embedding_weight)
   embedding = nn.Embedding(vocab_size,
                            embedding_dim,
                            padding_idx=padding_idx)
