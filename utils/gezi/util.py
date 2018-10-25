@@ -24,8 +24,22 @@ import glob
 import math 
 
 import re
+import time
 
 import gezi
+
+def str2scores(l):
+  if ',' in l:
+    # this is list save (list of list)
+    return np.array([float(x.strip()) for x in l[1:-1].split(',')])
+  else:
+    # this numpy save (list of numpy array)
+    return np.array([float(x.strip()) for x in l[1:-1].split(' ') if x.strip()])
+
+def get_unmodify_minutes(file_):
+  file_mod_time = os.stat(file_).st_mtime
+  last_time = (time.time() - file_mod_time) / 60
+  return last_time
 
 # ## Well not work well, so fall back to use py2 bseg 
 # def to_simplify(sentence):

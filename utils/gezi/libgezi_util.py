@@ -64,7 +64,6 @@ def to_simplify(sentence):
     res.append(chs)
   return ''.join(res)
 
-
 def normalize_(sentence, to_lower=True, to_simplify=True, to_half=True):
   assert six.PY2
   global chnormalizer

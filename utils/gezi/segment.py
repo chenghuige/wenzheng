@@ -204,10 +204,12 @@ def init_stanford_nlp(path='/home/gezi/soft/stanford-corenlp', lang='zh'):
     if not os.path.exists(path):
       path = './stanford-corenlp'
       if not os.path.exists(path):
+        print('init stanford nlp from local server 8818 port', file=sys.stderr)
         stanford_nlp = StanfordCoreNLP('http://localhost', port=8818, lang=lang, memory='8g')
     if not stanford_nlp:    
       import logging
-      stanford_nlp = StanfordCoreNLP(path, lang=lang, memory='8g')
+      print('init stanford nlp from %s' % path, file=sys.stderr)
+      stanford_nlp = StanfordCoreNLP(path, lang=lang, memory='4g')
 
 def cut(text, type='word'):
   if type == 'word':
@@ -227,51 +229,135 @@ def is_emoji_en(word):
       return False
   return True
 
-def hack_stanford_emoji(l):
+def hack_emoji(l):
   import emoji
   res = []
-  for i in range(len(l) - 2):
-    if l[i] == ':' and l[i+2] == ':' and  is_emoji_en(l[i + 1]):
+  for i in range(len(l)):
+    if i < len(l) - 2 and (l[i] == ':' and l[i+2] == ':' and  is_emoji_en(l[i + 1])):
       res.append(emoji.emojize(':%s:' % l[i + 1]))
       i + 2
     else:
       res.append(l[i])
+
   return res
 
-def hack_stanford_emoji2(l):
+def hack_emoji2(l):
   import emoji
   res = []
-  for i in range(len(l) - 2):
-    x, _ = l[i]
-    x2, _ = l[i + 1]
-    x3, _ = l[i + 2]
-    if x == ':' and x3 == ':' and  is_emoji_en(x2):
-      res.append((emoji.emojize(':%s:' % x2), 'EMOJI'))
-      i + 2
+  for i in range(len(l)):
+    if i < len(l) - 2:
+      x, _ = l[i]
+      x2, _ = l[i + 1]
+      x3, _ = l[i + 2]
+      if x == ':' and x3 == ':' and  is_emoji_en(x2):
+        res.append((emoji.emojize(':%s:' % x2), 'EMOJI'))
+        i + 2
+      else:
+        res.append(l[i])
     else:
       res.append(l[i])
+
   return res
+
+bseg = None 
+def init_bseg(use_pos=False, use_ner=False):
+  global bseg
+  if bseg is None: 
+    assert six.PY2, 'bseg must use python2'
+    import nowarning 
+    import libgezi 
+    import libsegment 
+    from libsegment import Segmentor 
+    if use_pos:
+      Segmentor.AddStrategy(libsegment.SEG_USE_POSTAG)
+    if use_ner:
+      Segmentor.AddStrategy(libsegment.SEG_USE_WORDNER)
+    #Segmentor.Init(ner_maxterm_count=1024)
+    Segmentor.Init()
+    bseg = Segmentor
+  return bseg
+
+def to_gbk(text):
+  return text.decode('utf8', 'ignore').encode('gbk', 'ignore')
+
+def to_utf8(text):
+  return text.decode('gbk', 'ignore').encode('utf8', 'ignore')
 
 def word_cut(text):
   if gezi.env_has('STANFORD_NLP'):
     import emoji
     init_stanford_nlp()
-    l = stanford_nlp.word_tokenize(emoji.demojize(text))
-    return hack_stanford_emoji(l)
+    try:
+      l = stanford_nlp.word_tokenize(emoji.demojize(text))
+      return hack_emoji(l)
+    except Exception:
+      print('stnaord error text: %s' % text, file=sys.stderr)
+      return jieba.cut(text)
+
+  if gezi.env_has('BSEG'):
+    import emoji
+    init_bseg()
+    try:
+      # NOTICE py2 need decode utf8 to get unicode as input to emoji
+      l = bseg.Segment(to_gbk(emoji.demojize(text.decode('utf8'))))
+      l = [to_utf8(x) for x in l]
+      return hack_emoji(l)
+    except Exception:
+      print('bseg error text: %s' % text, file=sys.stderr)
+      return jieba.cut(text)  
 
   # TODO make a switch since jieba.posseg is much slower... then jieba.cut
   if gezi.env_has('JIEBA_POS'):
     l = jieba.posseg.cut(text)
     return [word for word, tag in l]
-  else:
-    return jieba.cut(text)
+  
+  return jieba.cut(text)
 
+pos_tags = ["None", "Ag", "Dg", "Ng", "Tg", "Vg", "a", "ad", "an", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "nr", "ns", "nt", "nx", "nz", "o", "p", "q", "r", "s", "t", "u", "v", "vd", "vn", "w", "y", "z" ]
+
+#def pos_cut(text, same_with_ner=True):
 def pos_cut(text):
+  #print('------------', text, gezi.env_has('BSEG'))
   if gezi.env_has('STANFORD_NLP'):
     import emoji
     init_stanford_nlp()
     l = stanford_nlp.pos_tag(emoji.demojize(text))
-    res = hack_stanford_emoji2(l)
+    res = hack_emoji2(l)
+  elif gezi.env_has('BSEG'):
+    import emoji
+    init_bseg(use_pos=True)
+    def bseg_(text):
+      nodes = bseg.Cut(to_gbk(emoji.demojize(text.decode('utf8')))) 
+      l = [(to_utf8(x.word), pos_tags[x.type]) for x in nodes]
+      return l
+    l = bseg_(text)
+
+    # if not same_with_ner:
+    #   l = bseg_(text)
+    # else:
+    #   # HACK to have same seg result as word ner
+    #   MAX_LEN = 500
+    #   text_len = len(text)
+    #   if  text_len < MAX_LEN:
+    #     l = bseg_(text)
+    #   else:
+    #     len_ = 0
+    #     words = []
+    #     l = []
+    #     for word in jieba.cut(text):
+    #       word = word.encode('utf-8')
+    #       len_ += len(word)
+    #       words.append(word)
+    #       if len_ >= MAX_LEN:
+    #         len_ = 0
+    #         l += bseg_(''.join(words))
+    #         #print(len(''.join(words)), len(l))
+    #         words = []
+    #     if words:
+    #       l += bseg_(''.join(words))
+
+    #assert l
+    res = hack_emoji2(l)
   else:
     res = list(jieba.posseg.cut(text))
   
@@ -281,11 +367,67 @@ def pos_cut(text):
       res[i] = (w, 'sep')
   return res
 
+#x = 100000
+
 def ner_cut(text):
   import emoji
-  init_stanford_nlp()
-  l = stanford_nlp.ner(emoji.demojize(text))
-  res = hack_stanford_emoji2(l)
+  if gezi.env_has('STANFORD_NLP'):
+    init_stanford_nlp()
+    l = stanford_nlp.ner(emoji.demojize(text))
+  else:
+    init_bseg(use_ner=True)
+    def bseg_(text):
+      bseg.Cut(to_gbk(emoji.demojize(text.decode('utf8'))))
+      bseg.NerTag()
+      if not gezi.env_has('BSEG_SUBNER'):
+        nodes = bseg.GetNerNodes()
+      else:
+        nodes = bseg.GetSubNerNodes()
+      l = [(to_utf8(x.word), x.name) for x in nodes]
+      return l
+    # have tested as 718 cause error 
+    MAX_LEN = 500
+    text_len = len(text)
+    #l = bseg_(text)
+    #print(text_len, len(l))
+
+    # global x 
+    # if len(l) == 0:
+    #   if text_len < x:
+    #     x = text_len
+    #     #print('-------------------', x)
+
+    #print('-----------------', x)
+    
+    # HACK bseg wordner could nout seg long text so workaround here is to cut it  
+    # well still has some fail.. 
+    if  text_len < MAX_LEN:
+      l = bseg_(text)
+    else:
+      len_ = 0
+      words = []
+      l = []
+      jieba_cuts = [x.encode('utf8') for x in jieba.cut(text)]
+      for word in jieba_cuts:
+        len_ += len(word)
+        words.append(word)
+        if len_ >= MAX_LEN:
+          len_ = 0
+          l += bseg_(''.join(words))
+          #print(len(''.join(words)), len(l))
+          words = []
+
+      if words:
+        l += bseg_(''.join(words))
+      
+      if len(l) < len(text) / 10:
+        l = [(x, 'NOR') for x in jieba_cuts]
+
+    #exit(0)
+  #assert l
+  res = hack_emoji2(l)
+
+    
 
   for i in range(len(res)):
     w, t = res[i]

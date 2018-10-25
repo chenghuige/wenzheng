@@ -21,7 +21,6 @@ FLAGS = flags.FLAGS
 
 
 flags.DEFINE_string('input_vocab', './mount/temp/ai2018/sentiment/tfrecord/vocab.ori.txt', '')
-flags.DEFINE_string('dir', './mount/temp/ai2018/sentiment/tfrecord/', '')
 flags.DEFINE_string('emb', './mount/temp/ai2018/sentiment/vectors.txt', '')
 flags.DEFINE_integer('min_count', 20, '')
 flags.DEFINE_integer('most_common', None, '')
@@ -31,12 +30,17 @@ flags.DEFINE_string('type', 'normal', '''normal try merge all in glove, and add 
                                          scratch add all with min train count and try merge glove,
                                          only only merge all glove and not consider train count''')
 
+flags.DEFINE_integer('max_words', 200000, '')
+flags.DEFINE_bool('add_additional', False, 'add additional words from embedding file')
+
 from tqdm import tqdm
 import numpy as np
 
 def main(_):
   print('emb', FLAGS.emb)
   input_vocab = FLAGS.input_vocab
+  print('input_vocab', input_vocab)
+  dir_ = os.path.dirname(FLAGS.input_vocab)
   lines = open(input_vocab).readlines()
 
   ori_words_counts = [x.rstrip('\n').split('\t') for x in lines]
@@ -49,6 +53,7 @@ def main(_):
   normed_ori_set = set([x.lower() for x in ori_set])
   
   embedding_dict = {}
+  emb_words = []
 
   vec_size = FLAGS.emb_dim
   #with open(FLAGS.emb, 'r') as fh:
@@ -60,14 +65,21 @@ def main(_):
       if len(array) < vec_size:
         continue 
       word = "".join(array[0:-vec_size])
-      vector = list(map(float, array[-vec_size:]))
+      try:
+        vector = list(map(float, array[-vec_size:]))
+      except Exception:
+        print(i, line)
+        continue
       if word.lower() in normed_ori_set:
         embedding_dict[word] = vector
+      else:
+        emb_words.append(word.lower())
       if i % 100000 == 0:
         print(i)
         #break
   print("{} / {} tokens have corresponding word embedding vector".format(len(embedding_dict), len(ori_words)))
   
+  emb_words = []
   words = []   
   emb_mat = []
   # for padding zero
@@ -132,7 +144,13 @@ def main(_):
   print('num in vocab words', len(words))
   print('num oov words', len(unk_words))
 
-  out_vocab = os.path.join(FLAGS.dir, 'vocab.txt')
+  if FLAGS.add_additional:
+    for word in emb_words:
+      words.append(word)
+      if len(words) > FLAGS.max_words:
+        break
+
+  out_vocab = os.path.join(dir_, 'vocab.txt')
   # NOTICE unk vocab actually means only top words, so for train we can use <UNK>
   # out_unk_vocab = os.path.join(FLAGS.dir, 'unk_vocab.txt')
   # with open(out_vocab, 'w') as out, open(out_unk_vocab, 'w') as out_unk:
@@ -141,12 +159,14 @@ def main(_):
   #     print(word, file=out_unk)
   #   for word in unk_words:
   #     print(word, file=out) 
+  print('out_vocab', out_vocab)
   with open(out_vocab, 'w') as out:
     for word in words:
       print(word, file=out)
 
-  out_mat = os.path.join(FLAGS.dir, FLAGS.out_name)
+  out_mat = os.path.join(dir_, FLAGS.out_name)
   print('len(emb_mat)', len(emb_mat))
+  print('out_mat', out_mat)
   np.save(out_mat, np.array(emb_mat))
     
 if __name__ == '__main__':

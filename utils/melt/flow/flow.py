@@ -347,7 +347,7 @@ def tf_train_flow(train_once_fn,
       only_one_step = True
       logging.info('just run one step')
 
-    if FLAGS.mode != 'train':
+    if FLAGS.work_mode != 'train':
       assert not os.path.isdir(FLAGS.model_dir), FLAGS.model_dir  
       if 'valid' in FLAGS.mode:
         vals, names = metric_eval_fn(FLAGS.model_dir)
@@ -403,43 +403,46 @@ def tf_train_flow(train_once_fn,
           timer.print_elapsed()
         #if save_interval_epochs and num_steps_per_epoch and step % (num_steps_per_epoch * save_interval_epochs) == 0:
         #if save_interval_epochs and num_steps_per_epoch and step % num_steps_per_epoch == 0:
-        if save_interval_epochs and num_steps_per_epoch and fixed_step % num_steps_per_epoch == 0:
-          #epoch = step // num_steps_per_epoch
-          epoch = fixed_step / num_steps_per_epoch
-          eval_loss = melt.eval_loss()
-          if eval_loss:
-            #['eval_loss:3.2','eal_accuracy:4.3']
-            eval_loss = float(eval_loss.strip('[]').split(',')[0].strip("'").split(':')[-1])
-            if os.path.exists(os.path.join(epoch_dir, 'best_eval_loss.txt')):
-              with open(os.path.join(epoch_dir, 'best_eval_loss.txt')) as f:
-                best_epoch_eval_loss = float(f.readline().split()[-1].strip())
-            if eval_loss < best_epoch_eval_loss:
-              best_epoch_eval_loss = eval_loss
-              logging.info('Now best eval loss is epoch %.2f eval_loss:%f' % (epoch, eval_loss))
-              with open(os.path.join(epoch_dir, 'best_eval_loss.txt'), 'w') as f:
-                f.write('%.2f %d %f\n'%(epoch, step, best_epoch_eval_loss))
-              model_path_ = os.path.join(epoch_dir,'model.ckpt-best')
-              best_epoch_saver.save(sess, model_path_)
-              if freeze_graph:
-                melt.freeze_graph(sess, model_path_, None, output_collection_names, output_node_names)
+        # if save_interval_epochs and num_steps_per_epoch and fixed_step % num_steps_per_epoch == 0:
+        #   #epoch = step // num_steps_per_epoch
+        #   epoch = fixed_step / num_steps_per_epoch
+        #   eval_loss = melt.eval_loss()
+        #   if eval_loss:
+        #     #['eval_loss:3.2','eal_accuracy:4.3']
+        #     eval_loss = float(eval_loss.strip('[]').split(',')[0].strip("'").split(':')[-1])
+        #     if os.path.exists(os.path.join(epoch_dir, 'best_eval_loss.txt')):
+        #       try:
+        #         with open(os.path.join(epoch_dir, 'best_eval_loss.txt')) as f:
+        #           best_epoch_eval_loss = float(f.readline().split()[-1].strip())
+        #       except Exception:
+        #         pass
+        #     if eval_loss < best_epoch_eval_loss:
+        #       best_epoch_eval_loss = eval_loss
+        #       logging.info('Now best eval loss is epoch %.2f eval_loss:%f' % (epoch, eval_loss))
+        #       with open(os.path.join(epoch_dir, 'best_eval_loss.txt'), 'w') as f:
+        #         f.write('%.2f %d %f\n'%(epoch, step, best_epoch_eval_loss))
+        #       model_path_ = os.path.join(epoch_dir,'model.ckpt-best')
+        #       best_epoch_saver.save(sess, model_path_)
+        #       if freeze_graph:
+        #         melt.freeze_graph(sess, model_path_, None, output_collection_names, output_node_names)
 
-            with open(os.path.join(epoch_dir, 'eval_loss.txt'), 'a') as f:
-               f.write('%d %d %f\n'%(epoch, step, eval_loss))
-            if eval_loss >= pre_epoch_eval_loss:
-              num_bad_epochs += 1
-              if num_bad_epochs > num_allowed_bad_epochs:
-                #logging.warning('Evaluate loss not decrease for last %d epochs'% (num_allowed_bad_epochs + 1))
-                if not os.path.exists(os.path.join(epoch_dir,'model.ckpt-noimprove')):
-                  model_path_ = os.path.join(epoch_dir,'model.ckpt-noimprove')
-                  best_epoch_saver.save(sess, model_path_)
-                  if freeze_graph:
-                    melt.freeze_graph(sess, model_path_, None, output_collection_names, output_node_names)
-                ##-------well remove it since 
-                #if early_stop:
-                #  stop = True 
-            else:
-              num_bad_epochs = 0
-            pre_epoch_eval_loss = eval_loss
+        #     # with open(os.path.join(epoch_dir, 'eval_loss.txt'), 'a') as f:
+        #     #    f.write('%d %d %f\n'%(epoch, step, eval_loss))
+        #     if eval_loss >= pre_epoch_eval_loss:
+        #       num_bad_epochs += 1
+        #       if num_bad_epochs > num_allowed_bad_epochs:
+        #         #logging.warning('Evaluate loss not decrease for last %d epochs'% (num_allowed_bad_epochs + 1))
+        #         if not os.path.exists(os.path.join(epoch_dir,'model.ckpt-noimprove')):
+        #           model_path_ = os.path.join(epoch_dir,'model.ckpt-noimprove')
+        #           best_epoch_saver.save(sess, model_path_)
+        #           if freeze_graph:
+        #             melt.freeze_graph(sess, model_path_, None, output_collection_names, output_node_names)
+        #         ##-------well remove it since 
+        #         #if early_stop:
+        #         #  stop = True 
+        #     else:
+        #       num_bad_epochs = 0
+        #     pre_epoch_eval_loss = eval_loss
 
         # if write_during_train:
         #   # TODO FIXME metric_eval_fn per epoch should also keep... so should be called in train_once, just call with model_path is fine.. which mark as per epoch eval

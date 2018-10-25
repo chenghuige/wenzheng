@@ -75,9 +75,9 @@ class Vocabulary(object):
         lines = [line.rstrip('\n').split('\t') for line in lines]
  
       if min_count:
-        reverse_vocab = [x[0] for x,y in lines if int(y) >= min_count]
+        reverse_vocab = [x for x,y in lines if int(y) >= min_count]
       else:
-        reverse_vocab = [x[0] for x in lines]
+        reverse_vocab = [x[0] if isinstance(x, (tuple, list)) else x for x in lines]
 
       self.counts = []
       if len(lines[0]) == 2:

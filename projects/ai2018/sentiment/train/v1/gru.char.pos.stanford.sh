@@ -32,6 +32,9 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
+        --vocab_min_count=200 \
+        --char_min_count=100 \
+        --tag_min_count=500 \
         --use_pos=1 \
         --use_char=1 \
         --char_combiner=concat \

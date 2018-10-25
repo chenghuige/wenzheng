@@ -271,10 +271,15 @@ optimizers = {
   #'adam': tf.train.AdamOptimizer,
   #'adam': lambda lr: tf.train.AdamOptimizer(lr, beta_1=0.9, beta_2=0.999, epsilon=1e-08), #keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
   'adam': lambda lr: tf.train.AdamOptimizer(lr, epsilon=1e-08),
+  'adam_t2t': lambda lr: tf.train.AdamOptimizer(lr, epsilon=1e-06, beta1=0.85, beta2=0.997),
   #'adadelta': tf.train.AdadeltaOptimizer
   'adadelta': lambda lr: tf.train.AdadeltaOptimizer(lr, epsilon=1e-6),  #follow squad, also keras.optimizers.Adadelta(lr=1.0, rho=0.95, epsilon=1e-06)
-  'nadam': tf.contrib.opt.NadamOptimizer, # TODO FIXME nadam not work, InvalidArgumentError (see above for traceback): Incompatible shapes: [2737,300] vs. [91677,300]
+  # still not fix https://github.com/tensorflow/tensorflow/pull/15665
+  'nadam': tf.contrib.opt.NadamOptimizer, # TODO FIXME nadam not work, InvalidArgumentError (see above for traceback): Incompatible shapes: [2737,300] vs. [91677,300] 
   #'momentum': lambda lr, momentum: tf.train.MomentumOptimizer(lr, momentum=momentum) # in melt.app.train
+  #'adamax': tf.contrib.opt.AdaMaxOptimizer, # will got NAN ...
+  'adamax': lambda lr: tf.contrib.opt.AdaMaxOptimizer(lr, epsilon=1e-8),
+  #'adamax': tf.keras.optimizers.Adamax,  # tf can not directly use kears optimzier...
   }
 
 keras_optimizers = {

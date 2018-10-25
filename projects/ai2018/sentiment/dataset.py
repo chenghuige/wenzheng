@@ -45,6 +45,7 @@ class Dataset(melt.tfrecords.Dataset):
       #prob = tf.cond(tf.equal(x['source'], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
       prob = tf.cond(tf.equal(tf.strings.split(tf.expand_dims(x['source'], 0),'.').values[-1], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
       #is_aug = tf.to_float(tf.equal(x['source'], 'augument.train'))
+      #is_aug = tf.to_float(tf.equal(tf.strings.split(tf.expand_dims(x['source'], 0),'.').values[0], 'aug'))
       #aug_factor = get_aug_factor()
       #prob *=  is_aug * aug_factor + (1 - is_aug) * (1 - aug_factor)      
       acceptance = tf.less_equal(tf.random_uniform([], dtype=tf.float32), prob)
@@ -76,20 +77,30 @@ class Dataset(melt.tfrecords.Dataset):
     content = melt.sparse_tensor_to_dense(content)
     if FLAGS.add_start_end:
       content = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), content, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
+    # NOTICE! not work in dataset... so put to later step like in call but should do the same thing again for pytorch..
+    # if FLAGS.vocab_min_count:
+    #   content = melt.greater_then_set(content, FLAGS.vocab_min_count, UNK_ID)
+
     features['content'] = content
     label = features['label']
 
     #if FLAGS.use_char:
     chars = features['char']
     chars = melt.sparse_tensor_to_dense(chars)
+    # if FLAGS.char_min_count:
+    #   chars = melt.greater_then_set(chars, FLAGS.char_min_count, UNK_ID)
     features['char'] = chars
 
     pos = features['pos']
     pos = melt.sparse_tensor_to_dense(pos)
+    # if FLAGS.tag_min_count:
+    #   pos = melt.greater_then_set(pos, FLAGS.tag_min_count, UNK_ID)
     features['pos'] = pos
 
     ner = features['ner']
     ner = melt.sparse_tensor_to_dense(ner)
+    # if FLAGS.tag_min_count:
+    #   ner = melt.greater_then_set(ner, FLAGS.tag_min_count, UNK_ID)
     features['ner'] = ner
 
     wlen = features['wlen']

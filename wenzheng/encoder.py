@@ -38,9 +38,13 @@ class Encoder(melt.Model):
     self.keep_prob = keep_prob or FLAGS.keep_prob
     self.recurrent_dropout = FLAGS.recurrent_dropout
     self.bw_dropout = FLAGS.bw_dropout
+    self.concat_layers = FLAGS.concat_layers
+    self.residual_connect = FLAGS.encoder_residual_connect
 
     logging.info(f'encoder:{type}')
     logging.info('encoder recurrent dropout:{}'.format(self.recurrent_dropout))
+    logging.info('encoder concat layers:{}'.format(self.concat_layers))
+    logging.info('encoder residual connect:{}'.format(self.residual_connect))
     logging.info('encoder bw dropout:{}'.format(self.bw_dropout))
     logging.info('encoder num_layers:{}'.format(self.num_layers))
     logging.info('encoder num_units:{}'.format(self.num_units))
@@ -57,7 +61,9 @@ class Encoder(melt.Model):
                                       keep_prob=self.keep_prob,
                                       share_dropout=False,
                                       recurrent_dropout=self.recurrent_dropout,
+                                      concat_layers=self.concat_layers,
                                       bw_dropout=self.bw_dropout,
+                                      residual_connect=self.residual_connect,
                                       cell=type)
       elif type == 'cnn' or type == 'convnet':
         logging.info('encoder num_filters:{}'.format(FLAGS.num_filters))
@@ -83,6 +89,8 @@ class Encoder(melt.Model):
 
     self.encodes = []
     for type in type.split(','):
+      #print(type, get_encode(type))
+      # TODO FIMXE tensorflow 1.1 fail layer_utils.py weights += layer.trainable_weights 'property' object is not iterable
       self.encodes.append(get_encode(type))
 
     logging.info(self.encodes)

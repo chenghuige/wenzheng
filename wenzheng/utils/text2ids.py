@@ -77,6 +77,7 @@ def words2ids(words, feed_single=True, allow_all_zero=False,
   multi_grid = multi_grid or MULTI_GRID
   encode_unk = encode_unk or ENCODE_UNK
     
+  new_words = []
   if not feed_single:
     word_ids = [get_id(word, unk_vocab_size) for word in words if vocab.has(word) or encode_unk]
   else:
@@ -86,17 +87,22 @@ def words2ids(words, feed_single=True, allow_all_zero=False,
         for w in word:
           if not vocab.has(w) and unk_vocab_size:
               word_ids.append(gezi.hash(w) % unk_vocab_size + vocab.size())
+              new_words.append(w)
           else:
             if vocab.has(w) or encode_unk:
               word_ids.append(vocab.id(w))
+              new_words.append(w)
         continue
       elif norm_all_digit and word.isdigit():
         word_ids.append(vocab.id(NUM_MARK))
+        new_words.append(word)
         continue
       if vocab.has(word):
         word_ids.append(vocab.id(word))
+        new_words.append(word)
       elif not norm_all_digit and norm_digit and word.isdigit():
         word_ids.append(vocab.id(NUM_MARK))
+        new_words.append(word)
       else:
         #TODO might use trie to speed up longest match segment
         if (not multi_grid) or feed_single_en:
@@ -108,18 +114,23 @@ def words2ids(words, feed_single=True, allow_all_zero=False,
             for w in chars:
               if not vocab.has(w) and unk_vocab_size:
                 word_ids.append(gezi.hash(w) % unk_vocab_size + vocab.size())
+                new_words.append(w)
               else:
                 if vocab.has(w) or encode_unk:
                   word_ids.append(vocab.id(w))
+                  new_words.append(w)
           else:
             if unk_vocab_size:
               word_ids.append(gezi.hash(word) % unk_vocab_size + vocab.size())
+              new_words.append(word)
             else:
               if encode_unk:
                 word_ids.append(vocab.unk_id())
+                new_words.append(word)
         else:
           #test it!  print text2ids.ids2text(text2ids.text2ids('匍匐前进'))
           word_ids += gezi.loggest_match_seg(word, vocab, encode_unk=encode_unk, unk_vocab_size=unk_vocab_size, vocab_size=vocab.size())
+          # NOTICE new_words lost here!
 
   if append_start:
     word_ids = [vocab.start_id()] + word_ids
@@ -133,7 +144,7 @@ def words2ids(words, feed_single=True, allow_all_zero=False,
   if pad:
     word_ids = gezi.pad(word_ids, max_words or TEXT_MAX_WORDS, 0)  
 
-  return word_ids
+  return word_ids, new_words
 
 # TODO might change to set pad default as False
 def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False, 
@@ -157,24 +168,24 @@ def text2ids(text, seg_method='basic', feed_single=True, allow_all_zero=False,
     # change to remove duplicate space
     words = [x for i, x in enumerate(words) if not (i < len(words) - 1 and not(x.strip()) and not(words[i + 1].strip()))]
 
-  ids = words2ids(words, 
-                   feed_single=feed_single, 
-                   allow_all_zero=allow_all_zero, 
-                   pad=pad, 
-                   append_start=append_start, 
-                   append_end=append_end, 
-                   max_words=max_words, 
-                   norm_digit=norm_digit,
-                   norm_all_digit=norm_all_digit,
-                   multi_grid=multi_grid,
-                   encode_unk=encode_unk,
-                   feed_single_en=feed_single_en,
-                   digit_to_chars=digit_to_chars,
-                   unk_vocab_size=unk_vocab_size)
+  ids, new_words = words2ids(words, 
+                            feed_single=feed_single, 
+                            allow_all_zero=allow_all_zero, 
+                            pad=pad, 
+                            append_start=append_start, 
+                            append_end=append_end, 
+                            max_words=max_words, 
+                            norm_digit=norm_digit,
+                            norm_all_digit=norm_all_digit,
+                            multi_grid=multi_grid,
+                            encode_unk=encode_unk,
+                            feed_single_en=feed_single_en,
+                            digit_to_chars=digit_to_chars,
+                            unk_vocab_size=unk_vocab_size)
   if not return_words:
     return ids 
   else:
-    return ids, words
+    return ids, new_words
 
 def ids2words(text_ids, print_end=True):
   #print('@@@@@@@@@@text_ids', text_ids)

@@ -32,10 +32,11 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
-flags.DEFINE_integer('char_min_count', 50, '')
-flags.DEFINE_integer('tag_min_count', 500, '')
+flags.DEFINE_integer('char_min_count', None, '')
+flags.DEFINE_integer('tag_min_count', None, '')
 
 flags.DEFINE_integer('num_finetune_words', None, '')
+flags.DEFINE_integer('num_finetune_chars', None, '')
 #flags.DEFINE_float('label_smoothing', 0, '')
 
 flags.DEFINE_integer('content_limit', 0, '')
@@ -81,7 +82,9 @@ flags.DEFINE_bool('use_mlp', False, '')
 flags.DEFINE_bool('use_word', True, '')
 flags.DEFINE_bool('use_simple_char', False, '')
 flags.DEFINE_string('simple_char_combiner', 'concat', '')
+## in prepare.config
 #flags.DEFINE_bool('use_char', False, '')
+flags.DEFINE_bool('use_char_emb', True, 'if use char and not use char emb then use another char emb different from emb other wise share to use one emb')
 flags.DEFINE_bool('use_simple_ngrams', False, '')
 flags.DEFINE_string('char_combiner', 'concat', '')
 

@@ -24,3 +24,17 @@ the script ./run-noemb-v3.sh is the same as ./run-noemb-v2.sh be sure you have c
 1.char  char only 
 2.word.feed  basic + digit + feed_sginle  only consider first 6k top freq word 
 3.word.basic  basic  
+
+
+now change to below process
+
+1. seg for train+valid+test   
+2. get vocab from train+valid+test   
+3. generate tfrecord using seg result and vocab   
+
+use 4 seg method with below name  
+1. char  
+2. mix(jieba)
+3. word (jieba pos, should be word.jieba)  
+4. besg(word by phrase bseg should be word.besg)
+

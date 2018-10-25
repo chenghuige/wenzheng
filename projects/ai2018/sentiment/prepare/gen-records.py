@@ -29,6 +29,9 @@ flags.DEFINE_integer('num_records_', 7, '10 or 5?')
 flags.DEFINE_integer('start_index', 0, 'set it to 1 if you have valid file which you want to put in train as fold 0')
 flags.DEFINE_bool('use_fold', True, '')
 flags.DEFINE_bool('augument', False, '')
+flags.DEFINE_string('mode', None, '')
+flags.DEFINE_string('mode_', None, '')
+flags.DEFINE_bool('ignore_start_end', False, 'I have not remove start and end quota before so can filter here')
 
 import six
 import traceback
@@ -38,7 +41,7 @@ import glob
 import json
 import pandas as pd
 
-import jieba.posseg
+from tqdm import tqdm
 
 from gezi import Vocabulary
 import gezi
@@ -89,6 +92,8 @@ def get_mode(path):
     mode = 'dianping'
   if FLAGS.augument:
     mode = 'aug.' + mode
+  if FLAGS.mode:
+    mode = FLAGS.mode
   return mode
 
 def build_features(index):
@@ -113,12 +118,15 @@ def build_features(index):
   max_num_ids = 0
   num = 0
   with melt.tfrecords.Writer(out_file) as writer:
-    for i in range(start, end):
+    for i in tqdm(range(start, end), ascii=True):
       try:
         row = df.iloc[i]
         id = str(row[0])
 
         if seg_result:
+          if id not in seg_result:
+            print('id %s ot found in seg_result' % id)
+            continue
           words = seg_result[id]
         if pos_result:
           pos = pos_result[id]
@@ -147,13 +155,15 @@ def build_features(index):
           max_len = len(content_ids)
           print('max_len', max_len)
 
-        if len(content_ids) > FLAGS.word_limit:
-          print(id, content)
-          if mode not in ['test', 'valid']:
-            continue 
+        if len(content_ids) > FLAGS.word_limit and len(content_ids) < 5:
+          print('{} {} {}'.format(id, len(content_ids), content_ori))
+        #if len(content_ids) > FLAGS.word_limit:
+        #  print(id, content)
+        #  if mode not in ['test', 'valid']:
+        #    continue 
 
-        if len(content_ids) < 5 and mode not in ['test', 'valid']:
-          continue
+        #if len(content_ids) < 5 and mode not in ['test', 'valid']:
+        #  continue
 
         content_ids = content_ids[:FLAGS.word_limit]
         words = words[:FLAGS.word_limit]
@@ -208,9 +218,6 @@ def build_features(index):
         # TODO currenlty not get exact info wether show 1 image or 3 ...
         record = tf.train.Example(features=tf.train.Features(feature=feature))
 
-        if num % 1000 == 0:
-          print(num)
-
         writer.write(record)
         num += 1
         global counter
@@ -229,20 +236,21 @@ def main(_):
 
   assert FLAGS.use_fold
   text2ids.init(FLAGS.vocab_)
-  global vocab, char_vocab, pos_vocab, seg_result, pos_result, ner_result
+  global vocab, char_vocab, pos_vocab, ner_vocab, seg_result, pos_result, ner_result
   vocab = text2ids.vocab
+  print('vocab size:', vocab.size())
   char_vocab_file = FLAGS.vocab_.replace('vocab.txt', 'char_vocab.txt')
   if os.path.exists(char_vocab_file):
-    print('char vocab exists')
     char_vocab = Vocabulary(char_vocab_file)
+    print('char vocab size:', char_vocab.size())
   pos_vocab_file = FLAGS.vocab_.replace('vocab.txt', 'pos_vocab.txt')
   if os.path.exists(pos_vocab_file):
-    print('pos vocab exists')
     pos_vocab = Vocabulary(pos_vocab_file)
+    print('pos vocab size:', pos_vocab.size())
   ner_vocab_file = FLAGS.vocab_.replace('vocab.txt', 'ner_vocab.txt')
   if os.path.exists(ner_vocab_file):
-    print('ner vocab exists')
     ner_vocab = Vocabulary(ner_vocab_file)
+    print('ner vocab size:', ner_vocab.size())
   
   mode_ = 'train'
   if 'valid' in FLAGS.input:
@@ -252,33 +260,49 @@ def main(_):
   else:
     assert 'train' in FLAGS.input
 
+  if FLAGS.augument:
+    mode_ = 'aug.' + mode_
+
+  if FLAGS.mode_:
+    mode_ = FLAGS.mode_
+
   seg_file = FLAGS.vocab_.replace('vocab.txt', '%s.seg.txt' % mode_)
+  seg_result = {}
   if os.path.exists(seg_file):
-    seg_result = {}
+    print('seg or seg_pos exits:', seg_file)
     pos_result = {}
     for line in open(seg_file):
       id, segs = line.rstrip('\n').split('\t', 1)
       segs = segs.split('\x09')
+      if FLAGS.ignore_start_end:
+        segs = segs[1:-1]
       if '|' in segs[0]:
         l = [x.split('|') for x in segs]
         segs, pos = list(zip(*l))
+        pos_result[id] = pos
       seg_result[id] = segs
-      pos_result[id] = pos
 
+  seg_done = True if seg_result else False
   ner_file = FLAGS.vocab_.replace('vocab.txt', '%s.ner.txt' % mode_)
+  ner_result = {}
   if os.path.exists(ner_file):
-    seg_result = {}
-    ner_result = {}
-    for line in open(seg_file):
-      id, segs = line.rstirp('\n').split('\t', 1)
+    print('seg_ner exists:', ner_file)
+    for line in open(ner_file):
+      id, segs = line.rstrip('\n').split('\t', 1)
       segs = segs.split('\x09')
+      if FLAGS.ignore_start_end:
+        segs = segs[1:-1]
       if '|' in segs[0]:
         l = [x.split('|') for x in segs]
         segs, ner = list(zip(*l))
-      seg_result[id] = segs
+      if not seg_done:      
+        seg_result[id] = segs
       ner_result[id] = ner
 
-  print('to_lower:', FLAGS.to_lower, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
+  print('len(seg_result)', len(seg_result))
+  print('len(ner_result)', len(ner_result))
+
+  print('to_lower:', FLAGS.to_lower, 'feed_single:', FLAGS.feed_single, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
   print(text2ids.ids2text(text2ids_('傻逼脑残B')))
   print(text2ids.ids2text(text2ids_('喜欢玩孙尚香的加我好友：2948291976')))
 

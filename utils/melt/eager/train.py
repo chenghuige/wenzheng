@@ -124,12 +124,19 @@ def evaluate(model, dataset, eval_fn, model_path=None,
       write_fn(ids, labels, predicts, ofile)
       
     if len(inspect.getargspec(eval_fn).args) == 4:
-      return eval_fn(labels, predicts, ids=ids, model_path=model_path)
+      vals, names = eval_fn(labels, predicts, ids=ids, model_path=model_path)
     elif len(inspect.getargspec(eval_fn).args) == 3:
       if 'ids' in inspect.getargspec(eval_fn).args:
-        return eval_fn(labels, predicts, ids)
+        vals, names = eval_fn(labels, predicts, ids)
     else:
-      return eval_fn(labels, predicts)
+      vals, names = eval_fn(labels, predicts)
+    
+    if model_path:
+      with open(model_path + '.valid.metrics', 'w') as out:
+        for val, name in zip(vals, names):
+          print(name, val, sep='\t', file=out)
+
+    return vals, names
 
 def inference(model, dataset, model_path, 
               names=None, debug_names=None, 
@@ -406,7 +413,7 @@ def train(Dataset,
   # TODO currently not support 0.1 epoch.. like this
   num_epochs = FLAGS.num_epochs if FLAGS.num_epochs != 0 else 1024
 
-  will_valid = valid_dataset and not FLAGS.mode == 'test' and not 'SHOW' in os.environ and not 'QUICK' in os.environ
+  will_valid = valid_dataset and not FLAGS.work_mode == 'test' and not 'SHOW' in os.environ and not 'QUICK' in os.environ
   if start_epoch == 0 and not 'EVFIRST' in os.environ and will_valid:
     will_valid = False
 
@@ -431,10 +438,10 @@ def train(Dataset,
     logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
                   ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
   
-  if FLAGS.mode == 'valid':
+  if FLAGS.work_mode == 'valid':
     exit(0)
 
-  if 'test' in FLAGS.mode:
+  if 'test' in FLAGS.work_mode:
     logging.info('--------test/inference')
     if test_dataset:
       if FLAGS.torch:
@@ -618,6 +625,7 @@ def train(Dataset,
       
         if FLAGS.torch:
           for param_group in optimizer.param_groups:
+            # important learning rate decay
             param_group['lr'] = learning_rate.numpy()
           model.train()
 

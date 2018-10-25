@@ -425,7 +425,7 @@ class DotAttention(keras.Model):
       return outputs
 
 # https://arxiv.org/pdf/1611.01603.pdf
-# but worse result then rnet only cq att
+# but worse result then rnet only cq att TODO FIXME bug?
 class BiDAFAttention(keras.Model):
   def __init__(self,
                hidden,
@@ -627,3 +627,30 @@ class SelfAttnMatch(melt.Model):
     else:
       return self.combine(x_, x, training=training)
       
+# https://github.com/openai/finetune-transformer-lm/blob/master/train.py
+class LayerNorm(keras.layers.Layer):
+  def __init__(self, 
+               e=1e-5, 
+               axis=[1]):
+    super(BatchNorm, self).__init__()
+    self.step = -1
+    self.e, self.axis = e, axis
+
+  def call(self, x, training=False):
+    self.step += 1
+    if self.step == 0:
+      n_state = melt.get_shape(x, -1)
+      self.g = self.add_variable(
+          "g",
+          shape=[n_state],
+          initializer=tf.constant_initializer(1))
+      self.b = self.add_variable(
+          "b",
+          shape=[n_state],
+          initializer=tf.constant_initializer(1))
+    e, axis = self.e, self.axis
+    u = tf.reduce_mean(x, axis=axis, keepdims=True)
+    s = tf.reduce_mean(tf.square(x-u), axis=axis, keepdims=True)
+    x = (x - u) * tf.rsqrt(s + e)
+    x = x * self.g + self.b
+    return x

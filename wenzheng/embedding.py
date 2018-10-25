@@ -85,9 +85,12 @@ class Embedding(layers.Layer):
     self.embedding2 = None
     if embedding is not None:
       if type(embedding) is str:
-        embedding = np.load(embedding)
+        if os.path.exists(embedding):
+          embedding = np.load(embedding)
+        else:
+          embedding = None
       embedding2 = None
-      if vocab2_size:
+      if vocab2_size and embedding is not None:
         embedding2 = embedding[vocab_size:]
         embedding = embedding[:vocab_size]
       self.embedding = embedding
@@ -95,6 +98,8 @@ class Embedding(layers.Layer):
       
   def build(self, _):
     initializer = 'uniform'
+    # some optimizer must use embedding on cpu 
+    #with tf.device("/cpu:0"):
     if self.embedding is not None:
       initializer = tf.constant_initializer(self.embedding)
       logging.info('emb init from numpy pretrain and trainable:', self.trainable)

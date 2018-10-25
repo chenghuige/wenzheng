@@ -32,7 +32,6 @@ from melt.rnn import encode_outputs, OutputMethod
 
 from melt import dropout
 
-
 class InitStates(Layer):
   def __init__(self, num_layers, num_units, name='init_fw'):
     super(InitStates, self).__init__()
@@ -62,6 +61,7 @@ class CudnnRnn(keras.Model):
                 concat_layers=True, 
                 output_method=OutputMethod.all, 
                 return_state=False,
+                residual_connect=False,
                 cell='gru', 
                 **kwargs):
     super(CudnnRnn, self).__init__(**kwargs)
@@ -113,8 +113,15 @@ class CudnnRnn(keras.Model):
 
     self.state = None
 
+    # no concat for rent will convergence slower and hurt performance
     self.concat_layers = concat_layers
     self.output_method = output_method
+    self.residual_connect = residual_connect
+
+    # hurt performance a lot in rnet 
+    if self.residual_connect:
+      self.residual_linear = layers.Dense(self.num_units * 2)
+      self.layer_norm = melt.layers.LayerNorm()
     
     def gru(units):
       # If you have a GPU, we recommend using the CuDNNGRU layer (it provides a 
@@ -180,7 +187,7 @@ class CudnnRnn(keras.Model):
   #   return []  
 
   def call(self, 
-           inputs, 
+           x, 
            sequence_length=None, 
            mask_fws = None,
            mask_bws = None,
@@ -191,19 +198,22 @@ class CudnnRnn(keras.Model):
     concat_layers = concat_layers or self.concat_layers
     output_mehtod = output_method or self.output_method
 
-    outputs = [inputs]
+    if self.residual_connect:
+      x = self.residual_linear(x)
+
+    outputs = [x]
 
     #states = []
     keep_prob = self.keep_prob
     num_units = self.num_units
-    batch_size = melt.get_batch_size(inputs)
+    batch_size = melt.get_batch_size(x)
 
     if sequence_length is None:
-      len_ = melt.get_shape(inputs, 1)
+      len_ = melt.get_shape(xcor(), 1)
       sequence_length = tf.ones([batch_size,], dtype=tf.int64) * len_
 
     for layer in range(self.num_layers):
-      input_size_ = melt.get_shape(inputs, -1) if layer == 0 else 2 * num_units
+      input_size_ = melt.get_shape(x, -1) if layer == 0 else 2 * num_units
 
       gru_fw, gru_bw = self.gru_fws[layer], self.gru_bws[layer]
       
@@ -287,6 +297,8 @@ class CudnnRnn(keras.Model):
           out_bw, seq_lengths=sequence_length, seq_axis=1, batch_axis=0)
 
       outputs.append(tf.concat([out_fw, out_bw], axis=2))
+      if self.residual_connect:
+        outputs[-1] = self.batch_norm(outputs[-2] + outputs[-1])
 
     if concat_layers:
       res = tf.concat(outputs[1:], axis=2)
@@ -301,6 +313,7 @@ class CudnnRnn(keras.Model):
     else:
       return res, self.state
 
+# depreciated..
 class CudnnRnn2(CudnnRnn):
   def __init__(self,  
                **kwargs):

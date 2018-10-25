@@ -40,7 +40,12 @@ def main(_):
 
   ev.init()
 
-  model = getattr(base, FLAGS.model)()
+  embedding = None
+  if FLAGS.word_embedding_file and os.path.exists(FLAGS.word_embedding_file):
+    embedding = np.load(FLAGS.word_embedding_file)
+    FLAGS.emb_dim = embedding.shape[1]
+
+  model = getattr(base, FLAGS.model)(embedding)
 
   logging.info(model)
 

@@ -32,7 +32,7 @@ import os
 import inspect
 
 import gezi
-import melt 
+import melt  
 
 #or from melt.utils import logging
 import melt.utils.logging as logging
@@ -106,7 +106,7 @@ flags.DEFINE_float('opt_epsilon', 1e-6, 'follow squad of ukhst')
 #                                             notice keras set for adgrad 0.01 
 #                                             but seems bad perf hard to converge for some seq2seq/lstm training
 #                                             see textsum/train/shangpinming/seq2seq-gen-copy-switch.sh""")
-flags.DEFINE_float('learning_rate', 0.001, """
+flags.DEFINE_float('learning_rate', 0.001, """adam will be 0.001
                                          default is adam default lr""")
 flags.DEFINE_float('min_learning_rate', 5e-5, 'min learning rate used for dyanmic eval metric decay')
 flags.DEFINE_float('learning_rate_start_factor', 1., '')
@@ -144,7 +144,7 @@ flags.DEFINE_boolean('optimize_has_scope', True, '')
 #----------train
 flags.DEFINE_boolean('train_only', False, '')
 flags.DEFINE_boolean('train_all', False, 'use for small dataset like competetion or standard dataset where use k folds for train/valid and use all k parts if set train_all==True')
-flags.DEFINE_string('mode', 'train', '')
+flags.DEFINE_string('work_mode', 'train', '')
 flags.DEFINE_integer('monitor_level', 2, '1 will monitor emb, 2 will monitor gradient')
 flags.DEFINE_integer('log_level', 0, '')
 flags.DEFINE_boolean('no_log', False, '')
@@ -282,13 +282,21 @@ def init():
   logging.set_logging_path(FLAGS.log_dir)
   logging.info('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir)
 
+  if 'SCRATCH' in os.environ: 
+    if os.path.exists(os.path.join(FLAGS.model_dir, 'log.html')):
+      if not os.path.exists(os.path.join(FLAGS.model_dir, 'log.txt')) or gezi.get_unmodify_minutes(os.path.join(FLAGS.model_dir, 'log.txt')) < 60:
+        logging.info('In scratch mode and found model_dir', FLAGS.model_dir, 'exit(0)')
+        exit(0)
+      else:
+        logging.info('In scratch mode but log.txt un modify for long time, continue running')
+    
   if 'MODE' in os.environ:
-    FLAGS.mode = os.environ['MODE']
+    FLAGS.work_mode = os.environ['MODE']
 
   if 'PYTORCH'  in os.environ or 'PYT' in os.environ or 'TORCH' in os.environ:
     FLAGS.torch = True
 
-  #if FLAGS.mode != 'train' or FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
+  #if FLAGS.work_mode != 'train' or FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
   # well for safe just not by default use eager mode for valid and test since some a bit complex model now still has diff graph and eager, TODO FIXME
   # TODO torch mode should use tf eager mode reading but since some bug for gpu oom.. now just use graph mode
   if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ or FLAGS.torch:
@@ -690,6 +698,19 @@ def train_flow(ops,
   #or judge by FLAGS.num_gpus
   if FLAGS.optimizer == 'momentum':
     optimizer = lambda lr: tf.train.MomentumOptimizer(lr, momentum=FLAGS.momentum) 
+  elif FLAGS.optimizer == 'adafactor':
+    from tensor2tensor.utils import adafactor
+    # let adafactor just using it's internal learning rate and default params
+    # TODO FIXME sparse not support ...
+    optimizer = adafactor.AdafactorOptimizer()
+  elif FLAGS.optimizer == 'multistep':
+    # even embedding set cpu still say resource try from device gpu to cpu WHY ?
+    from tensor2tensor.utils import multistep_optimizer
+    optimizer = multistep_optimizer.MultistepAdamOptimizer
+  elif FLAGS.optimizer == 'yellowfin':
+    # must set embedding on cpu , then can run(like adagrad adadelta) but work poorly
+    from tensor2tensor.utils import yellowfin
+    optimizer = yellowfin.YellowFinOptimizer
   else:
     optimizer = melt.util.get_optimizer(optimizer)
   if not isinstance(ops[0], (list,tuple)):  
@@ -779,30 +800,30 @@ def train_flow(ops,
   if not FLAGS.metric_eval:
     metric_eval_interval_steps = 0
 
-  if FLAGS.mode == 'train_only' or FLAGS.train_only:
+  if FLAGS.work_mode == 'train_only' or FLAGS.train_only:
     eval_ops = None 
     metric_eval_fn = None
     logging.info('running train only mode')
-  elif FLAGS.mode == 'train_metric':
+  elif FLAGS.work_mode == 'train_metric':
     eval_ops = None 
     assert metric_eval_fn is not None, 'set metric_eval to 1'
     logging.info('running train+metric mode')
-  elif FLAGS.mode == 'train+valid':
+  elif FLAGS.work_mode == 'train+valid':
     metric_eval_fn = None
     logging.info('running train+valid mode')
-  elif FLAGS.mode.startswith('test'):
+  elif FLAGS.work_mode.startswith('test'):
     ops = None
     logging.info('running test only mode')
     interval_steps = 0
     eval_interval_steps = 1
     metric_eval_interval_steps /= FLAGS.eval_interval_steps
     save_model = False
-  elif FLAGS.mode.startswith('metric') or FLAGS.mode.startswith('eval') or FLAGS.mode.startswith('valid') or gezi.env_has('METRIC'):
+  elif FLAGS.work_mode.startswith('metric') or FLAGS.work_mode.startswith('eval') or FLAGS.work_mode.startswith('valid') or gezi.env_has('METRIC'):
     #TODO name is a bit cofusing for mode, eval or metric means using metric evaluation
     #test above means using eval_loss(valid_loss) as composed to train_loss for evaluation
     ops = None 
     eval_ops = None
-    if FLAGS.mode == 'valid+test':
+    if FLAGS.work_mode == 'valid+test':
       logging.info('runing valid and test only mode')
     else:
       logging.info('running metric eval only mode')
@@ -813,7 +834,7 @@ def train_flow(ops,
     assert metric_eval_fn is not None 
 
   
-  if FLAGS.mode.endswith('once'):
+  if FLAGS.work_mode.endswith('once'):
     num_epochs = -1 #hack to make only do one step!
 
   #TODO hack seq2seq/OptimizeLoss/seq2seq/main/decode/rnn/basic_lstm_cell/kernel/Adagrad (DT_FLOAT) [1280,4096] need to save
@@ -940,7 +961,7 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
             if not gezi.iterable(label):
               label = [label]
             if not gezi.iterable(predict):
-              predict = [predict]
+              predict = [predict] 
             print(id, *label, *predict, sep=sep, file=out)
           else:
             write_fn(id, label, predict, out)
@@ -949,14 +970,21 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
 
   # TODO maybe **kargs better ?
   if len(inspect.getargspec(eval_fn).args) == 4:
-    return eval_fn(labels, predicts, ids=ids, model_path=model_path)
+    vals, names = eval_fn(labels, predicts, ids=ids, model_path=model_path)
   elif len(inspect.getargspec(eval_fn).args) == 3:
     if 'ids' in inspect.getargspec(eval_fn).args:
-      return eval_fn(labels, predicts, ids)
+      vals, names = eval_fn(labels, predicts, ids)
     else:
-      return eval_fn(labels, predicts, model_path)
+      vals, names = eval_fn(labels, predicts, model_path)
   else:
-    return eval_fn(labels, predicts)
+    vals, names = eval_fn(labels, predicts)
+
+  if model_path:
+    with open(model_path + '.valid.metrics', 'w') as out:
+      for val, name in zip(vals, names):
+        print(name, val, sep='\t', file=out)
+
+  return vals, names
 
 def inference(ops, iterator, num_steps, num_examples, 
               model_path, names=None, debug_names=None,

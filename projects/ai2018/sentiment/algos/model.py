@@ -33,6 +33,8 @@ import gezi
 
 import numpy as np
 
+UNK_ID = 1
+
 #same as ModelV2 but this is pytorch Mreader like attention(light attention)
 class ModelV3(melt.Model):
   def __init__(self):
@@ -690,7 +692,7 @@ class RNetV2(melt.Model):
 # currently Model as v1 is best v2 not improve, Model is like RNet
 # NOTICE mainly use this one
 class Model(melt.Model):
-  def __init__(self):
+  def __init__(self, embedding=None):
     super(Model, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
@@ -707,35 +709,42 @@ class Model(melt.Model):
 
     self.embedding = wenzheng.Embedding(vocab_size, 
                                         FLAGS.emb_dim, 
-                                        FLAGS.word_embedding_file, 
+                                        embedding if embedding is not None else FLAGS.word_embedding_file, 
                                         trainable=FLAGS.finetune_word_embedding,
                                         vocab2_size=vocab2_size)
 
     if FLAGS.use_char:
       char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
-      if os.path.exists(char_vocab_file):
-        char_vocab = gezi.Vocabulary(char_vocab_file)
-        logging.info('using char vocab:', char_vocab_file)
-        self.char_embedding = wenzheng.Embedding(char_vocab.size(), 
-                                                FLAGS.emb_dim, 
+      if FLAGS.use_char_emb:
+        assert os.path.exists(char_vocab_file)
+        char_vocab = gezi.Vocabulary(char_vocab_file, min_count=FLAGS.char_min_count)
+        logging.info('using char vocab:', char_vocab_file, 'size:', char_vocab.size())
+        vocab_size = char_vocab.size()
+        vocab2_size = 0
+        if FLAGS.num_finetune_chars:
+          vocab2_size = vocab_size - FLAGS.num_finetune_chars
+          vocab_size = FLAGS.num_finetune_chars
+        self.char_embedding = wenzheng.Embedding(vocab_size, 
+                                                FLAGS.char_emb_dim, 
                                                 FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None, 
-                                                trainable=FLAGS.finetune_char_embedding)
+                                                trainable=FLAGS.finetune_char_embedding,
+                                                vocab2_size=vocab2_size)
       else:
         self.char_embedding = self.embedding
 
     if FLAGS.use_pos:
       pos_vocab_file = FLAGS.vocab.replace('vocab.txt', 'pos_vocab.txt')
       assert os.path.exists(pos_vocab_file)
-      pos_vocab = gezi.Vocabulary(pos_vocab_file)
-      logging.info('using pos vocab:', pos_vocab_file)
+      pos_vocab = gezi.Vocabulary(pos_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using pos vocab:', pos_vocab_file, 'size:', pos_vocab.size())
       self.pos_embedding = wenzheng.Embedding(pos_vocab.size(), 
                                               FLAGS.tag_emb_dim)
 
     if FLAGS.use_ner:
       ner_vocab_file = FLAGS.vocab.replace('vocab.txt', 'ner_vocab.txt')
       assert os.path.exists(ner_vocab_file)
-      ner_vocab = gezi.Vocabulary(ner_vocab_file)
-      logging.info('using ner vocab:', ner_vocab_file)
+      ner_vocab = gezi.Vocabulary(ner_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using ner vocab:', ner_vocab_file, 'size:', ner_vocab.size())
       self.ner_embedding = wenzheng.Embedding(ner_vocab.size(), 
                                               FLAGS.tag_emb_dim)
 
@@ -806,7 +815,9 @@ class Model(melt.Model):
   def call(self, input, training=False):
     x = input['content'] 
 
-    #print(input['source'])
+    # #print(input['source'])
+    ## TODO FIXME still not ok here not in dataset pipepline, so bad Gradient ?
+    #x = melt.greater_then_set(x, FLAGS.vocab_min_count, UNK_ID)
 
     if FLAGS.content_limit and training:
       x = x[:,:FLAGS.content_limit]
@@ -825,6 +836,8 @@ class Model(melt.Model):
 
     if FLAGS.use_char:
       cx = input['char']
+      #cx = melt.greater_then_set(cx, FLAGS.char_min_count, UNK_ID)
+
       cx = tf.reshape(cx, [batch_size * max_c_len, FLAGS.char_limit])
       chars_len = melt.length(cx)
       cx = self.char_embedding(cx)
@@ -839,11 +852,15 @@ class Model(melt.Model):
 
     if FLAGS.use_pos:
       px = input['pos']
+      #px = melt.greater_then_set(px, FLAGS.tag_min_count, UNK_ID)
+      
       px = self.pos_embedding(px)
       x = tf.concat([x, px], axis=2)
 
     if FLAGS.use_ner:
       nx = input['ner']
+      #nx = melt.greater_then_set(nx, FLAGS.tag_min_count, UNK_ID)
+      
       nx = self.ner_embedding(nx)
       x = tf.concat([x, nx], axis=2)
 

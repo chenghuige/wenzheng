@@ -75,7 +75,7 @@ def init(vocab_path_=None, append=None):
         if gezi.env_has('VOCAB_APPEND'):
           append = True
       vocab = Vocabulary(vocab_path, FLAGS.num_reserved_ids, append=append,
-                        max_words=FLAGS.vocab_max_words, min_count=FLAGS.vocab_min_count)
+                         max_words=FLAGS.vocab_max_words, min_count=FLAGS.vocab_min_count)
     else:
       vocab = Vocabulary(buckets=FLAGS.vocab_buckets)
     vocab_size = vocab.size() if not FLAGS.vocab_size else min(vocab.size(), FLAGS.vocab_size)

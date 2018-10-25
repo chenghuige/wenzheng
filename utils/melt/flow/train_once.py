@@ -440,7 +440,13 @@ def train_once(sess,
           #epoch_step = tf.Variable(0, trainable=False, name='epoch_step')
           #epoch_step += 1
           #train_once.epoch_step = sess.run(epoch_step) 
-          train_once.epoch_step = 1
+          valid_interval_epochs = 1. 
+          try:
+            valid_interval_epochs = FLAGS.valid_interval_epochs 
+          except Exception:
+            pass
+          train_once.epoch_step = 1 if melt.epoch() <= 1 else int(int(melt.epoch() * 10) / int(valid_interval_epochs * 10))
+          logging.info('train_once epoch start step is', train_once.epoch_step)
         else:
           #epoch_step += 1
           train_once.epoch_step += 1

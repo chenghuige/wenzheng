@@ -35,7 +35,15 @@ import torch_algos.model as base
 from dataset import Dataset
 import evaluate as ev
 
-from torch_algos.model import freeze_embedding
+def freeze_embedding(self, grad_input, grad_output):
+  #print(grad_input)
+  #print(grad_output)
+  grad_output[0][FLAGS.num_finetune_words:, :] = 0
+
+def freeze_char_embedding(self, grad_input, grad_output):
+  #print(grad_input)
+  #print(grad_output)
+  grad_output[0][FLAGS.num_finetune_chars:, :] = 0
 
 def main(_):
   FLAGS.num_folds = 8
@@ -44,9 +52,16 @@ def main(_):
   
   ev.init()
 
-  model = getattr(base, FLAGS.model)()
+  embedding = None
+  if FLAGS.word_embedding_file and os.path.exists(FLAGS.word_embedding_file):
+    embedding = np.load(FLAGS.word_embedding_file)
+    FLAGS.emb_dim = embedding.shape[1]
+
+  model = getattr(base, FLAGS.model)(embedding)
   if FLAGS.num_finetune_words:
     model.embedding.register_backward_hook(freeze_embedding)
+  if FLAGS.num_finetune_chars:
+    model.char_embedding.register_backward_hook(freeze_char_embedding)
 
   logging.info(model)
 

@@ -17,16 +17,13 @@ import os
 
 import glob
 
-model_dir = '../'
-thre = float(sys.argv[1]) if len(sys.argv) > 1 else 0.7
+model_dir = '../' if not len(sys.argv) > 1 else sys.argv[1]
 
+thre = 0.7 if not len(sys.argv) > 2 else float(sys.argv[2])
 
-key = 'adjusted_f1'
+key = 'adjusted_f1' if not len(sys.argv) > 3 else sys.argv[3]
 
-if len(sys.argv) > 2:
-  key = sys.argv[2]
-
-print('key', key)
+print('model_dir', model_dir, 'thre', thre, 'key', key)
 
 def parse(x, key='adjusted_f1'):
   idx = x.index('epoch:')

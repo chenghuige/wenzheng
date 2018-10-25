@@ -34,11 +34,6 @@ layers = lele.layers
 import gezi
 import os
 
-def freeze_embedding(self, grad_input, grad_output):
-  #print(grad_input)
-  #print(grad_output)
-  grad_output[0][FLAGS.num_finetune_words:, :] = 0
-
 #ModelV2 using cudnnrnn, not to use
 class ModelV2(nn.Module):
   def __init__(self):
@@ -113,8 +108,61 @@ class Model(nn.Module):
 
     self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
                                                 emb_dim, 
-                                                FLAGS.word_embedding_file, 
+                                                embedding if embedding is not None else FLAGS.word_embedding_file, 
                                                 FLAGS.finetune_word_embedding)
+
+    if FLAGS.use_char:
+      char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
+      if FLAGS.use_char_emb:
+        assert os.path.exists(char_vocab_file) 
+        char_vocab = gezi.Vocabulary(char_vocab_file, min_count=FLAGS.char_min_count)
+        logging.info('using char vocab:', char_vocab_file, 'size:', char_vocab.size())
+        self.char_embedding = wenzheng.pyt.get_embedding(char_vocab.size(), 
+                                                        FLAGS.char_emb_dim, 
+                                                        FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None,  
+                                                        trainable=FLAGS.finetune_char_embedding)
+      else:
+        self.char_embedding = self.embedding
+
+    if FLAGS.use_char:
+      self.char_encode = Rnn(
+            input_size=FLAGS.char_emb_dim,
+            hidden_size=self.num_units,
+            num_layers=1,
+            dropout_rate=1 - FLAGS.keep_prob,
+            dropout_output=False,
+            recurrent_dropout=FLAGS.recurrent_dropout,
+            concat_layers=False,
+            rnn_type=FLAGS.cell,
+            padding=FLAGS.rnn_padding,
+        )    
+
+      self.char_pooling = lele.layers.Pooling(FLAGS.char_output_method, input_size= 2 * self.num_units)
+      if FLAGS.char_combiner == 'sfu':
+        self.char_fc = nn.Linear(2 * self.num_units, emb_dim)
+        self.char_sfu_combine = lele.layers.SFUCombiner(emb_dim, 3 * emb_dim, dropout_rate=1 - FLAGS.keep_prob)
+        encode_input_size = emb_dim
+      else:
+        # concat
+        encode_input_size = emb_dim + 2 * self.num_units
+    else:
+      encode_input_size = emb_dim
+
+    if FLAGS.use_pos:
+      pos_vocab_file = FLAGS.vocab.replace('vocab.txt', 'pos_vocab.txt')
+      assert os.path.exists(pos_vocab_file)
+      pos_vocab = gezi.Vocabulary(pos_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using pos vocab:', pos_vocab_file, 'size:', pos_vocab.size())
+      self.pos_embedding = wenzheng.pyt.get_embedding(pos_vocab.size(), FLAGS.tag_emb_dim)
+      encode_input_size += FLAGS.tag_emb_dim
+
+    if FLAGS.use_ner:
+      ner_vocab_file = FLAGS.vocab.replace('vocab.txt', 'ner_vocab.txt')
+      assert os.path.exists(ner_vocab_file)
+      ner_vocab = gezi.Vocabulary(ner_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using ner vocab:', ner_vocab_file, 'size:', ner_vocab.size())
+      self.ner_embedding = wenzheng.pyt.get_embedding(ner_vocab.size(), FLAGS.tag_emb_dim)
+      encode_input_size += FLAGS.tag_emb_dim
 
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
@@ -124,7 +172,7 @@ class Model(nn.Module):
 
     Rnn = lele.layers.StackedBRNN if not FLAGS.torch_cudnn_rnn else lele.layers.CudnnRnn
     self.encode = Rnn(
-            input_size=emb_dim,
+            input_size=encode_input_size,
             hidden_size=self.num_units,
             num_layers=self.num_layers,
             dropout_rate=1 - FLAGS.keep_prob,
@@ -197,6 +245,34 @@ class Model(nn.Module):
       x_mask = torch.zeros_like(x, dtype=torch.uint8)
 
     x = self.embedding(x)
+  
+      # TODO
+    if FLAGS.use_char:
+      cx = input['char']
+      cx = cx.view(batch_size * max_c_len, FLAGS.char_limit)
+      cx_mask = cx.eq(0)
+      if FLAGS.rnn_no_padding:
+        cx_mask = torch.zeros_like(cx, dtype=torch.uint8)
+      cx = self.char_embedding(cx)
+      cx = self.char_encode(cx, cx_mask)
+      cx = self.char_pooling(cx, cx_mask)
+      cx = cx.view(batch_size, max_c_len, 2 * self.num_units)
+
+      if FLAGS.char_combiner == 'concat':
+        x = torch.cat([x, cx], 2)
+      elif FLAGS.char_combiner == 'sfu':
+        cx = self.char_fc(cx)
+        x = self.char_sfu_combine(x, cx)
+
+    if FLAGS.use_pos:
+      px = input['pos']
+      px = self.pos_embedding(px)
+      x = torch.cat([x, px], 2)
+
+    if FLAGS.use_ner:
+      nx = input['ner']
+      nx = self.ner_embedding(nx)
+      x = torch.cat([x, nx], 2)
 
     x = self.encode(x, x_mask)
 
@@ -223,7 +299,7 @@ class Model(nn.Module):
 # MReader with hop==1 can be viewed as rnet also
 # NOTICE mainly use this one
 class MReader(nn.Module):
-  def __init__(self):
+  def __init__(self, embedding=None):
     super(MReader, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
@@ -232,20 +308,22 @@ class MReader(nn.Module):
 
     self.embedding = wenzheng.pyt.get_embedding(vocab_size, 
                                                 emb_dim, 
-                                                FLAGS.word_embedding_file, 
+                                                embedding if embedding is not None else FLAGS.word_embedding_file, 
                                                 FLAGS.finetune_word_embedding)
 
-    char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
-    if os.path.exists(char_vocab_file):
-      FLAGS.use_char = True
-      char_vocab = gezi.Vocabulary(char_vocab_file)
-      logging.info('using char vocab:', char_vocab_file)
-      self.char_embedding = wenzheng.pyt.get_embedding(char_vocab.size(), 
-                                                       emb_dim, 
-                                                       FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None,  
-                                                       trainable=FLAGS.finetune_char_embedding)
-    else:
-      self.char_embedding = self.embedding
+    if FLAGS.use_char:
+      char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
+      if FLAGS.use_char_emb:
+        assert os.path.exists(char_vocab_file) 
+        char_vocab = gezi.Vocabulary(char_vocab_file, min_count=FLAGS.char_min_count)
+        logging.info('using char vocab:', char_vocab_file, 'size:', char_vocab.size())
+        self.char_embedding = wenzheng.pyt.get_embedding(char_vocab.size(), 
+                                                        FLAGS.char_emb_dim, 
+                                                        FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None,  
+                                                        trainable=FLAGS.finetune_char_embedding)
+      else:
+        self.char_embedding = self.embedding
+
 
     self.num_layers = FLAGS.num_layers
     self.num_units = FLAGS.rnn_hidden_size
@@ -255,7 +333,7 @@ class MReader(nn.Module):
 
     if FLAGS.use_char:
       self.char_encode = Rnn(
-            input_size=emb_dim,
+            input_size=FLAGS.char_emb_dim,
             hidden_size=self.num_units,
             num_layers=1,
             dropout_rate=1 - FLAGS.keep_prob,
@@ -276,6 +354,22 @@ class MReader(nn.Module):
         encode_input_size = emb_dim + 2 * self.num_units
     else:
       encode_input_size = emb_dim
+
+    if FLAGS.use_pos:
+      pos_vocab_file = FLAGS.vocab.replace('vocab.txt', 'pos_vocab.txt')
+      assert os.path.exists(pos_vocab_file)
+      pos_vocab = gezi.Vocabulary(pos_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using pos vocab:', pos_vocab_file, 'size:', pos_vocab.size())
+      self.pos_embedding = wenzheng.pyt.get_embedding(pos_vocab.size(), FLAGS.tag_emb_dim)
+      encode_input_size += FLAGS.tag_emb_dim
+
+    if FLAGS.use_ner:
+      ner_vocab_file = FLAGS.vocab.replace('vocab.txt', 'ner_vocab.txt')
+      assert os.path.exists(ner_vocab_file)
+      ner_vocab = gezi.Vocabulary(ner_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using ner vocab:', ner_vocab_file, 'size:', ner_vocab.size())
+      self.ner_embedding = wenzheng.pyt.get_embedding(ner_vocab.size(), FLAGS.tag_emb_dim)
+      encode_input_size += FLAGS.tag_emb_dim
 
     self.encode = Rnn(
             input_size=encode_input_size,
@@ -364,7 +458,7 @@ class MReader(nn.Module):
 
     # TODO
     if FLAGS.use_char:
-      cx = input['chars']
+      cx = input['char']
       cx = cx.view(batch_size * max_c_len, FLAGS.char_limit)
       cx_mask = cx.eq(0)
       if FLAGS.rnn_no_padding:
@@ -379,6 +473,16 @@ class MReader(nn.Module):
       elif FLAGS.char_combiner == 'sfu':
         cx = self.char_fc(cx)
         x = self.char_sfu_combine(x, cx)
+
+    if FLAGS.use_pos:
+      px = input['pos']
+      px = self.pos_embedding(px)
+      x = torch.cat([x, px], 2)
+
+    if FLAGS.use_ner:
+      nx = input['ner']
+      nx = self.ner_embedding(nx)
+      x = torch.cat([x, nx], 2)
 
     x = self.encode(x, x_mask)
 

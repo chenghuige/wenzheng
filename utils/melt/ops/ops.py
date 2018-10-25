@@ -43,6 +43,20 @@ from tensorflow.contrib.layers.python.layers import utils as tf_utils
 
 import numpy as np
 
+# TODO FIXME.. hurt.. WHY ? maybe due to dataset pipline...
+#def greater_then_set(x, thre, val):
+  #mask = tf.cast(x > thre, dtype=x.dtype)
+  #rmask = 1 - mask
+  #return x * rmask + mask * val
+  #return x
+
+#https://stackoverflow.com/questions/39921607/how-to-make-a-custom-activation-function-with-only-python-in-tensorflow
+def greater_then_set(x, thre, val):
+   cond = tf.greater(x, thre)
+   return tf.where(cond, tf.ones_like(x, dtype=x.dtype) * val, x)
+   #return tf.where(cond, tf.constant(x, dtype=x.dtype, shape=x.shape) * val, x)
+  #return x
+
 def matmul(X, w):
   """ General matmul  that will deal both for dense and sparse input
   hide the differnce of dense and sparse input for end users

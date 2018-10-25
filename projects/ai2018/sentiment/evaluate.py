@@ -24,12 +24,19 @@ flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 7
 
 flags.DEFINE_bool('show_detail', False, '')
 
+flags.DEFINE_string('i', '.', '')
+
+flags.DEFINE_string('metric_name', 'adjusted_f1', '')
+flags.DEFINE_float('min_thre', 0., '0.705')
+flags.DEFINE_float('max_thre', 1000., '')
+
 #from sklearn.utils.extmath import softmax
 from sklearn.metrics import f1_score, log_loss, roc_auc_score
 
 from melt.utils.weight_decay import WeightDecay, WeightsDecay
 
 import numpy as np
+import glob
 import gezi
 import melt 
 logging = melt.logging
@@ -56,6 +63,8 @@ class_weights = None
 def load_class_weights():
   global class_weights
   if class_weights is None:
+    if not os.path.exists(FLAGS.class_weights_path):
+      FLAGS.class_weights_path = '/home/gezi/temp/ai2018/sentiment/class_weights.npy'
     class_weights = np.load(FLAGS.class_weights_path)
     for i in range(len(class_weights)):
       for j in range(num_classes):
@@ -238,7 +247,7 @@ def calc_auc(labels, predicts, model_path=None):
     aucs = []
     #print(np.sum(predicts[:,i], -1))
     for j in range(NUM_CLASSES):
-      auc = roc_auc_score((labels[:, i] == j).astype(int), predicts[:,i, j])
+      auc = roc_auc_score((labels[:, i] == j).astype(int), predicts[:, i, j])
       aucs.append(auc)
     auc = np.mean(aucs) 
     aucs_list.append(auc)
@@ -267,23 +276,47 @@ def evaluate(labels, predicts, ids=None, model_path=None):
   # TODO here use softmax will cause problem... not correct.. for f1
   probs = gezi.softmax(predicts)
 
-  adjusted_probs = gezi.softmax(predicts * FLAGS.logits_factor) * class_weights
+  #adjusted_probs = gezi.softmax(predicts * FLAGS.logits_factor) * class_weights * [1, 4., 5., 1.]
+  adjusted_probs = gezi.softmax(predicts * FLAGS.logits_factor) * class_weights 
+
+  mean_vals = []
+  mean_names = []
 
   #vals, names = calc_f1(labels, predicts, model_path)
   vals, names = calc_f1(labels, probs, model_path)
 
+  mean_vals.append(vals[0])
+  mean_names.append(names[0])
+
+  vals = vals[1:]
+  names = names[1:]
+
   vals_adjusted, names_adjusted = calc_f1(labels, adjusted_probs, model_path, name='adjusted_f1')
-  vals += vals_adjusted 
-  names += names_adjusted
+  mean_vals.append(vals_adjusted[0])
+  mean_names.append(names_adjusted[0])
+  
+  vals += vals_adjusted[1:]
+  names += names_adjusted[1:]
   
   vals_loss, names_loss = calc_loss(labels, probs, model_path)
-  vals += vals_loss 
-  names += names_loss
+
+  mean_vals.append(vals_loss[0])
+  mean_names.append(names_loss[0])
+
+  vals += vals_loss[1:]
+  names += names_loss[1:]
   
   probs = predicts if not FLAGS.auc_need_softmax else probs
   vals_auc, names_auc = calc_auc(labels, probs, model_path)
-  vals += vals_auc 
-  names += names_auc 
+
+  mean_vals.append(vals_auc[0])
+  mean_names.append(names_auc[0])
+
+  vals += vals_auc[1:]
+  names += names_auc[1:] 
+
+  vals = mean_vals + vals 
+  names = mean_names + names 
 
   return vals, names
   
@@ -311,13 +344,20 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
   if FLAGS.loss_type == 'regression':
     num_classes = 1
   df['score'] = [list(x) for x in np.reshape(predicts, [-1, NUM_ATTRIBUTES * num_classes])]
+  # for inference using length buckts need to sort, so for safe just all sort
+  try:
+    ids = [int(x) for x in ids]
+    df['id'] = ids
+  except Exception:
+    pass
+  df= df.sort_values('id') 
   if not is_infer:
     # TODO FIXME new run, seg fild seems luanma.. only on p40 new run..
-    df['seg'] = [ids2text.ids2text(infos[id]['content'], sep='|') for id in ids]
+    df['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
   if is_infer:
     df2 = df
-    df2['seg'] = [ids2text.ids2text(infos[id]['content'], sep='|') for id in ids]
+    df2['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
     df2.to_csv(ofile2, index=False, encoding="utf_8_sig")
 
 def valid_write(ids, labels, predicts, ofile):
@@ -326,28 +366,13 @@ def valid_write(ids, labels, predicts, ofile):
 def infer_write(ids, predicts, ofile, ofile2):
   return write(ids, None, predicts, ofile, ofile2, is_infer=True)
 
-if __name__ == '__main__':
-  load_class_weights()
 
-  df = pd.read_csv(sys.argv[1])
-
-  ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_district', 'location_easy_to_find',
-                'service_wait_time', 'service_waiters_attitude', 'service_parking_convenience', 'service_serving_speed', 
-                'price_level', 'price_cost_effective', 'price_discount', 
-                'environment_decoration', 'environment_noise', 'environment_space', 'environment_cleaness',
-                'dish_portion', 'dish_taste', 'dish_look', 'dish_recommendation',
-                'others_overall_experience', 'others_willing_to_consume_again']
-  def parse(l):
-    if ',' in l:
-      # this is list save (list of list)
-      return np.array([float(x.strip()) for x in l[1:-1].split(',')])
-    else:
-      # this numpy save (list of numpy array)
-      return np.array([float(x.strip()) for x in l[1:-1].split(' ') if x.strip()])
-
-  #scores = df['score_logits']
+def evaluate_file(file):
+  print('-------------------------', file)
+  df = pd.read_csv(file)
+  
   scores = df['score']
-  scores = [parse(score) for score in scores] 
+  scores = [gezi.str2scores(score) for score in scores] 
   scores = np.array(scores)
   
   predicts = np.reshape(scores, [-1, NUM_ATTRIBUTES, NUM_CLASSES])  
@@ -361,6 +386,8 @@ if __name__ == '__main__':
   labels = df.iloc[:,idx:idx+length].values
   labels += 2
 
+  #print(labels.shape, predicts.shape)
+  assert labels.shape[0] == 15000, labels.shape[0]
   vals, names = evaluate(labels, predicts)
 
   if FLAGS.show_detail:
@@ -371,3 +398,37 @@ if __name__ == '__main__':
   for name, val in zip(names, vals):
     if 'mean' in name:
       print(name, val)
+    
+  return vals, names
+
+if __name__ == '__main__':
+  load_class_weights()
+  input = FLAGS.i
+  os.makedirs('./bak', exist_ok=True)
+  if os.path.isdir(input):
+    df = pd.DataFrame()
+    fnames = []
+    m = {}
+    for file in glob.glob('%s/*valid.csv' % input):
+      #fname = os.path.basename(file).replace('.valid.csv', '')
+      fname = os.path.basename(file).replace('.valid.csv', '').split('_ckpt_')[0].split('_model.ckpt-')[0]
+      fnames.append(fname)
+      vals, names = evaluate_file(file)
+      for val, name in zip(vals, names):
+        if name not in m:
+          m[name] = [val]
+        else:
+          m[name].append(val)
+        if name == FLAGS.metric_name and (val < FLAGS.min_thre or val > FLAGS.max_thre):
+          print('-----remove file', file, '%s:%f' % (FLAGS.metric_name, val))
+          command = 'mv %s* ./bak' % fname
+          os.system(command)
+
+    df['model'] = fnames
+    for key, val in m.items():
+      df[key] = val
+    df = df.sort_values('adjusted_f1/mean', ascending=False)
+    df.to_csv('models.csv', index=False)
+  else:
+    evaluate_file(FLAGS.i)
+ 

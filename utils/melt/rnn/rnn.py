@@ -156,257 +156,256 @@ class NativeGru:
     return self.encode(inputs, seq_len, emb, concat_layers, output_method)
 
 
-if True:
-  class CudnnRnn:
-    def __init__(self, 
-                 cell, 
-                 num_layers, 
-                 num_units, 
-                 keep_prob=1.0, 
-                 share_dropout=True,
-                 train_init_state=True,
-                 is_train=None, 
-                 scope='cudnn'):
-      self.cell = cell
-      if isinstance(cell, str):
-        if cell == 'gru':
-          self.cell = tf.contrib.cudnn_rnn.CudnnGRU
-          scope = scope + '_gru'
-        elif cell == 'lstm':
-          self.cell = tf.contrib.cudnn_rnn.CudnnLSTM 
-          scope = scope + '_lstm'
-        else:
-          raise ValueError(cell)
-
-      logging.info('cudnn cell:', self.cell)
-      self.num_layers = num_layers
-      self.keep_prob = keep_prob
-      assert num_units % 4 == 0, 'bad performance for units size not % 4'
-      self.num_units = num_units
-      self.is_train = is_train
-      self.scope=scope
-
-      # for share dropout between like context and question in squad (machine reading task)
-      # rnn = gru(num_layers=FLAGS.num_layers, num_units=d, keep_prob=keep_prob, is_train=self.is_training)
-      # c = rnn(c_emb, seq_len=c_len)
-      # scope.reuse_variables()
-      # q = rnn(q_emb, seq_len=q_len)
-      self.share_dropout = share_dropout
-      self.dropout_mask_fw = [None] * num_layers
-      self.dropout_mask_bw = [None] * num_layers 
-
-      self.train_init_state = train_init_state
-      self.init_fw = [None] * num_layers
-      self.init_bw = [None] * num_layers 
-
-      self.state = None
-
-    def set_dropout_mask(self, mask_fw, mask_bw):
-      self.dropout_mask_fw = mask_fw 
-      self.dropout_mask_bw = mask_bw
-
-    def set_init_states(self, init_fw, init_bw):
-      self.init_fw = init_fw
-      self.init_bw = init_bw
-
-    def reset_init_states(self):
-      self.init_fw = [None] * self.num_layers
-      self.init_bw = [None] * self.num_layers     
-
-    def encode(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
-      if emb is not None:
-        inputs = tf.nn.embedding_lookup(emb, inputs)
-        
-      outputs = [tf.transpose(inputs, [1, 0, 2])]
-      #states = []
-      keep_prob = self.keep_prob
-      num_units = self.num_units
-      is_train = self.is_train
-
-      with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
-        for layer in range(self.num_layers):
-          input_size_ = melt.get_shape(inputs, -1) if layer == 0 else 2 * num_units
-          batch_size = melt.get_batch_size(inputs)
-
-          with tf.variable_scope("fw_{}".format(layer)):
-            gru_fw = self.cell(num_layers=1, num_units=num_units)
-            if not self.share_dropout:
-              mask_fw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                           keep_prob=keep_prob, is_train=is_train, mode=None)
-            else:
-              if self.dropout_mask_fw[layer] is None:
-                mask_fw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                                           keep_prob=keep_prob, is_train=is_train, mode=None)
-                self.dropout_mask_fw[layer] = mask_fw
-              else:
-                mask_fw = self.dropout_mask_fw[layer]
-            if self.train_init_state:
-              if self.init_fw[layer] is None:
-                self.init_fw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
-            out_fw, state_fw = gru_fw(outputs[-1] * mask_fw, self.init_fw[layer])
-
-          with tf.variable_scope("bw_{}".format(layer)):
-            gru_bw = self.cell(num_layers=1, num_units=num_units)
-            if not self.share_dropout:
-              mask_bw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                                         keep_prob=keep_prob, is_train=is_train, mode=None)
-            else:
-              if self.dropout_mask_bw[layer] is None:
-                mask_bw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                                           keep_prob=keep_prob, is_train=is_train, mode=None)
-                self.dropout_mask_bw[layer] = mask_bw
-              else:
-                mask_bw = self.dropout_mask_bw[layer]
-            inputs_bw = tf.reverse_sequence(
-                outputs[-1] * mask_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
-            if self.train_init_state:
-              if self.init_bw[layer] is None:
-                self.init_bw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
-            out_bw, state_bw = gru_bw(inputs_bw, self.init_bw[layer])
-            out_bw = tf.reverse_sequence(
-                out_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
-
-          outputs.append(tf.concat([out_fw, out_bw], axis=2))
-          #states.append(tf.concat([state_fw, state_bw], axis=-1))
-
-      if concat_layers:
-        res = tf.concat(outputs[1:], axis=2)
-        #state = tf.concat(states, axis=-1)
+class CudnnRnn:
+  def __init__(self, 
+                cell, 
+                num_layers, 
+                num_units, 
+                keep_prob=1.0, 
+                share_dropout=True,
+                train_init_state=True,
+                is_train=None, 
+                scope='cudnn'):
+    self.cell = cell
+    if isinstance(cell, str):
+      if cell == 'gru':
+        self.cell = tf.contrib.cudnn_rnn.CudnnGRU
+        scope = scope + '_gru'
+      elif cell == 'lstm':
+        self.cell = tf.contrib.cudnn_rnn.CudnnLSTM 
+        scope = scope + '_lstm'
       else:
-        res = outputs[-1]
-        #state = states[-1]
+        raise ValueError(cell)
 
-      res = tf.transpose(res, [1, 0, 2])
-      #state = tf.squeeze(state)
-      #state = tf.reshape(state, [-1, num_units * 2 * self.num_layers])
-      #res = encode_outputs(res, output_method=output_method, sequence_length=seq_len, state=state)
-      res = encode_outputs(res, output_method=output_method, sequence_length=seq_len)
+    logging.info('cudnn cell:', self.cell)
+    self.num_layers = num_layers
+    self.keep_prob = keep_prob
+    assert num_units % 4 == 0, 'bad performance for units size not % 4'
+    self.num_units = num_units
+    self.is_train = is_train
+    self.scope=scope
 
-      self.state = (state_fw, state_bw)
+    # for share dropout between like context and question in squad (machine reading task)
+    # rnn = gru(num_layers=FLAGS.num_layers, num_units=d, keep_prob=keep_prob, is_train=self.is_training)
+    # c = rnn(c_emb, seq_len=c_len)
+    # scope.reuse_variables()
+    # q = rnn(q_emb, seq_len=q_len)
+    self.share_dropout = share_dropout
+    self.dropout_mask_fw = [None] * num_layers
+    self.dropout_mask_bw = [None] * num_layers 
 
-      return res
+    self.train_init_state = train_init_state
+    self.init_fw = [None] * num_layers
+    self.init_bw = [None] * num_layers 
 
-    def __call__(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
-      return self.encode(inputs, seq_len, emb, concat_layers, output_method)
+    self.state = None
 
-  # tested on tf1.6
-  class CudnnGru:
-    def __init__(self, 
-                 num_layers, 
-                 num_units, 
-                 keep_prob=1.0, 
-                 share_dropout=True, 
-                 train_init_state=True, 
-                 is_train=None, 
-                 scope='cudnn_gru'):
-      self.num_layers = num_layers
-      self.keep_prob = keep_prob
-      assert num_units % 4 == 0, 'bad performance for units size not % 4'
-      self.num_units = num_units
-      self.is_train = is_train
-      self.scope=scope
+  def set_dropout_mask(self, mask_fw, mask_bw):
+    self.dropout_mask_fw = mask_fw 
+    self.dropout_mask_bw = mask_bw
 
-      self.share_dropout = share_dropout
-      self.dropout_mask_fw = [None] * num_layers
-      self.dropout_mask_bw = [None] * num_layers 
+  def set_init_states(self, init_fw, init_bw):
+    self.init_fw = init_fw
+    self.init_bw = init_bw
 
-      self.train_init_state = train_init_state
-      self.init_fw = [None] * num_layers
-      self.init_bw = [None] * num_layers 
+  def reset_init_states(self):
+    self.init_fw = [None] * self.num_layers
+    self.init_bw = [None] * self.num_layers     
 
-      self.state = None
+  def encode(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
+    if emb is not None:
+      inputs = tf.nn.embedding_lookup(emb, inputs)
+      
+    outputs = [tf.transpose(inputs, [1, 0, 2])]
+    #states = []
+    keep_prob = self.keep_prob
+    num_units = self.num_units
+    is_train = self.is_train
 
-    def set_dropout_mask(self, mask_fw, mask_bw):
-      self.dropout_mask_fw = mask_fw 
-      self.dropout_mask_bw = mask_bw
+    with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
+      for layer in range(self.num_layers):
+        input_size_ = melt.get_shape(inputs, -1) if layer == 0 else 2 * num_units
+        batch_size = melt.get_batch_size(inputs)
 
-    def set_init_states(self, init_fw, init_bw):
-      self.init_fw = init_fw
-      self.init_bw = init_bw
-
-    def reset_init_states(self):
-      self.init_fw = [None] * self.num_layers
-      self.init_bw = [None] * self.num_layers      
-
-    def encode(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
-      if emb is not None:
-        inputs = tf.nn.embedding_lookup(emb, inputs)
-        
-      outputs = [tf.transpose(inputs, [1, 0, 2])]
-      #states = []
-      keep_prob = self.keep_prob
-      num_units = self.num_units
-      is_train = self.is_train
-
-      with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
-        for layer in range(self.num_layers):
-          input_size_ = melt.get_shape(inputs, -1) if layer == 0 else 2 * num_units
-          batch_size = melt.get_batch_size(inputs)
-
-          with tf.variable_scope("fw_{}".format(layer)):
-            gru_fw = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=num_units)
-            if not self.share_dropout:
-              # mode is None since by define mask.. is already recurrent mode
+        with tf.variable_scope("fw_{}".format(layer)):
+          gru_fw = self.cell(num_layers=1, num_units=num_units)
+          if not self.share_dropout:
+            mask_fw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
+                          keep_prob=keep_prob, is_train=is_train, mode=None)
+          else:
+            if self.dropout_mask_fw[layer] is None:
               mask_fw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                                         keep_prob=keep_prob, is_train=is_train, mode=None)
-            else:             
-              if self.dropout_mask_fw[layer] is None:
-                mask_fw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                                           keep_prob=keep_prob, is_train=is_train, mode=None)
-                self.dropout_mask_fw[layer] = mask_fw
-              else:
-                mask_fw = self.dropout_mask_fw[layer]
-            if self.train_init_state:
-              if self.init_fw[layer] is None:
-                self.init_fw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
-            out_fw, state_fw = gru_fw(outputs[-1] * mask_fw, self.init_fw[layer])
+                                          keep_prob=keep_prob, is_train=is_train, mode=None)
+              self.dropout_mask_fw[layer] = mask_fw
+            else:
+              mask_fw = self.dropout_mask_fw[layer]
+          if self.train_init_state:
+            if self.init_fw[layer] is None:
+              self.init_fw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
+          out_fw, state_fw = gru_fw(outputs[-1] * mask_fw, self.init_fw[layer])
 
-          with tf.variable_scope("bw_{}".format(layer)):
-            gru_bw = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=num_units)
-            if not self.share_dropout:
+        with tf.variable_scope("bw_{}".format(layer)):
+          gru_bw = self.cell(num_layers=1, num_units=num_units)
+          if not self.share_dropout:
+            mask_bw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
+                                        keep_prob=keep_prob, is_train=is_train, mode=None)
+          else:
+            if self.dropout_mask_bw[layer] is None:
               mask_bw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                                         keep_prob=keep_prob, is_train=is_train, mode=None)
-            else:              
-              if self.dropout_mask_bw[layer] is None:
-                mask_bw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
-                                           keep_prob=keep_prob, is_train=is_train, mode=None)
-                self.dropout_mask_bw[layer] = mask_bw
-              else:
-                mask_bw = self.dropout_mask_bw[layer]
-            inputs_bw = tf.reverse_sequence(
-                outputs[-1] * mask_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
-            if self.train_init_state:
-              if self.init_bw[layer] is None:
-                self.init_bw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
-            out_bw, state_bw = gru_bw(inputs_bw, self.init_bw[layer])
-            out_bw = tf.reverse_sequence(
-                out_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
-          
-          outputs.append(tf.concat([out_fw, out_bw], axis=2))
-          #states.append(tf.concat([state_fw, state_bw], axis=-1))
+                                          keep_prob=keep_prob, is_train=is_train, mode=None)
+              self.dropout_mask_bw[layer] = mask_bw
+            else:
+              mask_bw = self.dropout_mask_bw[layer]
+          inputs_bw = tf.reverse_sequence(
+              outputs[-1] * mask_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
+          if self.train_init_state:
+            if self.init_bw[layer] is None:
+              self.init_bw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
+          out_bw, state_bw = gru_bw(inputs_bw, self.init_bw[layer])
+          out_bw = tf.reverse_sequence(
+              out_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
 
-      if concat_layers:
-        res = tf.concat(outputs[1:], axis=2)
-        #state = tf.concat(states, axis=-1)
-      else:
-        res = outputs[-1]
-        #state = states[-1]
+        outputs.append(tf.concat([out_fw, out_bw], axis=2))
+        #states.append(tf.concat([state_fw, state_bw], axis=-1))
 
-      res = tf.transpose(res, [1, 0, 2])
-      #state = tf.squeeze(state)
-      #state = tf.reshape(state, [-1, num_units * 2 * self.num_layers])
-      #res = encode_outputs(res, output_method=output_method, sequence_length=seq_len, state=state)
-      res = encode_outputs(res, output_method=output_method, sequence_length=seq_len)
+    if concat_layers:
+      res = tf.concat(outputs[1:], axis=2)
+      #state = tf.concat(states, axis=-1)
+    else:
+      res = outputs[-1]
+      #state = states[-1]
 
-      self.state = (state_fw, state_bw)
-      return res
+    res = tf.transpose(res, [1, 0, 2])
+    #state = tf.squeeze(state)
+    #state = tf.reshape(state, [-1, num_units * 2 * self.num_layers])
+    #res = encode_outputs(res, output_method=output_method, sequence_length=seq_len, state=state)
+    res = encode_outputs(res, output_method=output_method, sequence_length=seq_len)
 
-    def __call__(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
-      return self.encode(inputs, seq_len, emb, concat_layers, output_method)
+    self.state = (state_fw, state_bw)
 
-else:
-  logging.warning('using native_gru instead of cudnn due to low tf version then 1.5')
-  CudnnGru = NativeGru
+    return res
+
+  def __call__(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
+    return self.encode(inputs, seq_len, emb, concat_layers, output_method)
+
+# tested on tf1.6
+class CudnnGru:
+  def __init__(self, 
+                num_layers, 
+                num_units, 
+                keep_prob=1.0, 
+                share_dropout=True, 
+                train_init_state=True, 
+                is_train=None, 
+                scope='cudnn_gru'):
+    self.num_layers = num_layers
+    self.keep_prob = keep_prob
+    assert num_units % 4 == 0, 'bad performance for units size not % 4'
+    self.num_units = num_units
+    self.is_train = is_train
+    self.scope=scope
+
+    self.share_dropout = share_dropout
+    self.dropout_mask_fw = [None] * num_layers
+    self.dropout_mask_bw = [None] * num_layers 
+
+    self.train_init_state = train_init_state
+    self.init_fw = [None] * num_layers
+    self.init_bw = [None] * num_layers 
+
+    self.state = None
+
+  def set_dropout_mask(self, mask_fw, mask_bw):
+    self.dropout_mask_fw = mask_fw 
+    self.dropout_mask_bw = mask_bw
+
+  def set_init_states(self, init_fw, init_bw):
+    self.init_fw = init_fw
+    self.init_bw = init_bw
+
+  def reset_init_states(self):
+    self.init_fw = [None] * self.num_layers
+    self.init_bw = [None] * self.num_layers      
+
+  def encode(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
+    if emb is not None:
+      inputs = tf.nn.embedding_lookup(emb, inputs)
+      
+    outputs = [tf.transpose(inputs, [1, 0, 2])]
+    #states = []
+    keep_prob = self.keep_prob
+    num_units = self.num_units
+    is_train = self.is_train
+
+    with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
+      for layer in range(self.num_layers):
+        input_size_ = melt.get_shape(inputs, -1) if layer == 0 else 2 * num_units
+        batch_size = melt.get_batch_size(inputs)
+
+        with tf.variable_scope("fw_{}".format(layer)):
+          gru_fw = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=num_units)
+          if not self.share_dropout:
+            # mode is None since by define mask.. is already recurrent mode
+            mask_fw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
+                                        keep_prob=keep_prob, is_train=is_train, mode=None)
+          else:             
+            if self.dropout_mask_fw[layer] is None:
+              mask_fw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
+                                          keep_prob=keep_prob, is_train=is_train, mode=None)
+              self.dropout_mask_fw[layer] = mask_fw
+            else:
+              mask_fw = self.dropout_mask_fw[layer]
+          if self.train_init_state:
+            if self.init_fw[layer] is None:
+              self.init_fw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
+          out_fw, state_fw = gru_fw(outputs[-1] * mask_fw, self.init_fw[layer])
+
+        with tf.variable_scope("bw_{}".format(layer)):
+          gru_bw = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=num_units)
+          if not self.share_dropout:
+            mask_bw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
+                                        keep_prob=keep_prob, is_train=is_train, mode=None)
+          else:              
+            if self.dropout_mask_bw[layer] is None:
+              mask_bw = dropout(tf.ones([1, batch_size, input_size_], dtype=tf.float32),
+                                          keep_prob=keep_prob, is_train=is_train, mode=None)
+              self.dropout_mask_bw[layer] = mask_bw
+            else:
+              mask_bw = self.dropout_mask_bw[layer]
+          inputs_bw = tf.reverse_sequence(
+              outputs[-1] * mask_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
+          if self.train_init_state:
+            if self.init_bw[layer] is None:
+              self.init_bw[layer] = (tf.tile(tf.get_variable("init_state", [1, 1, num_units], tf.float32, tf.zeros_initializer()), [1, batch_size, 1]),)
+          out_bw, state_bw = gru_bw(inputs_bw, self.init_bw[layer])
+          out_bw = tf.reverse_sequence(
+              out_bw, seq_lengths=seq_len, seq_dim=0, batch_dim=1)
+        
+        outputs.append(tf.concat([out_fw, out_bw], axis=2))
+        #states.append(tf.concat([state_fw, state_bw], axis=-1))
+
+    if concat_layers:
+      res = tf.concat(outputs[1:], axis=2)
+      #state = tf.concat(states, axis=-1)
+    else:
+      res = outputs[-1]
+      #state = states[-1]
+
+    res = tf.transpose(res, [1, 0, 2])
+    #state = tf.squeeze(state)
+    #state = tf.reshape(state, [-1, num_units * 2 * self.num_layers])
+    #res = encode_outputs(res, output_method=output_method, sequence_length=seq_len, state=state)
+    res = encode_outputs(res, output_method=output_method, sequence_length=seq_len)
+
+    self.state = (state_fw, state_bw)
+    return res
+
+  def __call__(self, inputs, seq_len, emb=None, concat_layers=True, output_method=OutputMethod.all):
+    return self.encode(inputs, seq_len, emb, concat_layers, output_method)
+
+# else:
+#   logging.warning('using native_gru instead of cudnn due to low tf version then 1.5')
+#   CudnnGru = NativeGru
 
 class NullEncoder():
   def encode(self, inputs, sequence_length, output_method='all'):

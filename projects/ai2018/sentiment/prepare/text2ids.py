@@ -17,7 +17,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_bool('feed_single_en', True, '')
-flags.DEFINE_bool('feed_single', True, '')
+flags.DEFINE_bool('feed_single', False, '')
 flags.DEFINE_bool('to_lower', True, '')
 
 import sys 
@@ -38,7 +38,7 @@ def text2ids(text, preprocess=True, return_words=False):
                 feed_single_en=FLAGS.feed_single_en,
                 to_lower=FLAGS.to_lower,
                 norm_digit=False,
-                multi_grid=True,
+                multi_grid=False,
                 pad=False,
                 return_words=return_words)
   

@@ -31,7 +31,8 @@ segmentor = Segmentor()
 
 import gezi
 
-import json
+import json 
+import traceback
 
 START_WORD = '<S>'
 END_WORD = '</S>'
@@ -44,10 +45,12 @@ def seg(text):
   print(' '.join(words))
 
 num = 0
+num_errs = 0
 for line in sys.stdin:
   if num % 10000 == 0:
-    print(num, file=sys.stderr)
+      print(num, 'num_errs:', num_errs, file=sys.stderr)
   line = line.rstrip()
+  # try:
   m = json.loads(line)
   question = m['question']
   seg(question)
@@ -63,4 +66,7 @@ for line in sys.stdin:
   num += 1
   if num == FLAGS.max_lines:
     break
+  # except Exception:
+  #   num_errs += 1
+  #   print(traceback.format_exc())
 

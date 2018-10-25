@@ -1,5 +1,5 @@
 base=./mount
-dir=$base/temp/ai2018/sentiment.jieba/tfrecords/$SRC
+dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
 
 fold=0
 if [ $# == 1 ];
@@ -9,7 +9,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment.jieba/model/v1/$fold/$SRC/gru.char.bucket/
+model_dir=$base/temp/ai2018/sentiment/model/v1/$fold/$SRC/gru.char.bucket/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 

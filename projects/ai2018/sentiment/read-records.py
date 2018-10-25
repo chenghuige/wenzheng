@@ -40,11 +40,13 @@ import melt
 logging = melt.logging
 from dataset import Dataset
 
+from tqdm import tqdm
+
 # TODO by default save all ? so do not need to change the code ? 
 # _asdict() https://stackoverflow.com/questions/26180528/python-named-tuple-to-dictionary
 # err... valid and test data share same id...
 def deal(dataset, infos):
-  for x, _ in dataset:
+  for x, _ in tqdm(dataset, ascii=True):
     for key in x:
       x[key] = x[key].numpy()
       if type(x[key][0]) == bytes:
@@ -59,7 +61,7 @@ def main(_):
 
   base = FLAGS.base
   logging.set_logging_path('./mount/tmp/')
-  vocab_path = os.path.join(os.path.dirname(os.path.dirname(FLAGS.input)), 'vocab.txt')
+  vocab_path = f'{base}/vocab.txt'
   ids2text.init(vocab_path)
   FLAGS.vocab = f'{base}/vocab.txt'
 

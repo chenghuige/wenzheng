@@ -37,8 +37,13 @@ def get_embedding(vocab_size,
 
   if embedding_weight is not None:
     if type(embedding_weight) is str:
-      embedding_weight = np.load(embedding_weight)
-    embedding.weight.data.copy_(torch.from_numpy(embedding_weight))
-    embedding.weight.requires_grad = trainable
+      if os.path.exists(embedding_weight):
+        embedding_weight = np.load(embedding_weight)
+      else:
+        embedding_weight = None
+    if embedding_weight is not None:    
+      embedding.weight.data.copy_(torch.from_numpy(embedding_weight))
+  
+  embedding.weight.requires_grad = trainable
 
   return embedding
