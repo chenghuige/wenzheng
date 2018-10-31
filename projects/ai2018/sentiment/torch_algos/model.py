@@ -99,10 +99,16 @@ class ModelV2(nn.Module):
 
 # Model is like RNet! if you use label att and self match
 class Model(nn.Module):
-  def __init__(self):
+  def __init__(self, embedding=None):
     super(Model, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
+
+    Rnn = lele.layers.StackedBRNN if not FLAGS.torch_cudnn_rnn else lele.layers.CudnnRnn 
+    
+    self.num_layers = FLAGS.num_layers
+    self.num_units = FLAGS.rnn_hidden_size
+    self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
 
     emb_dim = FLAGS.emb_dim 
 
@@ -125,7 +131,7 @@ class Model(nn.Module):
         self.char_embedding = self.embedding
 
     if FLAGS.use_char:
-      self.char_encode = Rnn(
+      self.char_encode = lele.layers.StackedBRNN(
             input_size=FLAGS.char_emb_dim,
             hidden_size=self.num_units,
             num_layers=1,
@@ -164,13 +170,6 @@ class Model(nn.Module):
       self.ner_embedding = wenzheng.pyt.get_embedding(ner_vocab.size(), FLAGS.tag_emb_dim)
       encode_input_size += FLAGS.tag_emb_dim
 
-    self.num_layers = FLAGS.num_layers
-    self.num_units = FLAGS.rnn_hidden_size
-    self.dropout = nn.Dropout(p=(1 - FLAGS.keep_prob))
-
-    factor = self.num_layers if FLAGS.concat_layers else 1
-
-    Rnn = lele.layers.StackedBRNN if not FLAGS.torch_cudnn_rnn else lele.layers.CudnnRnn
     self.encode = Rnn(
             input_size=encode_input_size,
             hidden_size=self.num_units,
@@ -183,6 +182,9 @@ class Model(nn.Module):
             padding=FLAGS.rnn_padding,
         )    
 
+    factor = self.num_layers if FLAGS.concat_layers else 1
+    input_size = 2 * self.num_units * factor
+
     if FLAGS.use_label_att:
       self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
       self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
@@ -190,7 +192,7 @@ class Model(nn.Module):
       self.att_dot_attentions = nn.ModuleList()
       self.att_encodes = nn.ModuleList()
       for i in range(FLAGS.label_hop):
-        self.att_dot_attentions.append(lele.layers.DotAttention(input_size=2 * self.num_units * factor, 
+        self.att_dot_attentions.append(lele.layers.DotAttention(input_size=input_size, 
                                                                 input_size2=FLAGS.emb_dim,
                                                                 hidden=self.num_units, 
                                                                 dropout_rate=1 - FLAGS.keep_prob, 
@@ -206,9 +208,11 @@ class Model(nn.Module):
               padding=FLAGS.rnn_padding,
           ))
 
+        input_size = 2 * self.num_units
+
     if FLAGS.use_self_match:
-      self.match_dot_attention = lele.layers.DotAttention(input_size=2 * self.num_units, 
-                                                          input_size2=2 * self.num_units, 
+      self.match_dot_attention = lele.layers.DotAttention(input_size=input_size, 
+                                                          input_size2=input_size, 
                                                           hidden=self.num_units, 
                                                           dropout_rate=1 - FLAGS.keep_prob, 
                                                           combiner=FLAGS.att_combiner)
@@ -225,7 +229,7 @@ class Model(nn.Module):
 
     self.pooling = lele.layers.Pooling(
                         FLAGS.encoder_output_method, 
-                        input_size= 2 * self.num_units * factor,
+                        input_size=input_size,
                         top_k=FLAGS.top_k, 
                         att_activation=getattr(F, FLAGS.att_activation))
 
@@ -240,6 +244,7 @@ class Model(nn.Module):
     #print(x.shape)
     x_mask = x.eq(0)
     batch_size = x.size(0)
+    max_c_len = x.size(1)
 
     if FLAGS.rnn_no_padding:
       x_mask = torch.zeros_like(x, dtype=torch.uint8)
@@ -250,8 +255,11 @@ class Model(nn.Module):
     if FLAGS.use_char:
       cx = input['char']
       cx = cx.view(batch_size * max_c_len, FLAGS.char_limit)
-      cx_mask = cx.eq(0)
-      if FLAGS.rnn_no_padding:
+      if FLAGS.char_padding:
+        # HACK for pytorch rnn not allow all 0, TODO Too slow...
+        cx = torch.cat([torch.ones([batch_size * max_c_len, 1], dtype=torch.int64).cuda(), cx], 1)
+        cx_mask = cx.eq(0)
+      else:
         cx_mask = torch.zeros_like(cx, dtype=torch.uint8)
       cx = self.char_embedding(cx)
       cx = self.char_encode(cx, cx_mask)
@@ -298,6 +306,7 @@ class Model(nn.Module):
   
 # MReader with hop==1 can be viewed as rnet also
 # NOTICE mainly use this one
+# TODO word and char encoder can merge to one Encoder handle inputs with word and char
 class MReader(nn.Module):
   def __init__(self, embedding=None):
     super(MReader, self).__init__()
@@ -332,19 +341,45 @@ class MReader(nn.Module):
     Rnn = lele.layers.StackedBRNN if not FLAGS.torch_cudnn_rnn else lele.layers.CudnnRnn
 
     if FLAGS.use_char:
-      self.char_encode = Rnn(
-            input_size=FLAGS.char_emb_dim,
-            hidden_size=self.num_units,
-            num_layers=1,
-            dropout_rate=1 - FLAGS.keep_prob,
-            dropout_output=False,
-            recurrent_dropout=FLAGS.recurrent_dropout,
-            concat_layers=False,
-            rnn_type=FLAGS.cell,
-            padding=FLAGS.rnn_padding,
-        )    
-
-      self.char_pooling = lele.layers.Pooling(FLAGS.char_output_method, input_size= 2 * self.num_units)
+      if FLAGS.char_encoder == 'rnn':
+        self.char_encode = lele.layers.StackedBRNN(
+              input_size=FLAGS.char_emb_dim,
+              hidden_size=self.num_units,
+              num_layers=1,
+              dropout_rate=1 - FLAGS.keep_prob,
+              dropout_output=False,
+              recurrent_dropout=FLAGS.recurrent_dropout,
+              concat_layers=False,
+              rnn_type=FLAGS.cell,
+              padding=FLAGS.rnn_padding,
+          )    
+        self.char_pooling = lele.layers.Pooling(FLAGS.char_output_method, input_size= 2 * self.num_units)
+      elif FLAGS.char_encoder == 'conv':
+        # seems slow and easy to overfit compare to rnn
+        config = {
+          "encoder": {
+            "name": "elmo",
+            "projection_dim": 2 * self.num_units, 
+            "cell_clip": 3, 
+            "proj_clip": 3,
+            "dim": 4096,
+            "n_layers": 2
+            },
+          "token_embedder": {
+            "name": "cnn",
+            "activation": "relu",
+            #"filters": [[1, 32], [2, 32], [3, 64], [4, 128], [5, 256], [6, 512], [7, 1024]],
+            #"filters": [[1, 32], [2, 32]],
+            "filters": [[1, 32], [2, 32], [3, 64], [4, 128], [5, 256], [6, 512]],
+            "n_highway": 2, 
+            "char_dim": 300,
+            "max_characters_per_token": 6
+          },
+        }
+        self.char_encode = lele.layers.ConvTokenEmbedder(config, None, self.char_embedding, True)
+      else:
+        raise ValueError(FLAGS.char_encoder)
+      
       if FLAGS.char_combiner == 'sfu':
         self.char_fc = nn.Linear(2 * self.num_units, emb_dim)
         self.char_sfu_combine = lele.layers.SFUCombiner(emb_dim, 3 * emb_dim, dropout_rate=1 - FLAGS.keep_prob)
@@ -371,20 +406,40 @@ class MReader(nn.Module):
       self.ner_embedding = wenzheng.pyt.get_embedding(ner_vocab.size(), FLAGS.tag_emb_dim)
       encode_input_size += FLAGS.tag_emb_dim
 
-    self.encode = Rnn(
-            input_size=encode_input_size,
-            hidden_size=self.num_units,
-            num_layers=self.num_layers,
-            dropout_rate=1 - FLAGS.keep_prob,
-            dropout_output=False,
-            recurrent_dropout=FLAGS.recurrent_dropout,
-            concat_layers=FLAGS.concat_layers,
-            rnn_type=FLAGS.cell,
-            padding=FLAGS.rnn_padding,
-        )    
+    if FLAGS.encoder_type == 'elmo':
+      config = {
+          "encoder": {
+            "name": "elmo",
+            "projection_dim": encode_input_size, 
+            "cell_clip": 3, 
+            "proj_clip": 3,
+            "dim": self.num_units,
+            "n_layers": 2
+            },
+          "dropout": 0.3
+      }
+      self.encode = lele.layers.ElmobiLm(config, True)
+      doc_hidden_size = 2 * encode_input_size
+      self.elmo_fc = nn.Linear(2 * encode_input_size, 2 * self.num_units)
+    elif FLAGS.encoder_type == 'transformer':
+      doc_hidden_size = 256
+      self.transformer_fc = nn.Linear(encode_input_size, doc_hidden_size)
+      self.encode = lele.layers.transformer.get_encoder(vocab_size, d_model=doc_hidden_size, d_ff=256, N=2, h=4)
+    else:
+      self.encode = Rnn(
+              input_size=encode_input_size,
+              hidden_size=self.num_units,
+              num_layers=self.num_layers,
+              dropout_rate=1 - FLAGS.keep_prob,
+              dropout_output=False,
+              recurrent_dropout=FLAGS.recurrent_dropout,
+              concat_layers=FLAGS.concat_layers,
+              rnn_type=FLAGS.cell,
+              padding=FLAGS.rnn_padding,
+          )    
+      doc_hidden_size = 2 * self.num_units
 
     assert not FLAGS.concat_layers
-    doc_hidden_size = 2 * self.num_units
     
     self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
     self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
@@ -444,7 +499,15 @@ class MReader(nn.Module):
     self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
     self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)
 
+    self.vocab_size = vocab_size 
+    self.doc_hidden_size = doc_hidden_size
+
+    # for lm and load simple...
+    #if FLAGS.lm_model:
+    self.hidden2tag = nn.Linear(self.num_units, self.vocab_size - 1)
+
   def forward(self, input, training=False):
+    #print('------------', input['source'])
     x = input['content'] 
     #print(x.shape)
     x_mask = x.eq(0)
@@ -456,17 +519,25 @@ class MReader(nn.Module):
 
     x = self.embedding(x)
 
-    # TODO
     if FLAGS.use_char:
       cx = input['char']
-      cx = cx.view(batch_size * max_c_len, FLAGS.char_limit)
-      cx_mask = cx.eq(0)
-      if FLAGS.rnn_no_padding:
-        cx_mask = torch.zeros_like(cx, dtype=torch.uint8)
-      cx = self.char_embedding(cx)
-      cx = self.char_encode(cx, cx_mask)
-      cx = self.char_pooling(cx, cx_mask)
-      cx = cx.view(batch_size, max_c_len, 2 * self.num_units)
+      if FLAGS.char_encoder == 'rnn':
+        cx = cx.view(batch_size * max_c_len, FLAGS.char_limit)
+        if FLAGS.char_padding:
+          # HACK for pytorch rnn not allow all 0, TODO Too slow...
+          cx = torch.cat([torch.ones([batch_size * max_c_len, 1], dtype=torch.int64).cuda(), cx], 1)
+          cx_mask = cx.eq(0)
+        else:
+          cx_mask = torch.zeros_like(cx, dtype=torch.uint8)
+
+        cx = self.char_embedding(cx)
+        cx = self.char_encode(cx, cx_mask)
+        cx = self.char_pooling(cx, cx_mask)
+        cx = cx.view(batch_size, max_c_len, 2 * self.num_units)
+      elif FLAGS.char_encoder == 'conv':
+        cx = self.char_encode(None, cx, (batch_size, max_c_len)) 
+      else:
+        raise ValueError(FLAGS.char_encoder)
 
       if FLAGS.char_combiner == 'concat':
         x = torch.cat([x, cx], 2)
@@ -484,7 +555,22 @@ class MReader(nn.Module):
       nx = self.ner_embedding(nx)
       x = torch.cat([x, nx], 2)
 
-    x = self.encode(x, x_mask)
+    if FLAGS.encoder_type == 'elmo':
+      # note HIT elmo mask different from HKUST mask.. need 1 -
+      x = self.encode(x, 1 - x_mask)
+      x = x[0]
+      x = self.elmo_fc(x)
+    elif FLAGS.encoder_type == 'transformer':
+      x = self.transformer_fc(x)
+      x = self.encode(x, 1 - x_mask)
+      #print(x.shape)
+    else:
+      x = self.encode(x, x_mask)
+
+    if FLAGS.lm_model:
+      return x
+
+    #print('x---------------', x.shape)
 
     label_emb = self.label_embedding.weight
     label_seq = lele.tile(label_emb.unsqueeze(0), 0, batch_size)

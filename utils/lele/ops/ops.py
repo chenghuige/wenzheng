@@ -16,7 +16,6 @@ import torch
 from torch.autograd import Variable
 
 # https://github.com/rdipietro/pytorch/blob/4c00324affb8c6d53d4362e321ea0e99ede6cfde/torch/nn/utils/rnn.py
-# TODO move this to ops
 def reverse_padded_sequence(inputs, lengths, batch_first=False):
     """Reverses sequences according to their lengths.
     Inputs should have size ``T x B x *`` if ``batch_first`` is False, or

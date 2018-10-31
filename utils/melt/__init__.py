@@ -18,6 +18,9 @@ print('tensorflow_version:', tf.__version__, file=sys.stderr)
 import torch
 print('torch_version:', torch.__version__, file=sys.stderr) 
 
+from melt.training import training as train 
+import melt.training 
+
 import melt.utils
 from melt.utils import logging
 from melt.utils import EmbeddingSim
@@ -54,8 +57,6 @@ import melt.image
 from melt.image import *
 
 import melt.losses  
-
-from melt.training import training as train 
 
 import melt.eager 
 

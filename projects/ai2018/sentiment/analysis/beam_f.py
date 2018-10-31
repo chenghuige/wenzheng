@@ -78,7 +78,7 @@ def beam_f(N, weights, y,
             
             #if out_put == True:
             #    print(s, ',', t, ':', perf, ', ', obj)
-            print(t, perf)
+            #print(t, perf)
             
             # Update last k objectives and terminate inner loop
             # if insufficient improvement in obj function is observed
@@ -140,6 +140,7 @@ def beam_f(N, weights, y,
         diff = np.absolute(np.array(outer_obj) \
                - np.array(outer_obj[1:] + [0]))
         
+        print(perf, diff)
         if (diff <= thresh).all():
             break
     
@@ -192,10 +193,14 @@ def seed_beam_f(N, weights, y,
                                                        eps, reg, thresh, last_k,
                                                        out_put=out_put, 
                                                        #seed=i)
-                                                       seed=1)
-        if perf > best_perf:
-            best_classifiers[:, :, :] = classifiers
-            best_weights[:] = classifier_weights
-            best_perf = perf
+                                                       #seed=1)
+                                                       #seed=0)
+                                                       seed=2)
+
+        print(perf)
+        # if perf > best_perf:
+        #     best_classifiers[:, :, :] = classifiers
+        #     best_weights[:] = classifier_weights
+        #     best_perf = perf
     
     return best_classifiers, best_weights

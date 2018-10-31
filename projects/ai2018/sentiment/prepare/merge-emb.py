@@ -31,7 +31,9 @@ flags.DEFINE_string('type', 'normal', '''normal try merge all in glove, and add 
                                          only only merge all glove and not consider train count''')
 
 flags.DEFINE_integer('max_words', 200000, '')
-flags.DEFINE_bool('add_additional', False, 'add additional words from embedding file')
+flags.DEFINE_bool('add_additional', True, 'add additional words from embedding file, this is by default for word')
+
+flags.DEFINE_string('sort_by', 'count', '')
 
 from tqdm import tqdm
 import numpy as np
@@ -53,7 +55,6 @@ def main(_):
   normed_ori_set = set([x.lower() for x in ori_set])
   
   embedding_dict = {}
-  emb_words = []
 
   vec_size = FLAGS.emb_dim
   #with open(FLAGS.emb, 'r') as fh:
@@ -73,13 +74,12 @@ def main(_):
       if word.lower() in normed_ori_set:
         embedding_dict[word] = vector
       else:
-        emb_words.append(word.lower())
+        embedding_dict[word.lower()] = vector
       if i % 100000 == 0:
         print(i)
         #break
   print("{} / {} tokens have corresponding word embedding vector".format(len(embedding_dict), len(ori_words)))
   
-  emb_words = []
   words = []   
   emb_mat = []
   # for padding zero
@@ -90,9 +90,11 @@ def main(_):
     emb_mat.append([np.random.uniform(-0.08, 0.08) for _ in range(vec_size)])
     words.append('<UNK>')
 
-  with open('/home/gezi/tmp/rare_words.txt', 'w') as rare_out:
-    for word, count in zip(ori_words, counts):
-      if FLAGS.type == 'normal':
+  if FLAGS.sort_by == 'count':
+    print('sort by count')
+    with open('/home/gezi/tmp/rare_words.txt', 'w') as rare_out:
+      for word, count in zip(ori_words, counts):
+        #if FLAGS.type == 'normal':
         if word in embedding_dict:
           emb_mat.append(np.array(embedding_dict[word]))
           words.append(word)  
@@ -100,21 +102,47 @@ def main(_):
           if count >= FLAGS.min_count:
             print('%s %d' % (word, count), file=rare_out)
             #emb_mat.append([np.random.normal(scale=0.1) for _ in range(vec_size)])
+            #emb_mat.append([np.random.uniform(-0.08, 0.08) for _ in range(vec_size)])
             emb_mat.append([np.random.uniform(-0.08, 0.08) for _ in range(vec_size)])
             words.append(word)  
-      elif FLAGS.type == 'scratch':
-        if count >= FLAGS.min_count:
-          if word in embedding_dict:
-            emb_mat.append(np.array(embedding_dict[word]))
-            words.append(word)  
-          else:
-            #emb_mat.append([np.random.normal(scale=0.1) for _ in range(vec_size)])
-            emb_mat.append([np.random.uniform(-0.08, 0.08) for _ in range(vec_size)])
-            words.append(word)  
-      elif FLAGS.type == 'only':
+  else:
+    print('sort by knowldege')
+    words_knowledge = []
+    emb_mat_knowledge = []
+    words_no_knowledge = []
+    emb_mat_no_knowledge = []
+    with open('/home/gezi/tmp/rare_words.txt', 'w') as rare_out:
+      for word, count in zip(ori_words, counts):
+        #if FLAGS.type == 'normal':
         if word in embedding_dict:
-          emb_mat.append(np.array(embedding_dict[word]))
-          words.append(word)  
+          emb_mat_knowledge.append(np.array(embedding_dict[word]))
+          words_knowledge.append(word)  
+        else:
+          if count >= FLAGS.min_count:
+            print('%s %d' % (word, count), file=rare_out)
+            #emb_mat.append([np.random.normal(scale=0.1) for _ in range(vec_size)])
+            #emb_mat.append([np.random.uniform(-0.08, 0.08) for _ in range(vec_size)])
+            emb_mat_no_knowledge.append([np.random.uniform(-0.08, 0.08) for _ in range(vec_size)])
+            words_no_knowledge.append(word)  
+        # elif FLAGS.type == 'scratch':
+        #   if count >= FLAGS.min_count:
+        #     if word in embedding_dict:
+        #       emb_mat.append(np.array(embedding_dict[word]))
+        #       words.append(word)  
+        #     else:
+        #       #emb_mat.append([np.random.normal(scale=0.1) for _ in range(vec_size)])
+        #       emb_mat.append([np.random.uniform(-0.08, 0.08) for _ in range(vec_size)])
+        #       words.append(word)  
+        # elif FLAGS.type == 'only':
+        #   if word in embedding_dict:
+        #     emb_mat.append(np.array(embedding_dict[word]))
+        #     words.append(word)  
+
+    #if FLAGS.sort_by == 'knowledge':
+    words += words_no_knowledge
+    emb_mat += emb_mat_no_knowledge
+    words += words_knowledge
+    emb_mat += emb_mat_knowledge
 
   words_set = set(words)
 
@@ -145,10 +173,15 @@ def main(_):
   print('num oov words', len(unk_words))
 
   if FLAGS.add_additional:
-    for word in emb_words:
-      words.append(word)
-      if len(words) > FLAGS.max_words:
-        break
+    for word in embedding_dict:
+      if word not in words_set:
+        words_set.add(word)
+        words.append(word)
+        emb_mat.append(np.array(embedding_dict[word]))
+        if len(words) > FLAGS.max_words:
+          break
+
+    print('num words after adding additional', len(words))
 
   out_vocab = os.path.join(dir_, 'vocab.txt')
   # NOTICE unk vocab actually means only top words, so for train we can use <UNK>

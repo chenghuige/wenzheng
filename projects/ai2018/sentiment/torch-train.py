@@ -16,6 +16,7 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
+import torch
 import numpy as np
 from tqdm import tqdm
 
@@ -23,26 +24,26 @@ import melt
 logging = melt.logging
 import gezi
 import traceback
+import lele
 
 from wenzheng.utils import input_flags 
 
-# import projects
-# algos = projects.ai2018.sentiment.algos
-# torch_algos = projects.ai2018.sentiment.torch_algos
-#from algos.model import *
 from torch_algos.loss import criterion
 import torch_algos.model as base
 from dataset import Dataset
 import evaluate as ev
 
+def get_num_finetune_words():
+  if not FLAGS.dynamic_finetune:
+    return FLAGS.num_finetune_words
+  else:
+    return min(int(melt.epoch() * 1000), FLAGS.num_finetune_words)
+
 def freeze_embedding(self, grad_input, grad_output):
-  #print(grad_input)
-  #print(grad_output)
-  grad_output[0][FLAGS.num_finetune_words:, :] = 0
+  num_finetune_words = get_num_finetune_words()
+  grad_output[0][num_finetune_words:, :] = 0
 
 def freeze_char_embedding(self, grad_input, grad_output):
-  #print(grad_input)
-  #print(grad_output)
   grad_output[0][FLAGS.num_finetune_chars:, :] = 0
 
 def main(_):
@@ -60,12 +61,20 @@ def main(_):
   model = getattr(base, FLAGS.model)(embedding)
   if FLAGS.num_finetune_words:
     model.embedding.register_backward_hook(freeze_embedding)
-  if FLAGS.num_finetune_chars:
+  if FLAGS.num_finetune_chars and FLAGS.use_char and FLAGS.use_char_emb:
     model.char_embedding.register_backward_hook(freeze_char_embedding)
 
   logging.info(model)
 
   train = melt.apps.get_train()
+
+  optimizer = None
+  if FLAGS.optimizer == 'noam':
+    # Hard to find optim parmas so not to use currently 
+    # optimizer = lele.training.optimizers.NoamOpt(FLAGS.emb_dim, 2, 4000,
+    #         torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+    optimizer = lele.training.optimizers.NoamOpt(128, 2, 4000,
+        torch.optim.Adamax(model.parameters(), lr=0))
 
   train(Dataset,
         model,  
@@ -74,7 +83,8 @@ def main(_):
         valid_write_fn=ev.valid_write,
         infer_write_fn=ev.infer_write,
         valid_suffix='.valid.csv',
-        infer_suffix='.infer.csv')   
+        infer_suffix='.infer.csv',
+        optimizer=optimizer)   
 
 if __name__ == '__main__':
   tf.app.run()  

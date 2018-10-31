@@ -19,17 +19,18 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string('seg_method', 'basic', '')
 flags.DEFINE_string('name', None, '')
+flags.DEFINE_bool('for_pretrain', False, '')
 
 assert FLAGS.seg_method
+
+import six
+if FLAGS.seg_method == 'char':
+  assert not six.PY2
 
 import sys,os
 import numpy as np
 
 import gezi
-from gezi import Segmentor 
-
-if not gezi.env_has('BSEG') or not('pos' in FLAGS.name or 'ner' in FLAGS.name):
-  segmentor = Segmentor()
 
 #assert gezi.env_has('JIEBA_POS')
 from gezi import WordCounter 
@@ -53,18 +54,32 @@ def seg(id, text, out, type):
   text = filter.filter(text)
   counter.add(START_WORD)
   counter.add(END_WORD)
-  if type == 'word':
-    words = segmentor.Segment(text, FLAGS.seg_method)
-    for w in words:
-      counter.add(w)
-  else:
-    l = gezi.cut(text, type)
+
+  l = gezi.cut(text, type)
+
+  if type != 'word':
     for x, y in l:
       counter.add(x)
       counter2.add(y)
-      
     words = ['%s|%s' % (x, y) for x,y in l]
-  print(id, '\x09'.join(words), sep='\t', file=out)
+  else:
+    if FLAGS.seg_method == 'char':
+      l2 = []
+      for i, w in enumerate(l):
+        for ch in w:
+          counter.add(ch)
+          counter2.add(str(i))
+          l2.append((ch, i))
+      words =  ['%s|%d' % (x, y) for x,y in l2]
+    else:
+      words = l
+      for w in words:
+        counter.add(w)
+
+  if not FLAGS.for_pretrain:
+    print(id, '\x09'.join(words), sep='\t', file=out)
+  else:
+    print(' '.join([x.split('|')[0] for x in words]), file=out)
 
 assert FLAGS.name
 ifile = sys.argv[1]
@@ -73,9 +88,10 @@ vocab = ifile.replace('.csv', '.seg.%s.vocab' % FLAGS.name)
 type_ = 'word'
 
 vocab2 = None
-if 'pos' in FLAGS.name:
+if 'pos' in FLAGS.name or FLAGS.seg_method == 'char':
   vocab2 = ifile.replace('.csv', '.pos.%s.vocab' % FLAGS.name)
-  type_ = 'pos'
+  if 'pos' in FLAGS.name:
+    type_ = 'pos'
 elif 'ner' in FLAGS.name:
   vocab2 = ifile.replace('.csv', '.ner.%s.vocab' % FLAGS.name)
   type_ = 'ner'
@@ -103,7 +119,8 @@ with open(ofile, fm) as out:
     try:
       seg(ids[i], contents[i], out, type=type_)
     except Exception:
-      #print(traceback.format_exc())
+      if num_errs == 0:
+        print(traceback.format_exc())
       num_errs += 1
       continue
     #exit(0)

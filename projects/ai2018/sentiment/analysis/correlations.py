@@ -26,7 +26,8 @@ import gezi
 
 from tqdm import tqdm
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt 
+import itertools
 
 
 ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_district', 'location_easy_to_find',
@@ -85,7 +86,9 @@ if len(sys.argv) > 2:
   scores2 = [gezi.str2scores(x) for x in df2['score'].values]
 
   scores1 = np.reshape(scores1, [-1, len(ATTRIBUTES), 4])
+  scores1 = gezi.softmax(scores1)
   scores2 = np.reshape(scores2, [-1, len(ATTRIBUTES), 4])
+  scores2 = gezi.softmax(scores2)
 
   ndf1 = pd.DataFrame()
   ndf2 = pd.DataFrame()
@@ -100,37 +103,78 @@ if len(sys.argv) > 2:
     print(' Pearson\'s correlation score: %0.6f' %
           ndf1[attr].corr(
               ndf2[attr], method='pearson'))
-    print(' Kendall\'s correlation score: %0.6f' %
-          ndf1[attr].corr(
-              ndf2[attr], method='kendall'))
-    print(' Spearman\'s correlation score: %0.6f' %
-          ndf1[attr].corr(
-              ndf2[attr], method='spearman'))
-    ks_stat, p_value = ks_2samp(ndf1[attr].values,
-                                ndf2[attr].values)
-    print(' Kolmogorov-Smirnov test:    KS-stat = %.6f    p-value = %.3e'
-          % (ks_stat, p_value))
+    # print(' Kendall\'s correlation score: %0.6f' %
+    #       ndf1[attr].corr(
+    #           ndf2[attr], method='kendall'))
+    # print(' Spearman\'s correlation score: %0.6f' %
+    #       ndf1[attr].corr(
+    #           ndf2[attr], method='spearman'))
+    # ks_stat, p_value = ks_2samp(ndf1[attr].values,
+    #                             ndf2[attr].values)
+    # print(' Kolmogorov-Smirnov test:    KS-stat = %.6f    p-value = %.3e'
+    #       % (ks_stat, p_value))
+  print('----------------------------------------------------------all')
+  scores1 = np.reshape(scores1, [-1])
+  scores2 = np.reshape(scores2, [-1])
+  ndf1, ndf2 = pd.DataFrame(), pd.DataFrame()
+  ndf1['mean'] = scores1 
+  ndf2['mean'] = scores2
+  print(ndf1['mean'].corr(ndf2['mean'], method='pearson'))
 else:
   #input is dir
   dir = sys.argv[1] if len(sys.argv) > 1 else './'
+  if not os.path.isdir(dir):
+    dir = './'
+    infile = sys.argv[1]
+    object_name = os.path.basename(infile).replace('.valid.csv', '').split('_ckpt-')[0].split('_model.ckpt-')[0]
+  else:
+    object_name = None
+
+  object = None
   models = []
   dfs = []
   for file in glob.glob('%s/*.valid.csv' % dir):
     df = pd.read_csv(file)
     df = df.sort_values('id')
     scores = [gezi.str2scores(x) for x in df['score'].values]
+    scores = np.reshape(scores, [-1, len(ATTRIBUTES), 4])
+    scores = gezi.softmax(scores)
     ndf = pd.DataFrame()
     ndf['score'] = np.reshape(scores, [-1])
     dfs.append(ndf)
-    models.append(os.path.basename(file).replace('.valid.csv', '').split('_ckpt_')[0].split('_model.ckpt-')[0])
+    model_name = os.path.basename(file).replace('.valid.csv', '').split('_ckpt-')[0].split('_model.ckpt-')[0]
+    if model_name == object_name:
+      object = model_name
+    models.append(model_name)
+
+  def calc_correlation(x, y, method):
+    if method.startswith('ks'):
+      ks_stat, p_value = ks_2samp(x, y)
+      if method == 'ks_s':
+        score = ks_stat
+      else:
+        score = p_value  
+    else:
+      score = x.corr(y, method=method)
+    return score
 
   len_ = len(dfs)
   cm = np.zeros([len_, len_])
-  for i in tqdm(range(len_), ascii=True):
-    for j in range(len_):
-      cm[i, j] = dfs[i]['score'].corr(dfs[j]['score'], method='pearson')
+  methods = ['pearson', 'kendall', 'spearman', 'ks_s', 'ks_p']
+  methods = methods[:1]
+  for method in methods:
+    print('---------------------------------------', method)
+    for i in tqdm(range(len_), ascii=True):
+      if object and models[i] != object:
+        continue
+      print('--------------------', models[i])
+      for j in range(len_):
+        cm[i, j] = calc_correlation(dfs[i]['score'], dfs[j]['score'], method=method)
+      indexes = np.argsort(-cm[i])  
+      for index in indexes:
+        print(models[index], cm[i, index])
 
-  plt.figure()
-  plot_confusion_matrix(cm, classes=models)
-  plt.show()
+#   plt.figure()
+#   plot_confusion_matrix(cm, classes=models)
+#   plt.show()
     

@@ -32,6 +32,10 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_bool('lm_model', False, '')
+flags.DEFINE_bool('dynamic_finetune', False, '')
+flags.DEFINE_string('char_encoder', 'rnn', '')
+
 flags.DEFINE_integer('char_min_count', None, '')
 flags.DEFINE_integer('tag_min_count', None, '')
 
@@ -87,6 +91,7 @@ flags.DEFINE_string('simple_char_combiner', 'concat', '')
 flags.DEFINE_bool('use_char_emb', True, 'if use char and not use char emb then use another char emb different from emb other wise share to use one emb')
 flags.DEFINE_bool('use_simple_ngrams', False, '')
 flags.DEFINE_string('char_combiner', 'concat', '')
+flags.DEFINE_bool('char_padding', False, '')
 
 flags.DEFINE_bool('use_ngrams', False, '')
 flags.DEFINE_bool('use_fngrams', False, '')

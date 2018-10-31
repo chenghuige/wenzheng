@@ -50,7 +50,7 @@ python $exe \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets 800,1200 \
+        --buckets=500,1000 \
         --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \
@@ -66,7 +66,7 @@ python $exe \
         --valid_interval_epochs=1 \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
-        --optimizer=adam \
+        --optimizer=adam_t2t \
         --learning_rate=0.001 \
         --decay_target=loss \
         --decay_patience=1 \

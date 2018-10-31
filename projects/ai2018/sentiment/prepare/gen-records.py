@@ -31,7 +31,9 @@ flags.DEFINE_bool('use_fold', True, '')
 flags.DEFINE_bool('augument', False, '')
 flags.DEFINE_string('mode', None, '')
 flags.DEFINE_string('mode_', None, '')
-flags.DEFINE_bool('ignore_start_end', False, 'I have not remove start and end quota before so can filter here')
+flags.DEFINE_bool('ignore_start_end', False, 'If you have not remove start and end quota before,you can filter here')
+flags.DEFINE_bool('add_start_end_', True, '')
+flags.DEFINE_bool('has_position', False, '')
 
 import six
 import traceback
@@ -128,10 +130,16 @@ def build_features(index):
             print('id %s ot found in seg_result' % id)
             continue
           words = seg_result[id]
+          if FLAGS.add_start_end_:
+            words = gezi.add_start_end(words)
         if pos_result:
           pos = pos_result[id]
+          if FLAGS.add_start_end_:
+            pos = gezi.add_start_end(pos)
         if ner_result:
           ner = ner_result[id]
+          if FLAGS.add_start_end_:
+            ner = gezi.add_start_end(ner)
 
         if start_index > 0:
           id == 't' + id
@@ -168,6 +176,7 @@ def build_features(index):
         content_ids = content_ids[:FLAGS.word_limit]
         words = words[:FLAGS.word_limit]
 
+        # NOTICE different from tf, pytorch do not allow all 0 seq for rnn.. if using padding mode
         if FLAGS.use_char:
           chars = [list(word) for word in words]
           char_ids = np.zeros([len(content_ids), FLAGS.char_limit], dtype=np.int32)
@@ -181,6 +190,11 @@ def build_features(index):
               char_ids[i, j] = vocab_.id(ch)
 
           char_ids = list(char_ids.reshape(-1))
+          if np.sum(char_ids) == 0:
+            print('------------------------bad id', id)
+            print(content_ids)
+            print(words)
+            exit(0)
         else:
           char_ids = [0]
 
@@ -209,7 +223,7 @@ def build_features(index):
                     'content':  melt.int64_feature(content_ids),
                     'content_str': melt.bytes_feature(content_ori), 
                     'char': melt.int64_feature(char_ids),
-                    'pos': melt.int64_feature(pos_ids),
+                    'pos': melt.int64_feature(pos_ids), # might also be postion info for mix seg
                     'ner': melt.int64_feature(ner_ids),
                     'wlen': melt.int64_feature(wlen),
                     'source': melt.bytes_feature(mode), 

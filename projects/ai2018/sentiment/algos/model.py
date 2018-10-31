@@ -560,7 +560,7 @@ class RNetV3(melt.Model):
 
 # same as Model but for math attention using SeqAttn
 class RNetV2(melt.Model):
-  def __init__(self):
+  def __init__(self, embedding=None):
     super(RNetV2, self).__init__()
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
@@ -570,10 +570,51 @@ class RNetV2(melt.Model):
     self.num_units = FLAGS.rnn_hidden_size if FLAGS.encoder_type != 'convnet' else FLAGS.num_filters
     self.keep_prob = FLAGS.keep_prob
 
+    vocab2_size = 0
+    if FLAGS.num_finetune_words:
+      vocab2_size = vocab_size - FLAGS.num_finetune_words
+      vocab_size = FLAGS.num_finetune_words
+
     self.embedding = wenzheng.Embedding(vocab_size, 
                                         FLAGS.emb_dim, 
-                                        FLAGS.word_embedding_file, 
-                                        trainable=FLAGS.finetune_word_embedding)
+                                        embedding if embedding is not None else FLAGS.word_embedding_file, 
+                                        trainable=FLAGS.finetune_word_embedding,
+                                        vocab2_size=vocab2_size)
+
+    if FLAGS.use_char:
+      char_vocab_file = FLAGS.vocab.replace('vocab.txt', 'char_vocab.txt')
+      if FLAGS.use_char_emb:
+        assert os.path.exists(char_vocab_file)
+        char_vocab = gezi.Vocabulary(char_vocab_file, min_count=FLAGS.char_min_count)
+        logging.info('using char vocab:', char_vocab_file, 'size:', char_vocab.size())
+        vocab_size = char_vocab.size()
+        vocab2_size = 0
+        if FLAGS.num_finetune_chars:
+          vocab2_size = vocab_size - FLAGS.num_finetune_chars
+          vocab_size = FLAGS.num_finetune_chars
+        self.char_embedding = wenzheng.Embedding(vocab_size, 
+                                                FLAGS.char_emb_dim, 
+                                                FLAGS.word_embedding_file.replace('emb.npy', 'char_emb.npy') if FLAGS.word_embedding_file else None, 
+                                                trainable=FLAGS.finetune_char_embedding,
+                                                vocab2_size=vocab2_size)
+      else:
+        self.char_embedding = self.embedding
+
+    if FLAGS.use_pos:
+      pos_vocab_file = FLAGS.vocab.replace('vocab.txt', 'pos_vocab.txt')
+      assert os.path.exists(pos_vocab_file)
+      pos_vocab = gezi.Vocabulary(pos_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using pos vocab:', pos_vocab_file, 'size:', pos_vocab.size())
+      self.pos_embedding = wenzheng.Embedding(pos_vocab.size(), 
+                                              FLAGS.tag_emb_dim)
+
+    if FLAGS.use_ner:
+      ner_vocab_file = FLAGS.vocab.replace('vocab.txt', 'ner_vocab.txt')
+      assert os.path.exists(ner_vocab_file)
+      ner_vocab = gezi.Vocabulary(ner_vocab_file, min_count=FLAGS.tag_min_count)
+      logging.info('using ner vocab:', ner_vocab_file, 'size:', ner_vocab.size())
+      self.ner_embedding = wenzheng.Embedding(ner_vocab.size(), 
+                                              FLAGS.tag_emb_dim)
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       #assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
@@ -635,14 +676,46 @@ class RNetV2(melt.Model):
 
     c_mask = tf.cast(x, tf.bool)
     batch_size = melt.get_shape(x, 0)
-    c_len = melt.length(x)
+    #c_len = melt.length(x)
+    c_len, max_c_len = melt.length2(x)
 
     if FLAGS.rnn_no_padding:
       logging.info('------------------no padding! train or eval')
-      c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+      #c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+      c_len = max_c_len
 
     #with tf.device('/cpu:0'):
     x = self.embedding(x)
+
+    if FLAGS.use_char:
+      cx = input['char']
+      #cx = melt.greater_then_set(cx, FLAGS.char_min_count, UNK_ID)
+
+      cx = tf.reshape(cx, [batch_size * max_c_len, FLAGS.char_limit])
+      chars_len = melt.length(cx)
+      cx = self.char_embedding(cx)
+      cx = self.char_encode(cx, chars_len, training=training)
+      cx = self.char_pooling(cx, chars_len)
+      cx = tf.reshape(cx, [batch_size, max_c_len, 2 * self.num_units])
+
+      if FLAGS.char_combiner == 'concat':
+        x = tf.concat([x, cx], axis=2)
+      elif FLAGS.char_combiner == 'sfu':
+        x = self.char_sfu_combine(x, cx, training=training)
+
+    if FLAGS.use_pos:
+      px = input['pos']
+      #px = melt.greater_then_set(px, FLAGS.tag_min_count, UNK_ID)
+      
+      px = self.pos_embedding(px)
+      x = tf.concat([x, px], axis=2)
+
+    if FLAGS.use_ner:
+      nx = input['ner']
+      #nx = melt.greater_then_set(nx, FLAGS.tag_min_count, UNK_ID)
+      
+      nx = self.ner_embedding(nx)
+      x = tf.concat([x, nx], axis=2)
 
     x = self.encode(x, c_len, training=training)
     #x = self.encode(x)

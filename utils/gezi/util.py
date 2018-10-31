@@ -28,6 +28,29 @@ import time
 
 import gezi
 
+def break_sentence(sentence, max_sent_len):
+  """
+  For example, for a sentence with 70 words, supposing the the `max_sent_len'
+  is 30, break it into 3 sentences.
+
+  :param sentence: list[str] the sentence
+  :param max_sent_len:
+  :return:
+  """
+  ret = []
+  cur = 0
+  length = len(sentence)
+  while cur < length:
+    if cur + max_sent_len + 5 >= length:
+      ret.append(sentence[cur: length])
+      break
+    ret.append(sentence[cur: min(length, cur + max_sent_len)])
+    cur += max_sent_len
+  return ret
+
+def add_start_end(w, start='<S>', end='</S>'):
+  return [start] + list(w) + [end]
+
 def str2scores(l):
   if ',' in l:
     # this is list save (list of list)

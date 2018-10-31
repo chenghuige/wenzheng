@@ -57,17 +57,45 @@ labels = labels[:, index]
 probs = probs[:, index, :]
 probs = np.reshape(probs, [NUM_CLASSES, -1])
 
+x = scores
+y = labels + 2
+
+print(scores)
+print(scores.shape)
+
+print(y)
+print(y.shape)
+
+# import six 
+# assert six.PY2
+# from expt import BisectionClassifier
+
+# from sklearn.linear_model import LogisticRegressionCV
+
+# cpe_model = LogisticRegressionCV(solver='liblinear')
+# cpe_model.fit(x, y)
+
+# classifier = BisectionClassifier('fmeasure')
+# x = np.transpose(x)
+# classifier.fit(x, y, eps = 0.1, eta = 0.1, num_outer_iter=10, cpe_model=cpe_model)
+
+# f1_loss = classifier.evaluate_loss(x, y)
+
+# print(f1_loss)
+
 bi_concave_iters = 1000
-conf_opt_iters = 5
+conf_opt_iters = 100
 
 weights = np.load('./mount/temp/ai2018/sentiment/class_weights.npy')
 weights = weights[index]
+weights = weights * weights * weights
 
 #weights = [1.] * len(CLASSES)
 #weights = np.array(weights)
 y = labels + 2
-eps = 2.
-reg = 3.
+
+eps = 0.1
+reg = 0.1
 thresh = 0.1
 
 print(y.shape)

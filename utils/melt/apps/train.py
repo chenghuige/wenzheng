@@ -240,6 +240,8 @@ flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
                                         """)
 
 flags.DEFINE_boolean('torch', False, '')
+flags.DEFINE_boolean('torch_lr', False, '')
+flags.DEFINE_boolean('torch_load_optimizer', True, '')
 
 flags.DEFINE_boolean('test_aug', False, '')
 

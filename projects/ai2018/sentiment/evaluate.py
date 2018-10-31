@@ -408,11 +408,14 @@ if __name__ == '__main__':
   if os.path.isdir(input):
     df = pd.DataFrame()
     fnames = []
+    mnames = []
     m = {}
     for file in glob.glob('%s/*valid.csv' % input):
-      #fname = os.path.basename(file).replace('.valid.csv', '')
-      fname = os.path.basename(file).replace('.valid.csv', '').split('_ckpt_')[0].split('_model.ckpt-')[0]
+      fname = os.path.basename(file)
       fnames.append(fname)
+      mname = fname.replace('.valid.csv', '').split('_ckpt-')[0].split('_model.ckpt-')[0]
+      mnames.append(mname)
+      
       vals, names = evaluate_file(file)
       for val, name in zip(vals, names):
         if name not in m:
@@ -421,10 +424,11 @@ if __name__ == '__main__':
           m[name].append(val)
         if name == FLAGS.metric_name and (val < FLAGS.min_thre or val > FLAGS.max_thre):
           print('-----remove file', file, '%s:%f' % (FLAGS.metric_name, val))
-          command = 'mv %s* ./bak' % fname
+          command = 'mv %s* ./bak' % mname
           os.system(command)
 
-    df['model'] = fnames
+    df['model'] = mnames
+    df['file'] = fnames
     for key, val in m.items():
       df[key] = val
     df = df.sort_values('adjusted_f1/mean', ascending=False)

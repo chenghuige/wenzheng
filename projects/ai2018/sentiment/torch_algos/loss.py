@@ -56,4 +56,38 @@ def criterion(model, x, y, training=False):
     loss = loss + bloss * FLAGS.other_loss_factor
 
   return loss
+ 
+def lm_criterion(model, x, y, training=False):
+  fw_y = torch.zeros_like(y)
+  bw_y = torch.zeros_like(y)
+  fw_y[:, 0:-1] = y[:, 1:]
+  bw_y[:, 1:] = y[:, 0:-1]
+
+  num_targets = torch.sum((fw_y > 0).long())
+  
+  fw_mask = fw_y > 0
+  bw_mask = bw_y > 0
+
+  # -1 to ignore padding index 0
+  fw_y = fw_y.masked_select(fw_mask) - 1
+  bw_y = bw_y.masked_select(bw_mask) - 1
+
+  y_ = model(x)
+  fw_y_, bw_y_ = y_.chunk(2, -1)
+
+  fw_y_ = fw_y_.masked_select(fw_mask.unsqueeze(-1)).view(-1, model.num_units)
+  bw_y_ = bw_y_.masked_select(bw_mask.unsqueeze(-1)).view(-1, model.num_units)
+
+  fw_y_ = model.hidden2tag(fw_y_)
+  bw_y_ = model.hidden2tag(bw_y_)
+
+  if num_targets > 0:
+    fw_loss = loss_fn(fw_y_, fw_y)
+    bw_loss = loss_fn(bw_y_, bw_y)
+    loss = (fw_loss + bw_loss) / 2.
+    loss = loss / num_targets.float()
+  else:
+    loss = torch.tensor(0.0).cuda()
+
+  return loss
 

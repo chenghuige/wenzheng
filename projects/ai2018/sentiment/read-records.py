@@ -78,7 +78,7 @@ def main(_):
   if FLAGS.fold is not None:
     inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
 
-  if FLAGS.type != 'dump':
+  if FLAGS.type == 'debug':
     print('type', FLAGS.type, 'inputs', inputs, file=sys.stderr)
 
     dataset = Dataset('valid')
@@ -100,7 +100,7 @@ def main(_):
       for j, id in enumerate(x['id']):
         if id == '573':
           print(id, x['content_str'][j])
-  else:
+  elif FLAGS.type == 'dump':
     valid_infos = {}
     test_infos = {}
     inputs = gezi.list_files(f'{base}/train/*record')
@@ -125,7 +125,19 @@ def main(_):
 
     ofile = ofile.replace('.pkl', '.test.pkl')  
     with open(ofile, 'wb') as out:
-      pickle.dump(test_infos, out)  
+      pickle.dump(test_infos, out)
+  elif FLAGS.type == 'show_info':
+    valid_infos = pickle.load(open(f'{base}/info.pkl', 'rb'))
+    lens = [len(valid_infos[key]['content']) for key in valid_infos]
+    unks = [list(valid_infos[key]['content']).count(1) for key in valid_infos]
+    print('num unks per doc:', sum(unks) / len(unks))
+    print('num doc with unk ratio:', len([x for x in unks if x != 0]) / len(unks)) 
+    print('un unk tokens ratio:', sum(unks) / sum(lens))
+    print('len max:', np.max(lens))
+    print('len min:', np.min(lens))
+    print('len mean:', np.mean(lens))
+  else:
+    raise ValueError(FLAGS.type)
 
 
 if __name__ == '__main__':

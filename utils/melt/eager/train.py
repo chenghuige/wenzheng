@@ -339,6 +339,7 @@ def train(Dataset,
     learning_rate_weights = None
 
   ckpt_dir = FLAGS.model_dir + '/ckpt'
+  os.system('mkdir -p %s' % ckpt_dir)
 
   #TODO FIXME now I just changed tf code so to not by default save only latest 5
   # refer to https://github.com/tensorflow/tensorflow/issues/22036
@@ -383,12 +384,29 @@ def train(Dataset,
     if latest_checkpoint:
       checkpoint = torch.load(latest_checkpoint + '.pyt')
       start_epoch = checkpoint['epoch']
+
       model.load_state_dict(checkpoint['state_dict'])
-      optimizer.load_state_dict(checkpoint['optimizer'])
+      # # TODO verify I think is ok , not ok.. optimizer..
+      # state = checkpoint['state_dict']        
+      # new_params = model.state_dict()
+      # new_params.update(state)
+      # model.load_state_dict(new_params)
+      if FLAGS.torch_load_optimizer:
+        optimizer.load_state_dict(checkpoint['optimizer'])
       model.eval()
     else:
       start_epoch = 0
-
+      latest_path = os.path.join(ckpt_dir, 'latest.pyt')
+      if os.path.exists(latest_path):
+        logging.info('loading torch model from', latest_path)
+        checkpoint = torch.load(latest_path)
+        # TODO
+        state = checkpoint['state_dict']        
+        new_params = model.state_dict()
+        new_params.update(state)
+        model.load_state_dict(new_params)
+        model.eval()
+  
     # TODO by this way restart can not change learning rate..
     if learning_rate_weights is None:
       checkpoint = tf.train.Checkpoint(
@@ -405,6 +423,10 @@ def train(Dataset,
 
   #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
   #model.save('./weight3.hd5')
+  logging.info('optimizer:', optimizer)
+
+  if FLAGS.torch_lr:
+    learning_rate.assign(optimizer.rate(1))
 
   learning_rate.assign(learning_rate * FLAGS.learning_rate_start_factor)
   if learning_rate_weights is not None:
@@ -424,6 +446,7 @@ def train(Dataset,
     logging.info('----------valid')
     if FLAGS.torch:
       model.eval()
+    names = None 
     if evaluate_fn is not None:
       vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
     elif eval_fn:
@@ -435,8 +458,9 @@ def train(Dataset,
                              names, valid_write_fn, write_streaming,
                              num_valid_steps_per_epoch,
                              suffix=valid_suffix, sep=sep)
-    logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
-                  ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
+    if names:
+      logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
+                    ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
   
   if FLAGS.work_mode == 'valid':
     exit(0)
@@ -456,7 +480,6 @@ def train(Dataset,
   
   if 'SHOW' in os.environ:
     num_epochs = start_epoch + 1
-
 
   class PytObj(object):
     def __init__(self, x):
@@ -624,9 +647,13 @@ def train(Dataset,
             writer_valid.flush()
       
         if FLAGS.torch:
-          for param_group in optimizer.param_groups:
-            # important learning rate decay
-            param_group['lr'] = learning_rate.numpy()
+          if not FLAGS.torch_lr:
+            # control learning rate by tensorflow learning rate
+            for param_group in optimizer.param_groups:
+              # important learning rate decay
+              param_group['lr'] = learning_rate.numpy()
+          else:
+            learning_rate.assign(optimizer.rate())
           model.train()
 
         if names and vals:
@@ -646,6 +673,20 @@ def train(Dataset,
 
 
       global_step.assign_add(1)
+
+      if global_step.numpy() % FLAGS.save_interval_steps == 0:
+        if FLAGS.torch:
+          state = {
+                  #'epoch': epoch + 1,
+                  'step': global_step.numpy(),
+                  'state_dict': model.state_dict(),
+                  'optimizer' : optimizer.state_dict(),
+                }
+          if torch.cuda.is_available():
+            model.cpu()
+          torch.save(state, os.path.join(ckpt_dir, 'latest.pyt'))
+          if torch.cuda.is_available():
+            model.cuda()       
 
       if epoch == start_epoch and i == 0:
         try:

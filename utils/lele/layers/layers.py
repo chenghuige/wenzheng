@@ -29,6 +29,7 @@ class CudnnRnn(nn.Module):
     and concat the hidden states between layers. (i.e. the output hidden size
     for each sequence input is num_layers * hidden_size).
     for hkust tf rent, reccruent dropout, bw drop out, concat layers and rnn padding
+    WELL TOO SLOW 0.3hour/per epoch -> 1.5 hour..
     """
 
     def __init__(self, input_size, hidden_size, num_layers,
@@ -56,11 +57,11 @@ class CudnnRnn(nn.Module):
             input_size = input_size if i == 0 else 2 * hidden_size
             self.num_units.append(input_size)
             self.fws.append(rnn_type(input_size, hidden_size,
-                                      num_layers=1,
-                                      bidirectional=False))
+                                     num_layers=1,
+                                     bidirectional=False))
             self.bws.append(rnn_type(input_size, hidden_size,
-                                      num_layers=1,
-                                      bidirectional=False))
+                                     num_layers=1,
+                                     bidirectional=False))
 
     def forward(self, x, x_mask, fw_masks=None, bw_masks=None):
         """Encode either padded or non-padded sequences.

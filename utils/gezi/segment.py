@@ -211,7 +211,31 @@ def init_stanford_nlp(path='/home/gezi/soft/stanford-corenlp', lang='zh'):
       print('init stanford nlp from %s' % path, file=sys.stderr)
       stanford_nlp = StanfordCoreNLP(path, lang=lang, memory='4g')
 
+def remove_duplicate(text):
+  if six.PY2:
+    text = text.decode('utf8')
+  l = []
+
+  start = 0 
+  end = 0
+  duplicates = []
+  while start < len(text):
+    while  end < len(text) and text[start] == text[end]:
+      duplicates.append(text[start])
+      end += 1
+    l.append(''.join(duplicates[:5]))
+    duplicates = []
+    start = end
+  
+  text = ''.join(l)
+
+  if six.PY2:
+    text = text.encode('utf8')
+  return text
+
 def cut(text, type='word'):
+  # move it to filter.py
+  #text = remove_duplicate(text) 
   if type == 'word':
     return word_cut(text)
   elif type == 'pos':
@@ -232,32 +256,83 @@ def is_emoji_en(word):
 def hack_emoji(l):
   import emoji
   res = []
-  for i in range(len(l)):
+  i = 0
+  while i < len(l):
     if i < len(l) - 2 and (l[i] == ':' and l[i+2] == ':' and  is_emoji_en(l[i + 1])):
       res.append(emoji.emojize(':%s:' % l[i + 1]))
-      i + 2
+      i += 2
     else:
       res.append(l[i])
+      i += 1
 
   return res
 
 def hack_emoji2(l):
   import emoji
   res = []
-  for i in range(len(l)):
+  i = 0
+  while i < len(l):
     if i < len(l) - 2:
       x, _ = l[i]
       x2, _ = l[i + 1]
       x3, _ = l[i + 2]
       if x == ':' and x3 == ':' and  is_emoji_en(x2):
         res.append((emoji.emojize(':%s:' % x2), 'EMOJI'))
-        i + 2
+        i += 3
       else:
         res.append(l[i])
+        i += 1
     else:
       res.append(l[i])
+      i += 1
 
   return res
+
+expressions_len2 = set([':)', ':(',])
+expressions_len3 = set(['^_^', '^O^', '≥▽≤', '+_+',\
+                        '＾◇＾', '～o～', '-ω-', '-_-', '^ω^',\
+                        '^o^', '╯ε╰', '∩_∩', '^O^', '=_=', 'T_T'])
+expressions_len4 =  set(['-_-#'])
+
+expressions = [expressions_len2, expressions_len3, expressions_len4]
+
+def merge_expression(l):
+  res = []
+
+  i = 0
+  while i < len(l):
+    if i + 3 < len(l) and ''.join(l[i:i+4]) in expressions_len4:
+      res.append(''.join(l[i:i+4]))
+      i = i + 4
+    elif i + 2 < len(l) and ''.join(l[i:i + 3]) in expressions_len3:
+      res.append(''.join(l[i:i + 3]))
+      i += 3
+    elif i + 1 < len(l) and ''.join(l[i:i + 2]) in expressions_len2:
+      res.append(''.join(l[i:i + 2]))
+      i += 2
+    else:
+      res.append(l[i])
+      i += 1
+  return res 
+
+def merge_expression2(l):
+  res = []
+  i = 0
+  while i < len(l):
+    if i + 3 < len(l) and ''.join([x for x,y in l[i:i+4]]) in expressions_len4:
+      res.append((''.join([x for x,y in l[i:i+4]]), 'EXPRESSION'))
+      i += 4
+    elif i + 2 < len(l) and ''.join([x for x,y in l[i:i + 3]]) in expressions_len3:
+      res.append((''.join([x for x,y in l[i:i + 3]]), 'EXPRESSION'))
+      i += 3
+    elif i + 1 < len(l) and ''.join([x for x,y in l[i:i + 2]]) in expressions_len2:
+      res.append((''.join([x for x,y in l[i:i + 2]]), 'EXPRESSION'))
+      i += 2
+    else:
+      res.append(l[i])
+      i += 1
+  return res
+
 
 bseg = None 
 def init_bseg(use_pos=False, use_ner=False):
@@ -289,10 +364,12 @@ def word_cut(text):
     init_stanford_nlp()
     try:
       l = stanford_nlp.word_tokenize(emoji.demojize(text))
-      return hack_emoji(l)
+      l = hack_emoji(l)
+      return merge_expression(l)
     except Exception:
       print('stnaord error text: %s' % text, file=sys.stderr)
-      return jieba.cut(text)
+      l = list(jieba.cut(text))
+      return merge_expression(l)
 
   if gezi.env_has('BSEG'):
     import emoji
@@ -301,17 +378,22 @@ def word_cut(text):
       # NOTICE py2 need decode utf8 to get unicode as input to emoji
       l = bseg.Segment(to_gbk(emoji.demojize(text.decode('utf8'))))
       l = [to_utf8(x) for x in l]
-      return hack_emoji(l)
+      l = hack_emoji(l)
+      l = merge_expression(l)
+      return l
     except Exception:
       print('bseg error text: %s' % text, file=sys.stderr)
-      return jieba.cut(text)  
+      l = list(jieba.cut(text))
+      l = merge_expression(l)
+      return l
 
   # TODO make a switch since jieba.posseg is much slower... then jieba.cut
   if gezi.env_has('JIEBA_POS'):
     l = jieba.posseg.cut(text)
-    return [word for word, tag in l]
+    l = [word for word, tag in l]
+    return merge_expression(l)
   
-  return jieba.cut(text)
+  return merge_expression(list(jieba.cut(text)))
 
 pos_tags = ["None", "Ag", "Dg", "Ng", "Tg", "Vg", "a", "ad", "an", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "nr", "ns", "nt", "nx", "nz", "o", "p", "q", "r", "s", "t", "u", "v", "vd", "vn", "w", "y", "z" ]
 
@@ -322,7 +404,8 @@ def pos_cut(text):
     import emoji
     init_stanford_nlp()
     l = stanford_nlp.pos_tag(emoji.demojize(text))
-    res = hack_emoji2(l)
+    l = hack_emoji2(l)
+    res = merge_expression2(l)
   elif gezi.env_has('BSEG'):
     import emoji
     init_bseg(use_pos=True)
@@ -357,9 +440,10 @@ def pos_cut(text):
     #       l += bseg_(''.join(words))
 
     #assert l
-    res = hack_emoji2(l)
+    l = hack_emoji2(l)
+    res = merge_expression2(l)
   else:
-    res = list(jieba.posseg.cut(text))
+    res = merge_expression2(list(jieba.posseg.cut(text)))
   
   for i in range(len(res)):
     w, t = res[i]
@@ -374,6 +458,7 @@ def ner_cut(text):
   if gezi.env_has('STANFORD_NLP'):
     init_stanford_nlp()
     l = stanford_nlp.ner(emoji.demojize(text))
+    l = merge_expression2(l)
   else:
     init_bseg(use_ner=True)
     def bseg_(text):
@@ -401,6 +486,7 @@ def ner_cut(text):
     
     # HACK bseg wordner could nout seg long text so workaround here is to cut it  
     # well still has some fail.. 
+    jieba_cuts = None
     if  text_len < MAX_LEN:
       l = bseg_(text)
     else:
@@ -420,14 +506,17 @@ def ner_cut(text):
       if words:
         l += bseg_(''.join(words))
       
-      if len(l) < len(text) / 10:
-        l = [(x, 'NOR') for x in jieba_cuts]
-
+    #if len(l) < len(text) / 10:
+    if len(''.join([x for x,y in l]).decode('utf8')) < len(text.decode('utf8')) * 0.8:
+      print('warning, bad cut for turn back to use jieba cut:', text, file=sys.stderr)
+      if not jieba_cuts:
+        jieba_cuts = [x.encode('utf8') for x in jieba.cut(text)]
+      l = [(x, 'NOR') for x in jieba_cuts]
+     
     #exit(0)
   #assert l
-  res = hack_emoji2(l)
-
-    
+  l = hack_emoji2(l)
+  res = merge_expression2(l)
 
   for i in range(len(res)):
     w, t = res[i]
@@ -467,9 +556,11 @@ class JiebaSegmentor(object):
 
     words = None
     if method == 'default' or method == 'basic' or method == 'exact':
-      words = [x for x in cut(text)]
+      #words = [x for x in cut(text)]
+      words = cut(text)
     elif method == 'basic_digit':
-      words = [x for x in cut(text)]
+      #words = [x for x in cut(text)]
+      words = cut(text)
       def sep_digits(word):
         l = []
         s = ''

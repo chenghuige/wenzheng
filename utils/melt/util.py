@@ -278,7 +278,8 @@ optimizers = {
   'nadam': tf.contrib.opt.NadamOptimizer, # TODO FIXME nadam not work, InvalidArgumentError (see above for traceback): Incompatible shapes: [2737,300] vs. [91677,300] 
   #'momentum': lambda lr, momentum: tf.train.MomentumOptimizer(lr, momentum=momentum) # in melt.app.train
   #'adamax': tf.contrib.opt.AdaMaxOptimizer, # will got NAN ...
-  'adamax': lambda lr: tf.contrib.opt.AdaMaxOptimizer(lr, epsilon=1e-8),
+  #'adamax': lambda lr: tf.contrib.opt.AdaMaxOptimizer(lr, epsilon=1e-8),
+  'adamax': melt.training.adamax.AdaMaxOptimizer,
   #'adamax': tf.keras.optimizers.Adamax,  # tf can not directly use kears optimzier...
   }
 

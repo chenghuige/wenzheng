@@ -23,7 +23,7 @@ import os
 
 import gezi
 
-def filter_duplicate(text):
+def filter_duplicate_space(text):
   return ''.join([x for i, x in enumerate(text) if not (i < len(text) - 1 and not(x.strip()) and not(text[i + 1].strip()))])
 
 # # def translate_emotion(word):
@@ -39,7 +39,9 @@ def filter_duplicate(text):
 #   return text.replace('🍲', '火锅').replace('🌶️', '辣')
 
 def filter(x):
-  x = filter_duplicate(x)
+  x = x.strip('"')
+  x = filter_duplicate_space(x)
+  x = gezi.remove_duplicate(x)
   x = gezi.filter_quota(x).replace('\r', '\x01').replace('\n', '\x02').replace('<R>', '\x01').replace('<N>', '\x02').replace('\t', ' ').replace(' ', '\x03')
 
   # # So here actually always fals as is done in preprocess using py2  

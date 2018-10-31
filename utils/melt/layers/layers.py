@@ -57,6 +57,19 @@ keras = tf.keras
 layers = tf.keras.layers
 Layer = layers.Layer
 
+class FeedForwardNetwork(keras.Model):
+  def __init__(self, hidden_size, output_size, keep_prob=1.):
+    super(FeedForwardNetwork, self).__init__()
+    self.keep_prob = keep_prob
+    self.linear1 = layers.Dense(hidden_size, activation=tf.nn.relu)
+    self.linear2 = layers.Dense(output_size)
+
+  def call(self, x, training=False):
+    x_proj = dropout(self.linear1(x), keep_prob=self.keep_prob, training=training)
+    x_proj = self.linear2(x_proj)
+    return x_proj
+            
+
 class MaxPooling(Layer):
   def call(self, outputs, sequence_length=None, axis=1, reduce_func=tf.reduce_max):
     return melt.max_pooling(outputs, sequence_length, axis, reduce_func)
@@ -177,11 +190,26 @@ class LinearAttentionPooling(keras.Model):
                **kwargs):
     super(LinearAttentionPooling, self).__init__(**kwargs)
     self.logits = layers.Dense(1)
-    self.step = -1
 
   def call(self, x, sequence_length=None, axis=1):
-    self.step += 1
     logits = self.logits(x)
+    alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
+    encoding = tf.reduce_sum(x * alphas, 1)
+    # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
+    self.alphas = tf.squeeze(alphas, -1)    
+    #self.alphas = alphas
+    tf.add_to_collection('self_attention', self.alphas) 
+    return encoding
+
+class NonLinearAttentionPooling(keras.Model):
+  def __init__(self,  
+               hidden_size=128,
+               **kwargs):
+    super(NonLinearAttentionPooling, self).__init__(**kwargs)
+    self.FFN = FeedForwardNetwork(hidden_size, 1)
+
+  def call(self, x, sequence_length=None, axis=1):
+    logits = self.FFN(x)
     alphas = tf.nn.softmax(logits) if sequence_length is None else  melt.masked_softmax(logits, sequence_length)
     encoding = tf.reduce_sum(x * alphas, 1)
     # [batch_size, sequence_length, 1] -> [batch_size, sequence_length]
@@ -213,6 +241,8 @@ class Pooling(keras.Model):
         return AttentionPooling(hidden_size=None, activation=att_activation)
       elif name == 'linear_attention' or name == 'linear_att' or name == 'latt':
         return LinearAttentionPooling()
+      elif name == 'nonlinear_attention' or name == 'nonlinear_att' or name == 'natt':
+        return NonLinearAttentionPooling()
       elif name == 'topk' or name == 'top_k':
         return TopKPooling(top_k)
       elif name == 'topk_mean':

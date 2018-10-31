@@ -42,8 +42,8 @@ class Dataset(melt.tfrecords.Dataset):
       return tf.cond(tf.equal(tf.to_int64(global_step / num_examples) % 2, 0), lambda: 0., lambda: 1.)
 
     def undersampling_filter(x, y):
-      #prob = tf.cond(tf.equal(x['source'], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
-      prob = tf.cond(tf.equal(tf.strings.split(tf.expand_dims(x['source'], 0),'.').values[-1], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
+      prob = tf.cond(tf.equal(x['source'], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
+      #prob = tf.cond(tf.equal(tf.strings.split(tf.expand_dims(x['source'], 0),'.').values[-1], 'train'), lambda: 1., lambda: FLAGS.other_corpus_factor)
       #is_aug = tf.to_float(tf.equal(x['source'], 'augument.train'))
       #is_aug = tf.to_float(tf.equal(tf.strings.split(tf.expand_dims(x['source'], 0),'.').values[0], 'aug'))
       #aug_factor = get_aug_factor()
@@ -75,8 +75,8 @@ class Dataset(melt.tfrecords.Dataset):
 
     content = features['content']
     content = melt.sparse_tensor_to_dense(content)
-    if FLAGS.add_start_end:
-      content = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), content, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
+    # if FLAGS.add_start_end:
+    #   content = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), content, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
     # NOTICE! not work in dataset... so put to later step like in call but should do the same thing again for pytorch..
     # if FLAGS.vocab_min_count:
     #   content = melt.greater_then_set(content, FLAGS.vocab_min_count, UNK_ID)
