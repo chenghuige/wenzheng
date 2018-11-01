@@ -30,7 +30,6 @@ import algos.config
 
 from wenzheng.utils import input_flags 
 
-from torch_algos.loss import lm_criterion as criterion
 import torch_algos.model as base
 from lm_dataset import Dataset
 
@@ -44,14 +43,16 @@ def main(_):
     FLAGS.emb_dim = embedding.shape[1]
 
   model = getattr(base, FLAGS.model)(embedding)
+  assert model.lm_model
 
   logging.info(model)
 
   train = melt.apps.get_train()
 
+  lm_criterion = lele.losses.LMCriterion()
   train(Dataset,
         model,  
-        criterion)   
+        lm_criterion.forward)   
 
 if __name__ == '__main__':
   tf.app.run()  

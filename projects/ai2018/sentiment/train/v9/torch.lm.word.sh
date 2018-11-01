@@ -3,10 +3,10 @@ base=./mount
 if [ $SRC ];
   then echo 'SRC:' $SRC 
 else
-  SRC='word.glove'
-  echo 'use default SRC word.glove'
+  SRC='word.jieba'
+  echo 'use default SRC word.jieba'
 fi 
-dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
+dir=$base/temp/ai2018/sentiment/tfrecords/lm/$SRC
 
 fold=0
 if [ $# == 1 ];
@@ -16,14 +16,14 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v8/$fold/$SRC/torch.mreader.word.dynamic.nopad.2layer.lm.rand2/
+model_dir=$base/temp/ai2018/sentiment/model/v9/$fold/$SRC/torch.lm.word/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
 cp $dir/vocab* $model_dir/epoch
 
-exe=./torch-train.py 
+exe=./torch-lm-train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
   exe=./infer.py 
@@ -39,29 +39,26 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --dynamic_finetune=1 \
-        --num_finetune_words=6000 \
-        --num_finetune_chars=3000 \
         --use_char=1 \
         --concat_layers=0 \
         --recurrent_dropout=0 \
         --use_label_rnn=0 \
         --hop=1 \
         --att_combiner='sfu' \
-        --rnn_no_padding=1 \
-        --rnn_padding=0 \
-        --model=MReader \
-        --use_self_match=1 \
+        --rnn_no_padding=0 \
+        --rnn_padding=1 \
+        --model=BiLanguageModel \
         --label_emb_height=20 \
         --fold=$fold \
-        --use_label_att=1 \
-        --use_self_match=1 \
+        --use_label_att=0 \
+        --use_self_match=0 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
         --train_input=$dir/train/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
+        --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
         --buckets=500,1000 \
@@ -85,6 +82,6 @@ python $exe \
         --decay_target=loss \
         --decay_patience=1 \
         --decay_factor=0.8 \
-        --decay_start_epoch_=1. \
+        --decay_start_epoch_=2. \
         --num_epochs=$num_epochs \
 

@@ -64,7 +64,7 @@ def main(_):
   if FLAGS.num_finetune_chars and FLAGS.use_char and FLAGS.use_char_emb:
     model.char_embedding.register_backward_hook(freeze_char_embedding)
 
-  logging.info(model)
+  logging.info('model\n', model)
 
   train = melt.apps.get_train()
 

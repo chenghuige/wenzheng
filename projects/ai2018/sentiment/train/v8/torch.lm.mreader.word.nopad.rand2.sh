@@ -6,7 +6,7 @@ else
   SRC='word.glove'
   echo 'use default SRC word.glove'
 fi 
-dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
+dir=$base/temp/ai2018/sentiment/tfrecords/lm/$SRC
 
 fold=0
 if [ $# == 1 ];
@@ -16,14 +16,14 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v8/$fold/$SRC/torch.mreader.word.dynamic.nopad.2layer.lm.rand2/
+model_dir=$base/temp/ai2018/sentiment/model/lm/$SRC/torch.lm.mreader.word.nopad.rand/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
 cp $dir/vocab* $model_dir/epoch
 
-exe=./torch-train.py 
+exe=./torch-lm-train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
   exe=./infer.py 
@@ -39,7 +39,7 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --dynamic_finetune=1 \
+        --lm_model=1 \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \
         --use_char=1 \
@@ -53,24 +53,21 @@ python $exe \
         --model=MReader \
         --use_self_match=1 \
         --label_emb_height=20 \
-        --fold=$fold \
         --use_label_att=1 \
         --use_self_match=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
         --train_input=$dir/train/'*,' \
-        --test_input=$dir/test/'*,' \
+        --valid_input=$dir/valid/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets=500,1000 \
-        --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \
         --cell=gru \
         --keep_prob=0.7 \
-        --num_layers=2 \
+        --num_layers=1 \
         --rnn_hidden_size=200 \
         --encoder_output_method=topk,att \
         --eval_interval_steps 1000 \
@@ -81,10 +78,10 @@ python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=adamax \
-        --learning_rate=0.002 \
+        --learning_rate=0.0002 \
         --decay_target=loss \
         --decay_patience=1 \
         --decay_factor=0.8 \
-        --decay_start_epoch_=1. \
+        --decay_start_epoch_=2. \
         --num_epochs=$num_epochs \
 

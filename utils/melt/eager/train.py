@@ -29,6 +29,7 @@ from tqdm import tqdm
 import numpy as np
 import inspect
 import traceback
+import copy
 
 import gezi
 import melt
@@ -209,6 +210,24 @@ def inference(model, dataset, model_path,
       write_fn(ids, predicts, ofile, ofile2)
     else:
       write_fn(ids, predicts, ofile)
+
+
+def load_torch_model(model, path):
+  checkpoint = torch.load(path)
+  state = checkpoint['state_dict']   
+  
+  new_state = {}
+  for key, val in state.items():
+    if key in model.state_dict():
+      new_state[key] = val
+
+  # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
+  new_params = model.state_dict()
+  new_params.update(new_state)
+  model.load_state_dict(new_params)
+  model.eval()
+
+  return checkpoint
  
 def train(Dataset, 
           model, 
@@ -338,8 +357,12 @@ def train(Dataset,
   except Exception:
     learning_rate_weights = None
 
-  ckpt_dir = FLAGS.model_dir + '/ckpt'
+  # ckpt dir save models one per epoch
+  ckpt_dir = os.path.join(FLAGS.model_dir, 'ckpt')
   os.system('mkdir -p %s' % ckpt_dir)
+  # HACK ckpt dir is actually save mini epoch like when you set save_interval_epochs=0.1, this is usefull when you training large dataset
+  ckpt_dir2 = os.path.join(FLAGS.model_dir, 'ckpt2')
+  os.system('mkdir -p %s' % ckpt_dir2)
 
   #TODO FIXME now I just changed tf code so to not by default save only latest 5
   # refer to https://github.com/tensorflow/tensorflow/issues/22036
@@ -348,8 +371,13 @@ def train(Dataset,
   # latest_checkpoint = manager.latest_checkpoint
 
   latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
-  logging.info('Latest checkpoint:', latest_checkpoint)
+  if latest_checkpoint:
+    logging.info('Latest checkpoint:', latest_checkpoint)
+  else:
+    latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir2)
+    logging.info('Latest checkpoint:', latest_checkpoint)
   checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
+  checkpoint_prefix2 = os.path.join(ckpt_dir2, 'ckpt')
 
   if not FLAGS.torch:
     optimizer = optimizer or melt.get_optimizer(FLAGS.optimizer)(learning_rate)
@@ -375,38 +403,55 @@ def train(Dataset,
       latest_checkpoint = FLAGS.model_dir   
 
     checkpoint.restore(latest_checkpoint)
+    checkpoint2 = copy.deepcopy(checkpoint)
 
-    start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint else 0
+    start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint and 'ckpt' in latest_checkpoint else 0
   else:
     # TODO torch with learning rate adjust
     optimizer = optimizer or torch.optim.Adamax(model.parameters(), lr=FLAGS.learning_rate)
 
-    if latest_checkpoint:
-      checkpoint = torch.load(latest_checkpoint + '.pyt')
-      start_epoch = checkpoint['epoch']
+    # if latest_checkpoint:
+    #   latest_path = latest_checkpoint + '.pyt'
+    #   logging.info('loading torch model from', latest_path)
+    #   checkpoint = torch.load(latest_path)
+    #   start_epoch = checkpoint['epoch']
+    #   step = checkpoint['step']
+    #   global_step.assign(step + 1)
 
-      model.load_state_dict(checkpoint['state_dict'])
-      # # TODO verify I think is ok , not ok.. optimizer..
-      # state = checkpoint['state_dict']        
+    #   # model.load_state_dict(checkpoint['state_dict'])
+    #   # # # TODO verify I think is ok , not ok.. optimizer..
+    #   # # state = checkpoint['state_dict']        
+    #   # # new_params = model.state_dict()
+    #   # # new_params.update(state)
+    #   # # model.load_state_dict(new_params)
+    #   # if FLAGS.torch_load_optimizer:
+    #   #   optimizer.load_state_dict(checkpoint['optimizer'])
+    #   # model.eval()
+
+    #   load_torch_model(model, latest_path)
+    #   if FLAGS.torch_load_optimizer:
+    #     optimizer.load_state_dict(checkpoint['optimizer'])
+    # else:
+    start_epoch = 0
+    latest_path = os.path.join(FLAGS.model_dir, 'latest.pyt')
+    if os.path.exists(latest_path):
+      logging.info('loading torch model from', latest_path)
+      checkpoint = torch.load(latest_path)
+      start_epoch = checkpoint['epoch']
+      step = checkpoint['step']
+      global_step.assign(step + 1)
+      load_torch_model(model, latest_path)
+      if FLAGS.torch_load_optimizer:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+      # checkpoint = torch.load(latest_path)
+      # # TODO
+      # state = checkpoint['state_dict']   
+      # # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
       # new_params = model.state_dict()
       # new_params.update(state)
       # model.load_state_dict(new_params)
-      if FLAGS.torch_load_optimizer:
-        optimizer.load_state_dict(checkpoint['optimizer'])
-      model.eval()
-    else:
-      start_epoch = 0
-      latest_path = os.path.join(ckpt_dir, 'latest.pyt')
-      if os.path.exists(latest_path):
-        logging.info('loading torch model from', latest_path)
-        checkpoint = torch.load(latest_path)
-        # TODO
-        state = checkpoint['state_dict']        
-        new_params = model.state_dict()
-        new_params.update(state)
-        model.load_state_dict(new_params)
-        model.eval()
-  
+      # model.eval()
+
     # TODO by this way restart can not change learning rate..
     if learning_rate_weights is None:
       checkpoint = tf.train.Checkpoint(
@@ -419,11 +464,14 @@ def train(Dataset,
             learning_rate_weight=learning_rate_weight,
             learning_rate_weights=learning_rate_weights,
             global_step=global_step)
+
     checkpoint.restore(latest_checkpoint)
+    checkpoint2 = copy.deepcopy(checkpoint)
+
 
   #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
   #model.save('./weight3.hd5')
-  logging.info('optimizer:', optimizer)
+  logging.info('optimizer:\n', optimizer)
 
   if FLAGS.torch_lr:
     learning_rate.assign(optimizer.rate(1))
@@ -586,7 +634,7 @@ def train(Dataset,
           if FLAGS.torch:
             model.train()
 
-          logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
+          logging.info('epoch:%.3f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
                       'elapsed:[%.3f]' % elapsed,
                       'batch_size:[%d]' % batch_size_,
@@ -602,7 +650,7 @@ def train(Dataset,
               summary.scalar('loss/eval', epoch_valid_loss_avg.result().numpy())
               writer_valid.flush()
         else:
-          logging.info('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
+          logging.info('epoch:%.3f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
                       'elapsed:[%.3f]' % elapsed,
                       'batch_size:[%d]' % batch_size_,
@@ -657,7 +705,7 @@ def train(Dataset,
           model.train()
 
         if names and vals:
-          logging.info2('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs),  
+          logging.info2('epoch:%.3f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs),  
                         'valid_step:%d' % global_step.numpy(),
                         'valid_metrics',
                         ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
@@ -677,17 +725,33 @@ def train(Dataset,
       if global_step.numpy() % FLAGS.save_interval_steps == 0:
         if FLAGS.torch:
           state = {
-                  #'epoch': epoch + 1,
+                  'epoch': epoch,
                   'step': global_step.numpy(),
                   'state_dict': model.state_dict(),
                   'optimizer' : optimizer.state_dict(),
                 }
           if torch.cuda.is_available():
             model.cpu()
-          torch.save(state, os.path.join(ckpt_dir, 'latest.pyt'))
+          torch.save(state, os.path.join(FLAGS.model_dir, 'latest.pyt'))
           if torch.cuda.is_available():
             model.cuda()       
 
+      #if FLAGS.save_interval_epochs and FLAGS.save_interval_epochs < 1 and global_step.numpy() % int(num_steps_per_epoch * FLAGS.save_interval_epochs) == 0:
+      if FLAGS.save_interval_epochs and global_step.numpy() % int(num_steps_per_epoch * FLAGS.save_interval_epochs) == 0:
+        checkpoint2.save(checkpoint_prefix2) 
+        if FLAGS.torch:
+          state = {
+                  'epoch': epoch,
+                  'step': global_step.numpy(),
+                  'state_dict': model.state_dict(),
+                  'optimizer' : optimizer.state_dict(),
+                }
+          if torch.cuda.is_available():
+            model.cpu()
+          torch.save(state, tf.train.latest_checkpoint(ckpt_dir2) + '.pyt')
+          if torch.cuda.is_available():
+            model.cuda()    
+          
       if epoch == start_epoch and i == 0:
         try:
           if not FLAGS.torch:
@@ -699,11 +763,11 @@ def train(Dataset,
           exit(0)
 
     logging.info('epoch:%d/%d' % (epoch + 1, num_epochs), 
-                'step:%d' % global_step.numpy(), 
-                'batch_size:[%d]' % batch_size,
-                'lr:[%.7f]' % learning_rate.numpy(),
-                'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
-                'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
+                 'step:%d' % global_step.numpy(), 
+                 'batch_size:[%d]' % batch_size,
+                 'lr:[%.7f]' % learning_rate.numpy(),
+                 'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
+                 'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
 
 
     timer = gezi.Timer(f'save model to {checkpoint_prefix}-{checkpoint.save_counter.numpy() + 1}', False)
@@ -711,6 +775,7 @@ def train(Dataset,
     if FLAGS.torch:
       state = {
                 'epoch': epoch + 1,
+                'step': global_step.numpy(),
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
               }

@@ -16,7 +16,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v8/$fold/$SRC/torch.mreader.word.dynamic.nopad.2layer.lm.rand2/
+model_dir=$base/temp/ai2018/sentiment/model/v8/$fold/$SRC/torch.mreader.word.dynamic.nopad.2layer.lm2/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -82,6 +82,7 @@ python $exe \
         --freeze_graph=1 \
         --optimizer=adamax \
         --learning_rate=0.002 \
+        --min_learning_rate=0.00001 \
         --decay_target=loss \
         --decay_patience=1 \
         --decay_factor=0.8 \
