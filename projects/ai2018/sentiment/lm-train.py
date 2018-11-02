@@ -16,7 +16,6 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-import torch
 import numpy as np
 from tqdm import tqdm
 
@@ -24,35 +23,34 @@ import melt
 logging = melt.logging
 import gezi
 import traceback
-import lele
-
-import algos.config
 
 from wenzheng.utils import input_flags 
 
-import torch_algos.model as base
+# import projects
+# algos = projects.ai2018.sentiment.algos
+#from algos.model import *
+from algos.loss import criterion
+import algos.model as base
 from lm_dataset import Dataset
 
 def main(_):
-  FLAGS.torch = True
+  FLAGS.num_folds = 8
   melt.apps.init()
-  
+
   embedding = None
   if FLAGS.word_embedding_file and os.path.exists(FLAGS.word_embedding_file):
     embedding = np.load(FLAGS.word_embedding_file)
     FLAGS.emb_dim = embedding.shape[1]
 
   model = getattr(base, FLAGS.model)(embedding)
-  assert model.lm_model
 
   logging.info(model)
 
   train = melt.apps.get_train()
 
-  bilm_criterion = lele.losses.BiLMCriterion()
   train(Dataset,
         model,  
-        bilm_criterion.forward)   
+        melt.losses.bilm_loss)   
 
 if __name__ == '__main__':
   tf.app.run()  

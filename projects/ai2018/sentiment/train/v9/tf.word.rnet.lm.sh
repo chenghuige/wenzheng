@@ -1,4 +1,4 @@
-base=./mount 
+base=./mount
 
 if [ $SRC ];
   then echo 'SRC:' $SRC 
@@ -16,14 +16,14 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v9/$fold/$SRC/torch.rnn.word/
+model_dir=$base/temp/ai2018/sentiment/model/v9/$fold/$SRC/tf.word.rnet.lm/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
 cp $dir/vocab* $model_dir/epoch
 
-exe=./torch-train.py 
+exe=./train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
   exe=./infer.py 
@@ -39,29 +39,23 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --dynamic_finetune=1 \
+        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC/tf.word.lm/ \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \
-        --use_char=1 \
-        --concat_layers=0 \
-        --recurrent_dropout=0 \
-        --use_label_rnn=0 \
-        --hop=1 \
-        --att_combiner='sfu' \
-        --rnn_no_padding=0 \
-        --rnn_padding=1 \
         --model=RNet \
+        --use_char=1 \
+        --concat_layers=1 \
+        --recurrent_dropout=1 \
         --label_emb_height=20 \
         --fold=$fold \
-        --use_label_att=0 \
-        --use_self_match=0 \
+        --use_label_att=1 \
+        --use_self_match=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
         --train_input=$dir/train/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
-        --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
         --buckets=500,1000 \
@@ -80,8 +74,8 @@ python $exe \
         --valid_interval_epochs=1 \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
-        --optimizer=adamax \
-        --learning_rate=0.002 \
+        --optimizer=adam_t2t \
+        --learning_rate=0.001 \
         --decay_target=loss \
         --decay_patience=1 \
         --decay_factor=0.8 \

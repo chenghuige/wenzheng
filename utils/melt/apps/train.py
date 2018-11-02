@@ -108,7 +108,7 @@ flags.DEFINE_float('opt_epsilon', 1e-6, 'follow squad of ukhst')
 #                                             see textsum/train/shangpinming/seq2seq-gen-copy-switch.sh""")
 flags.DEFINE_float('learning_rate', 0.001, """adam will be 0.001
                                          default is adam default lr""")
-flags.DEFINE_float('min_learning_rate', 5e-5, 'min learning rate used for dyanmic eval metric decay')
+flags.DEFINE_float('min_learning_rate', 1e-6, 'min learning rate used for dyanmic eval metric decay')
 flags.DEFINE_float('learning_rate_start_factor', 1., '')
 
 #flags.DEFINE_float('learning_rate_decay_factor', 0.97, 'im2txt 0.5, follow nasnet using 0.97')
@@ -241,6 +241,7 @@ flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
 
 flags.DEFINE_boolean('torch', False, '')
 flags.DEFINE_boolean('torch_lr', False, '')
+flags.DEFINE_boolean('torch_finetune', False, '')
 flags.DEFINE_boolean('torch_load_optimizer', True, '')
 
 flags.DEFINE_boolean('test_aug', False, '')
@@ -646,7 +647,6 @@ def train_flow(ops,
   log_dir = log_dir or FLAGS.log_dir
 
   logging.info('clip_gradients:{}'.format(FLAGS.clip_gradients))
-  logging.info('optimizer:{}'.format(FLAGS.optimizer))
 
   num_gpus = melt.num_gpus()
   
@@ -713,8 +713,17 @@ def train_flow(ops,
     # must set embedding on cpu , then can run(like adagrad adadelta) but work poorly
     from tensor2tensor.utils import yellowfin
     optimizer = yellowfin.YellowFinOptimizer
+  elif FLAGS.optimizer == 'bert':
+    optimizer = lambda lr: melt.training.bert.AdamWeightDecayOptimizer(
+      learning_rate=lr,
+      weight_decay_rate=0.01,
+      beta_1=0.9,
+      beta_2=0.999,
+      epsilon=1e-6,
+      exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
   else:
     optimizer = melt.util.get_optimizer(optimizer)
+  logging.info('optimizer:{} {}'.format(FLAGS.optimizer, optimizer))
   if not isinstance(ops[0], (list,tuple)):  
     # train_op = tf.contrib.layers.optimize_loss(
     #     loss=ops[0],
@@ -766,6 +775,7 @@ def train_flow(ops,
           name=optimize_scope)
       
     #set the last tower loss as loss in ops
+    # TODO FIXME how to check if ops[0] here should be scalar ?
     ops[0] = ops[0][-1]
     #ops[0] = ops[0][0]
     ## cifar10 below down 3600 -> 3100 examples/s
@@ -1057,6 +1067,7 @@ def train(Dataset,
           evaluate_fn=None, 
           inference_fn=None,
           eval_fn=None,
+          init_fn=None,
           write_valid=True,
           valid_names=None,
           infer_names=None,
@@ -1176,15 +1187,14 @@ def train(Dataset,
     valid_batch = valid_iter.get_next()
     valid_x, valid_y = melt.split_batch(valid_batch, batch_size_, num_gpus, training=False)
 
-    def valid_fn(i):
-      valid_predict = model(valid_x[i])
-      return valid_x[i], valid_y[i], valid_predict
-
-    valid_ops = melt.tower(valid_fn, num_gpus, training=False)
-
     if not valid_names and infer_names:
       valid_names = [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
     if eval_fn:
+      def valid_fn(i):
+        valid_predict = model(valid_x[i])
+        return valid_x[i], valid_y[i], valid_predict
+      
+      valid_ops = melt.tower(valid_fn, num_gpus, training=False)
       metric_eval_fn = lambda model_path=None: \
                                     evaluate(valid_ops, 
                                             valid_iter,
@@ -1260,7 +1270,8 @@ def train(Dataset,
              metric_eval_fn=metric_eval_fn,
              inference_fn=inference_fn,
              num_steps_per_epoch=num_steps_per_epoch,
-             model=model)
+             model=model,
+             init_fn=init_fn)
 
 
 def get_train():

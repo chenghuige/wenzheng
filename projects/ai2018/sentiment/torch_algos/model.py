@@ -48,7 +48,8 @@ class ModelBase(nn.Module):
         'hidden_size': FLAGS.rnn_hidden_size,
         'emb_dim': FLAGS.emb_dim,
         'embedding_file': FLAGS.word_embedding_file,
-        'trainable': FLAGS.finetune_word_embedding
+        'trainable': FLAGS.finetune_word_embedding,
+        'num_finetune': FLAGS.num_finetune_words,
       },
       'char': {
         'limit': FLAGS.char_limit,
@@ -58,7 +59,8 @@ class ModelBase(nn.Module):
         'hidden_size': FLAGS.rnn_hidden_size,
         'output_method': FLAGS.char_output_method,
         'combiner': FLAGS.char_combiner,
-        'padding': FLAGS.char_padding
+        'padding': FLAGS.char_padding,
+        'num_finetune': FLAGS.num_finetune_chars,
       },
       'pos': {
         'emb_dim': FLAGS.tag_emb_dim 
@@ -66,6 +68,7 @@ class ModelBase(nn.Module):
       'ner': {
         'emb_dim': FLAGS.tag_emb_dim 
       },
+      'encoder': FLAGS.encoder_type,
       'dropout_rate': 1 - FLAGS.keep_prob,
       'recurrent_dropout': FLAGS.recurrent_dropout,
       'cell': FLAGS.cell,
@@ -73,7 +76,8 @@ class ModelBase(nn.Module):
       'rnn_no_padding': FLAGS.rnn_no_padding,
       'concat_layers': FLAGS.concat_layers,
     }
-    self.encode = wenzheng.pyt.BiEncoder(config, 
+
+    self.encode = wenzheng.pyt.TextEncoder(config, 
                                          embedding,
                                          use_char=FLAGS.use_char,
                                          use_char_emb=FLAGS.use_char_emb,
@@ -81,23 +85,34 @@ class ModelBase(nn.Module):
                                          use_ner=FLAGS.use_ner,
                                          lm_model=lm_model)
 
+    self.lm_model = self.encode.lm_model
+
+    if not self.lm_model:
+      doc_hidden_size = self.encode.output_size
+      self.pooling = lele.layers.Pooling(
+                    FLAGS.encoder_output_method, 
+                    input_size=doc_hidden_size,
+                    top_k=FLAGS.top_k, 
+                    att_activation=getattr(F, FLAGS.att_activation))
+
+      # input dim not as convinient as tf..
+      pre_logits_dim = self.pooling.output_size
+      
+      self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
+      self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)
+
 class BiLanguageModel(ModelBase):
   def __init__(self, embedding=None):
     super(BiLanguageModel, self).__init__(embedding, lm_model=True)
-    self.lm_model = self.encode.lm_model
-
+    
 # Model is like RNet! if you use label att and self match
 # if not just simple gru model
 class RNet(ModelBase):
   def __init__(self, embedding=None):
     super(RNet, self).__init__(embedding)
 
-    Rnn = lele.layers.StackedBRNN 
-
-    self.embedding = self.encode.embedding 
-    self.char_embedding = self.encode.char_embedding
-    
-    input_size = self.encode.output_size
+    Rnn = lele.layers.StackedBRNN     
+    doc_hidden_size = self.encode.output_size
 
     if FLAGS.use_label_att:
       self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
@@ -106,7 +121,7 @@ class RNet(ModelBase):
       self.att_dot_attentions = nn.ModuleList()
       self.att_encodes = nn.ModuleList()
       for i in range(FLAGS.label_hop):
-        self.att_dot_attentions.append(lele.layers.DotAttention(input_size=input_size, 
+        self.att_dot_attentions.append(lele.layers.DotAttention(input_size=doc_hidden_size, 
                                                                 input_size2=FLAGS.emb_dim,
                                                                 hidden=self.num_units, 
                                                                 dropout_rate=self.dropout_rate, 
@@ -122,11 +137,9 @@ class RNet(ModelBase):
               padding=FLAGS.rnn_padding,
           ))
 
-        input_size = 2 * self.num_units
-
     if FLAGS.use_self_match:
-      self.match_dot_attention = lele.layers.DotAttention(input_size=input_size, 
-                                                          input_size2=input_size, 
+      self.match_dot_attention = lele.layers.DotAttention(input_size=doc_hidden_size, 
+                                                          input_size2=doc_hidden_size, 
                                                           hidden=self.num_units, 
                                                           dropout_rate=self.dropout_rate, 
                                                           combiner=FLAGS.att_combiner)
@@ -140,18 +153,6 @@ class RNet(ModelBase):
             rnn_type=FLAGS.cell,
             padding=FLAGS.rnn_padding,
         )    
-
-    self.pooling = lele.layers.Pooling(
-                        FLAGS.encoder_output_method, 
-                        input_size=input_size,
-                        top_k=FLAGS.top_k, 
-                        att_activation=getattr(F, FLAGS.att_activation))
-
-    # input dim not as convinient as tf..
-    pre_logits_dim = self.pooling.output_size
-    
-    self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
-    self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)
 
   def forward(self, input, training=False):
     x = input['content'] 
@@ -192,9 +193,6 @@ class MReader(ModelBase):
     super(MReader, self).__init__(embedding)
 
     Rnn = lele.layers.StackedBRNN 
-
-    self.embedding = self.encode.embedding 
-    self.char_embedding = self.encode.char_embedding
     doc_hidden_size = self.encode.output_size
 
     self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
@@ -243,19 +241,6 @@ class MReader(ModelBase):
           )
       )
 
-    self.pooling = lele.layers.Pooling(
-                        FLAGS.encoder_output_method, 
-                        input_size=doc_hidden_size,
-                        top_k=FLAGS.top_k, 
-                        att_activation=getattr(F, FLAGS.att_activation))
-
-    # input dim not as convinient as tf..
-    pre_logits_dim = self.pooling.output_size
-    
-    self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
-    self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)
-
-
   def forward(self, input, training=False):
     #print('------------', input['source'])
     x = input['content'] 
@@ -298,14 +283,16 @@ class MReader(ModelBase):
 
     return x
 
-class Fastai(nn.Module):
-  def __init__(self):
-    super(Fastai, self).__init__()
+class Fastai(ModelBase):
+  def __init__(self, embedding=None):
+    super(Fastai, self).__init__(embedding)
     vocabulary.init()
     vocab_size = vocabulary.get_vocab_size() 
     emb_dim = FLAGS.emb_dim 
     self.num_classes = NUM_CLASSES
-    self.model = lele.fastai.text.classifier(vocab_size, NUM_ATTRIBUTES * self.num_classes, emb_sz=emb_dim,
+    self.model = lele.fastai.text.classifier(vocab_size, 
+                                             NUM_ATTRIBUTES * self.num_classes, 
+                                             emb_sz=emb_dim,
                                              nl=FLAGS.num_layers,
                                              embedding_weight=FLAGS.word_embedding_file)
 

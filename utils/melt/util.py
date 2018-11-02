@@ -30,6 +30,35 @@ logging = melt.logging
 
 keras = tf.keras
 
+# TODO FIXME should use below but now not work
+def create_restore_fn(checkpoint, model_name, restore_model_name):
+  model_name = gezi.pascal2gnu(model_name)
+  restore_model_name = gezi.pascal2gnu(restore_model_name)
+  
+  variables_to_restore = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=model_name)
+  assert variables_to_restore, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+
+  prefix  = '%s/%s' % (model_name, restore_model_name)
+
+  # remove model_name
+  def name_in_checkpoint(var):
+    return var.op.name.replace(prefix, restore_model_name)
+
+  variables_to_restore = {name_in_checkpoint(var):var for var in variables_to_restore if var.op.name.startswith(prefix)}
+  
+  varnames_in_checkpoint = melt.get_checkpoint_varnames(checkpoint)
+  # FIXME wrong..
+  variables_to_restore = {var2:var for var2 in varnames_in_checkpoint}
+
+  saver = tf.train.Saver(variables_to_restore)
+
+  def restore_fn(sess):
+    timer = gezi.Timer('restore var from %s %s' % (restore_model_name, checkpoint))
+    saver.restore(sess, checkpoint)
+    timer.print()
+
+  return restore_fn
+
 class Model(keras.Model):
   def __init__(self,  
                **kwargs):
@@ -1122,6 +1151,7 @@ def default_names(length):
 # especially optimizer will change op.name ... not readable so now 
 # you have to pass the name by yourself manully
 def adjust_names(ops, names):
+  assert ops
   if names is None:
     #return [x.name.split('/')[-1].split(':')[0] for x in ops]
     #return [x.name for x in ops]

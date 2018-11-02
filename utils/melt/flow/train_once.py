@@ -75,14 +75,14 @@ def train_once(sess,
   melt.set_global('step', step)
   epoch = (fixed_step or step) / num_steps_per_epoch if num_steps_per_epoch else -1
   if not num_epochs:
-    epoch_str = 'epoch:%.2f' % (epoch) if num_steps_per_epoch else ''
+    epoch_str = 'epoch:%.3f' % (epoch) if num_steps_per_epoch else ''
   else:
-    epoch_str = 'epoch:%.2f/%d' % (epoch, num_epochs) if num_steps_per_epoch else ''
+    epoch_str = 'epoch:%.3f/%d' % (epoch, num_epochs) if num_steps_per_epoch else ''
   melt.set_global('epoch', '%.2f' % (epoch))
   
   info = IO()
   stop = False
-
+    
   if eval_names is None:
     if names:
       eval_names = ['eval/' + x for x in names]
@@ -225,7 +225,8 @@ def train_once(sess,
     #  deal_results_fn = lambda x: melt.print_results(x, names)
     
     feed_dict = {} if gen_feed_dict_fn is None else gen_feed_dict_fn()
-    #print('---------------ops', ops)
+    # NOTICE ops[2] should be scalar otherwise wrong!! loss should be scalar
+    #print('---------------ops', ops) 
     if eval_ops is not None or not log_dir or not hasattr(train_once, 'summary_op') or train_once.summary_op is None:
       results = sess.run(ops, feed_dict=feed_dict) 
     else:

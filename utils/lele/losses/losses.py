@@ -17,13 +17,14 @@ import os
 
 import torch
 
-class LMCriterion(object):
+class BiLMCriterion(object):
   def __init__(self):
     self.loss_fn = torch.nn.CrossEntropyLoss(reduction='sum')
 
   def forward(self, model, x, y, training=False):
     fw_y = torch.zeros_like(y)
     bw_y = torch.zeros_like(y)
+    # Notice tf not support item assignment, even eager
     fw_y[:, 0:-1] = y[:, 1:]
     bw_y[:, 1:] = y[:, 0:-1]
 

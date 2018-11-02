@@ -221,6 +221,8 @@ def load_torch_model(model, path):
     if key in model.state_dict():
       new_state[key] = val
 
+  logging.info('num updated keys from checkpoint', len(new_state))
+
   # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
   new_params = model.state_dict()
   new_params.update(new_state)
@@ -245,6 +247,7 @@ def train(Dataset,
           infer_suffix='.infer',
           write_streaming=False,
           optimizer=None,
+          param_groups=None,
           sep=','):
   if FLAGS.torch:
     #torch.cuda.set_device(0)  # set the device back to 0
@@ -376,6 +379,10 @@ def train(Dataset,
   else:
     latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir2)
     logging.info('Latest checkpoint:', latest_checkpoint)
+  
+  if os.path.exists(FLAGS.model_dir + '.index'):
+    latest_checkpoint = FLAGS.model_dir  
+  
   checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
   checkpoint_prefix2 = os.path.join(ckpt_dir2, 'ckpt')
 
@@ -397,10 +404,7 @@ def train(Dataset,
             learning_rate_weights=learning_rate_weights,
             model=model,
             optimizer=optimizer,
-            global_step=global_step)
-      
-    if os.path.exists(FLAGS.model_dir + '.index'):
-      latest_checkpoint = FLAGS.model_dir   
+            global_step=global_step) 
 
     checkpoint.restore(latest_checkpoint)
     checkpoint2 = copy.deepcopy(checkpoint)
@@ -408,7 +412,7 @@ def train(Dataset,
     start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint and 'ckpt' in latest_checkpoint else 0
   else:
     # TODO torch with learning rate adjust
-    optimizer = optimizer or torch.optim.Adamax(model.parameters(), lr=FLAGS.learning_rate)
+    optimizer = optimizer or torch.optim.Adamax(param_groups if param_groups else model.parameters(), lr=FLAGS.learning_rate)
 
     # if latest_checkpoint:
     #   latest_path = latest_checkpoint + '.pyt'
@@ -432,14 +436,15 @@ def train(Dataset,
     #   if FLAGS.torch_load_optimizer:
     #     optimizer.load_state_dict(checkpoint['optimizer'])
     # else:
-    start_epoch = 0
-    latest_path = os.path.join(FLAGS.model_dir, 'latest.pyt')
+    start_epoch = 0  
+    latest_path = latest_checkpoint + '.pyt' if latest_checkpoint else os.path.join(FLAGS.model_dir, 'latest.pyt')
     if os.path.exists(latest_path):
       logging.info('loading torch model from', latest_path)
       checkpoint = torch.load(latest_path)
-      start_epoch = checkpoint['epoch']
-      step = checkpoint['step']
-      global_step.assign(step + 1)
+      if not FLAGS.torch_finetune:
+        start_epoch = checkpoint['epoch']
+        step = checkpoint['step']
+        global_step.assign(step + 1)
       load_torch_model(model, latest_path)
       if FLAGS.torch_load_optimizer:
         optimizer.load_state_dict(checkpoint['optimizer'])
@@ -566,6 +571,18 @@ def train(Dataset,
   Mean =  tfe.metrics.Mean if not FLAGS.torch else PytMean
   timer = gezi.Timer()
   num_insts = 0
+
+  if FLAGS.learning_rate_decay_factor > 0:
+    #assert FLAGS.learning_rate_values is None, 'use exponential_decay or piecewise_constant?'
+    #NOTICE if you do finetune or other things which might change batch_size then you'd better direclty set num_steps_per_decay
+    #since global step / decay_steps will not be correct epoch as num_steps per epoch changed
+    #so if if you change batch set you have to reset global step as fixed step
+    assert FLAGS.num_steps_per_decay or (FLAGS.num_epochs_per_decay and num_steps_per_epoch), 'must set num_steps_per_epoch or num_epochs_per_decay and num_steps_per_epoch'
+    decay_steps = FLAGS.num_steps_per_decay or int(num_steps_per_epoch * FLAGS.num_epochs_per_decay)    
+    decay_start_step = FLAGS.decay_start_step or int(num_steps_per_epoch * FLAGS.decay_start_epoch)
+    # decayed_learning_rate = learning_rate * decay_rate ^ (global_step / decay_steps)
+    logging.info('learning_rate_decay_factor:{} decay_epochs:{} decay_steps:{} decay_start_epoch:{} decay_start_step:{}'.format(
+        FLAGS.learning_rate_decay_factor, FLAGS.num_epochs_per_decay, decay_steps, FLAGS.decay_start_epoch, decay_start_step))
 
   for epoch in range(start_epoch, num_epochs):
     melt.set_global('epoch', '%.4f' % (epoch))
@@ -709,7 +726,6 @@ def train(Dataset,
                         'valid_step:%d' % global_step.numpy(),
                         'valid_metrics',
                         ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
-        
       
       # if i == 5:
       #   print(i, '---------------------save')
@@ -736,8 +752,9 @@ def train(Dataset,
           if torch.cuda.is_available():
             model.cuda()       
 
-      #if FLAGS.save_interval_epochs and FLAGS.save_interval_epochs < 1 and global_step.numpy() % int(num_steps_per_epoch * FLAGS.save_interval_epochs) == 0:
-      if FLAGS.save_interval_epochs and global_step.numpy() % int(num_steps_per_epoch * FLAGS.save_interval_epochs) == 0:
+      # TODO fixme why if both checpoint2 and chekpoint used... not ok..
+      if FLAGS.save_interval_epochs and FLAGS.save_interval_epochs < 1 and global_step.numpy() % int(num_steps_per_epoch * FLAGS.save_interval_epochs) == 0:
+      #if FLAGS.save_interval_epochs and global_step.numpy() % int(num_steps_per_epoch * FLAGS.save_interval_epochs) == 0:
         checkpoint2.save(checkpoint_prefix2) 
         if FLAGS.torch:
           state = {
@@ -751,7 +768,16 @@ def train(Dataset,
           torch.save(state, tf.train.latest_checkpoint(ckpt_dir2) + '.pyt')
           if torch.cuda.is_available():
             model.cuda()    
-          
+
+      if FLAGS.learning_rate_decay_factor > 0:
+        if global_step.numpy() >= decay_start_step and global_step.numpy() % decay_steps == 0:
+          lr = max(learning_rate.numpy() * FLAGS.learning_rate_decay_factor, FLAGS.min_learning_rate)
+          if lr < learning_rate.numpy():
+            learning_rate.assign(lr)
+            if FLAGS.torch:
+              for param_group in optimizer.param_groups:
+                param_group['lr'] = learning_rate.numpy()
+
       if epoch == start_epoch and i == 0:
         try:
           if not FLAGS.torch:
@@ -772,7 +798,7 @@ def train(Dataset,
 
     timer = gezi.Timer(f'save model to {checkpoint_prefix}-{checkpoint.save_counter.numpy() + 1}', False)
     checkpoint.save(checkpoint_prefix)
-    if FLAGS.torch:
+    if FLAGS.torch and  FLAGS.save_interval_epochs == 1:
       state = {
                 'epoch': epoch + 1,
                 'step': global_step.numpy(),

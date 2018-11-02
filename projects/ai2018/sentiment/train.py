@@ -51,10 +51,20 @@ def main(_):
 
   train = melt.apps.get_train()
 
+  init_fn = None
+  # TODO FIXME shoudl do it like below but now has problem 
+  #     File "/home/gezi/mine/wenzheng/utils/melt/util.py", line 38, in create_restore_fn
+  #     assert variables_to_restore, tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+  # AssertionError: [<tf.Variable 'learning_rate_weight:0' shape=() dtype=float32_ref>, <tf.Variable 'init_fw_0:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_bw_0:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_fw_0_1:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_fw_1:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_bw_0_1:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_bw_1:0' shape=(1, 200) dtype=float32>, <tf.Variable 'embedding_kernel:0' shape=(20, 300) dtype=float32>, <tf.Variable 'init_fw_0_2:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_bw_0_2:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_fw_0_3:0' shape=(1, 200) dtype=float32>, <tf.Variable 'init_bw_0_3:0' shape=(1, 200) dtype=float32>]
+
+  # if FLAGS.lm_path:
+  #   init_fn = melt.create_restore_fn(FLAGS.lm_path, FLAGS.model, 'TextEncoder')
+
   train(Dataset,
         model,  
         criterion,
-        eval_fn=ev.evaluate, 
+        eval_fn=ev.evaluate,
+        init_fn=init_fn, 
         valid_write_fn=ev.valid_write,
         infer_write_fn=ev.infer_write,
         valid_suffix='.valid.csv',

@@ -177,6 +177,7 @@ def tf_train_flow(train_once_fn,
   varnames_in_checkpoint = melt.get_checkpoint_varnames(model_dir)
   #logging.info('varnames_in_checkpoint: {}'.format(varnames_in_checkpoint))
   variables_to_restore_from_model = slim.get_variables_to_restore(include=varnames_in_checkpoint)
+  #logging.info('variables_to_restore_from_model: {}'.format(variables_to_restore_from_model))
   if not variables_to_restore:
     variables_to_restore = variables_to_restore_from_model
   else:
@@ -195,6 +196,7 @@ def tf_train_flow(train_once_fn,
   # TODO fixme if step, step2.. and in checkpoint step then here will be step2...
   #print('------------', [v for v in variables_to_restore if 'step' in v.name])
   loader = tf.train.Saver(var_list=variables_to_restore) 
+
 
   logging.info('max models to keep {}, keep every {} hours'.format(max_models_keep, save_interval_seconds / 3600.0))
   saver = tf.train.Saver(

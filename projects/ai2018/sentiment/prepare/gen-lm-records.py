@@ -25,6 +25,7 @@ flags.DEFINE_string('vocab_', './mount/temp/ai2018/sentiment/tfrecords/word.jieb
 flags.DEFINE_integer('threads', None, '')
 flags.DEFINE_string('source', 'dianping', 'dianping or baike or zhidao or zhihu')
 flags.DEFINE_integer('max_sentence_len', 20, '')
+flags.DEFINE_string('tfrecord_dir', 'tfrecord', '')
 
 import six
 import traceback
@@ -64,7 +65,7 @@ def build_features(file_):
   assert os.path.isdir(FLAGS.input)
   mode = 'train' if 'train' in FLAGS.input else 'valid'
   dir_ = os.path.dirname(os.path.dirname(FLAGS.input))
-  out_file = os.path.join(dir_ , 'tfrecord/{}/{}.record'.format(mode, file_name))
+  out_file = os.path.join(dir_ , '{}/{}/{}.record'.format(FLAGS.tfrecord_dir, mode, file_name))
   os.system('mkdir -p %s' % os.path.dirname(out_file))
   
   print('infile', file_, 'out_file', out_file)
@@ -135,7 +136,6 @@ def build_features(file_):
         print(traceback.format_exc(), file=sys.stderr)
         pass
 
-
 def main(_):  
   FLAGS.word_limit = 2000
   global vocab, char_vocab
@@ -153,8 +153,8 @@ def main(_):
 
   mode = 'train' if 'train' in FLAGS.input else 'valid'
   dir_ = os.path.dirname(os.path.dirname(FLAGS.input))
-  os.system('mkdir -p %s/tfrecord/%s' % (dir_, mode))
-  out_file = os.path.join(dir_, 'tfrecord/{0}/num_records.txt'.format(mode))
+  os.system('mkdir -p %s/%s/%s' % (dir_, FLAGS.tfrecord_dir, mode))
+  out_file = os.path.join(dir_, '{}/{}/num_records.txt'.format(FLAGS.tfrecord_dir, mode))
   gezi.write_to_txt(counter.value, out_file)
 
   print('mean words:', total_words.value / counter.value)

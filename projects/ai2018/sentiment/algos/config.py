@@ -32,6 +32,11 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_bool('att_dropout', True, 'for tf rnet by default att with dropout')
+
+flags.DEFINE_string('lm_path', None, '')
+flags.DEFINE_float('lm_lr_factor', 1., '')
+
 flags.DEFINE_bool('lm_model', False, '')
 flags.DEFINE_bool('dynamic_finetune', False, '')
 flags.DEFINE_string('char_encoder', 'rnn', '')
@@ -46,7 +51,7 @@ flags.DEFINE_integer('num_finetune_chars', None, '')
 flags.DEFINE_integer('content_limit', 0, '')
 flags.DEFINE_float('other_corpus_factor', 1., '')
 
-flags.DEFINE_string('model', 'Model', '')
+flags.DEFINE_string('model', None, '')
 
 flags.DEFINE_string('loss', 'cross', '')
 

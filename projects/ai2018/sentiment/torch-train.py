@@ -60,11 +60,24 @@ def main(_):
 
   model = getattr(base, FLAGS.model)(embedding)
   if FLAGS.num_finetune_words:
-    model.embedding.register_backward_hook(freeze_embedding)
+    model.encode.embedding.register_backward_hook(freeze_embedding)
   if FLAGS.num_finetune_chars and FLAGS.use_char and FLAGS.use_char_emb:
-    model.char_embedding.register_backward_hook(freeze_char_embedding)
+    model.encode.char_embedding.register_backward_hook(freeze_char_embedding)
 
   logging.info('model\n', model)
+
+  param_groups = None
+  if FLAGS.lm_path:
+    #both BiLanguageModel or RNet or MReader.. use self.ecode so ok update encode.embedding.weight... encode.char_embedding.weight..
+    _, updated_params = lele.load(model, FLAGS.lm_path)
+    if FLAGS.lm_lr_factor != 1:
+      ignored_params = list(map(id, updated_params))
+      base_params = filter(lambda p: id(p) not in ignored_params,
+                           model.parameters())
+      param_groups = [
+              {'params': base_params},
+              {'params': updated_params, 'lr': FLAGS.learning_rate * FLAGS.lm_lr_factor}
+            ]
 
   train = melt.apps.get_train()
 
@@ -84,7 +97,8 @@ def main(_):
         infer_write_fn=ev.infer_write,
         valid_suffix='.valid.csv',
         infer_suffix='.infer.csv',
-        optimizer=optimizer)   
+        optimizer=optimizer,
+        param_groups=param_groups)   
 
 if __name__ == '__main__':
   tf.app.run()  

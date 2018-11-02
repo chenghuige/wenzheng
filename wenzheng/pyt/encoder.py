@@ -24,7 +24,7 @@ logging = gezi.logging
 import lele
 import wenzheng
 
-class BiEncoder(nn.Module):
+class TextEncoder(nn.Module):
   """
   Bidirectional Encoder 
   can be used for Language Model and also for text classification or others 
@@ -43,7 +43,7 @@ class BiEncoder(nn.Module):
                use_ner=False,
                lm_model=False,
               ):
-    super(BiEncoder, self).__init__()
+    super(TextEncoder, self).__init__()
 
     Rnn = lele.layers.StackedBRNN
 
@@ -173,6 +173,7 @@ class BiEncoder(nn.Module):
     if lm_model:
       # -1 for excluding padding  0
       self.hidden2tag = nn.Linear(hidden_size * factor, self.vocab_size - 1)
+    
     self.lm_model = lm_model
 
     try:
@@ -183,52 +184,52 @@ class BiEncoder(nn.Module):
 
   # TODO training not needed, since pytorch has model.eval model.train here just compact for tensorflow
   def forward(self, input, mask=None, training=False):
-      assert isinstance(input, dict)
-      x = input['content'] 
+    assert isinstance(input, dict)
+    x = input['content'] 
 
-      #print(x.shape)
-      x_mask = mask if mask is not None else x.eq(0)
-      batch_size = x.size(0)
-      max_c_len = x.size(1)
+    #print(x.shape)
+    x_mask = mask if mask is not None else x.eq(0)
+    batch_size = x.size(0)
+    max_c_len = x.size(1)
 
-      if self.rnn_no_padding:
-        x_mask = torch.zeros_like(x, dtype=torch.uint8)
+    if self.rnn_no_padding:
+      x_mask = torch.zeros_like(x, dtype=torch.uint8)
 
-      x = self.embedding(x)
+    x = self.embedding(x)
 
-      if self.use_char:
-        cx = input['char']
-        cx = cx.view(batch_size * max_c_len, self.char_limit)
-        if self.char_padding:
-          # HACK for pytorch rnn not allow all 0, TODO Too slow...
-          cx = torch.cat([torch.ones([batch_size * max_c_len, 1], dtype=torch.int64).cuda(), cx], 1)
-          cx_mask = cx.eq(0)
-        else:
-          cx_mask = torch.zeros_like(cx, dtype=torch.uint8)
+    if self.use_char:
+      cx = input['char']
+      cx = cx.view(batch_size * max_c_len, self.char_limit)
+      if self.char_padding:
+        # HACK for pytorch rnn not allow all 0, TODO Too slow...
+        cx = torch.cat([torch.ones([batch_size * max_c_len, 1], dtype=torch.int64).cuda(), cx], 1)
+        cx_mask = cx.eq(0)
+      else:
+        cx_mask = torch.zeros_like(cx, dtype=torch.uint8)
 
-        cx = self.char_embedding(cx)
-        cx = self.char_encode(cx, cx_mask)
-        cx = self.char_pooling(cx, cx_mask)
-        cx = cx.view(batch_size, max_c_len, 2 * self.char_hidden_size)
+      cx = self.char_embedding(cx)
+      cx = self.char_encode(cx, cx_mask)
+      cx = self.char_pooling(cx, cx_mask)
+      cx = cx.view(batch_size, max_c_len, 2 * self.char_hidden_size)
 
-        if self.char_combiner == 'concat':
-          x = torch.cat([x, cx], 2)
-        elif self.char_combiner == 'sfu':
-          cx = self.char_fc(cx)
-          x = self.char_sfu_combine(x, cx)
-        else:
-          raise ValueError(self.char_combiner)
+      if self.char_combiner == 'concat':
+        x = torch.cat([x, cx], 2)
+      elif self.char_combiner == 'sfu':
+        cx = self.char_fc(cx)
+        x = self.char_sfu_combine(x, cx)
+      else:
+        raise ValueError(self.char_combiner)
 
-      if self.use_pos:
-        px = input['pos']
-        px = self.pos_embedding(px)
-        x = torch.cat([x, px], 2)
+    if self.use_pos:
+      px = input['pos']
+      px = self.pos_embedding(px)
+      x = torch.cat([x, px], 2)
 
-      if self.use_ner:
-        nx = input['ner']
-        nx = self.ner_embedding(nx)
-        x = torch.cat([x, nx], 2)
+    if self.use_ner:
+      nx = input['ner']
+      nx = self.ner_embedding(nx)
+      x = torch.cat([x, nx], 2)
 
-      x = self.encode(x, x_mask)
+    x = self.encode(x, x_mask)
 
-      return x
+    return x

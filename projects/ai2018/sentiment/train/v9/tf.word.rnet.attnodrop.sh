@@ -1,4 +1,4 @@
-base=./mount 
+base=./mount
 
 if [ $SRC ];
   then echo 'SRC:' $SRC 
@@ -16,14 +16,14 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v9/$fold/$SRC/torch.rnet.nopad.word/
+model_dir=$base/temp/ai2018/sentiment/model/v9/$fold/$SRC/tf.word.rnet.attnodrop/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
 cp $dir/vocab* $model_dir/epoch
 
-exe=./torch-train.py 
+exe=./train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
   exe=./infer.py 
@@ -39,18 +39,13 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --dynamic_finetune=1 \
+        --att_dropout=0 \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \
-        --use_char=1 \
-        --concat_layers=0 \
-        --recurrent_dropout=0 \
-        --use_label_rnn=0 \
-        --hop=1 \
-        --att_combiner='sfu' \
-        --rnn_no_padding=1 \
-        --rnn_padding=0 \
         --model=RNet \
+        --use_char=1 \
+        --concat_layers=1 \
+        --recurrent_dropout=1 \
         --label_emb_height=20 \
         --fold=$fold \
         --use_label_att=1 \
@@ -70,7 +65,7 @@ python $exe \
         --encoder_type=rnn \
         --cell=gru \
         --keep_prob=0.7 \
-        --num_layers=1 \
+        --num_layers=2 \
         --rnn_hidden_size=200 \
         --encoder_output_method=topk,att \
         --eval_interval_steps 1000 \
@@ -80,8 +75,8 @@ python $exe \
         --valid_interval_epochs=1 \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
-        --optimizer=adamax \
-        --learning_rate=0.002 \
+        --optimizer=adam_t2t \
+        --learning_rate=0.001 \
         --decay_target=loss \
         --decay_patience=1 \
         --decay_factor=0.8 \

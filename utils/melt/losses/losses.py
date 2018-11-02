@@ -243,7 +243,6 @@ def focal_loss(target_tensor, prediction_tensor, weights=None, alpha=0.25, gamma
     #return tf.reduce_sum(per_entry_cross_ent)
     return tf.reduce_mean(per_entry_cross_ent)
 
-
 def earth_mover_loss(y_true, y_pred):	
   cdf_ytrue = tf.cumsum(y_true, axis=-1)
   cdf_ypred = tf.cumsum(y_pred, axis=-1)
@@ -251,3 +250,32 @@ def earth_mover_loss(y_true, y_pred):
   #return samplewise_emd
   return tf.reduce_mean(samplewise_emd)
 
+def bilm_loss(model, x, y, training=False):
+  zero_col = tf.expand_dims(tf.zeros_like(y[:,0]), 1)
+  fw_y = tf.concat([y[:, 1:], zero_col], 1)
+  bw_y = tf.concat([zero_col, y[:, 0:-1]], 1)
+
+  fw_mask = fw_y > 0
+  bw_mask = bw_y > 0  
+
+  y_ = model.encode(x, training=training)
+  fw_y_, bw_y_ = tf.split(y_, 2, axis=-1)
+
+  fw_y_ = model.encode.hidden2tag(fw_y_)
+  bw_y_ = model.encode.hidden2tag(bw_y_)
+
+  fw_weight = tf.to_float(fw_mask)
+  bw_weight = tf.to_float(bw_mask)
+
+  fw_loss = melt.seq2seq.sequence_loss_by_example(fw_y_, fw_y, fw_weight)
+  bw_loss = melt.seq2seq.sequence_loss_by_example(bw_y_, bw_y, bw_weight)
+
+  fw_loss = tf.reduce_mean(fw_loss)
+  bw_loss = tf.reduce_mean(bw_loss)
+
+  # TODO FIXME melt should check return loss is scalar
+  loss = (fw_loss + bw_loss) / 2.
+
+  return loss
+  
+  

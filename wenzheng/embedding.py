@@ -70,16 +70,16 @@ except Exception:
 
 
 layers = tf.keras.layers
+
 class Embedding(layers.Layer):
   """An Embedding layer."""
   
-  def __init__(self, vocab_size, embedding_dim=None, embedding=None, trainable=True, vocab2_size=None, vocab2_trainable=False, **kwargs):
+  def __init__(self, vocab_size, embedding_dim=None, embedding=None, trainable=True, freeze_size=None, **kwargs):
     super(Embedding, self).__init__(**kwargs)
     self.vocab_size = vocab_size
-    self.vocab2_size = vocab2_size
+    self.freeze_size = freeze_size
     self.embedding_dim = embedding_dim if embedding_dim else FLAGS.emb_dim
     self.trainable = trainable
-    self.vocab2_trainable = vocab2_trainable
 
     self.embedding = embedding
     self.embedding2 = None
@@ -89,12 +89,7 @@ class Embedding(layers.Layer):
           embedding = np.load(embedding)
         else:
           embedding = None
-      embedding2 = None
-      if vocab2_size and embedding is not None:
-        embedding2 = embedding[vocab_size:]
-        embedding = embedding[:vocab_size]
       self.embedding = embedding
-      self.embedding2 = embedding2
       
   def build(self, _):
     initializer = 'uniform'
@@ -120,29 +115,10 @@ class Embedding(layers.Layer):
         initializer=initializer,
         trainable=self.trainable)
 
-    if self.vocab2_size:
-      initializer = 'uniform'
-      if self.embedding2 is not None:
-        initializer = tf.constant_initializer(self.embedding2)
-        logging.info('emb2 init from numpy pretrain and trainable:', self.vocab2_trainable)  
-      else:
-        if FLAGS.emb_init == 'uniform':
-          init_width = 0.5 / self.embedding_dim
-          logging.info('emb random_uniform init with width:', init_width)
-          initializer = tf.random_uniform_initializer(-init_width, init_width)
-        elif FLAGS.emb_init == 'normal' or FLAGS.emb_init == 'random':
-          stddev = FLAGS.emb_stddev or self.embedding_dim ** -0.5
-          logging.info('emb random_normal init with stddev:', stddev)
-          initializer = tf.random_normal_initializer(mean=0., stddev=stddev)
-        logging.info('vocab2 trainable:', self.vocab2_trainable)
-      embedding2 = self.add_variable(
-          "embedding2_kernel",
-          shape=[int(self.vocab2_size), self.embedding_dim],
-          dtype=tf.float32,
-          initializer=initializer,
-          trainable=self.vocab2_trainable)
-
-      self.embedding = tf.concat([self.embedding, embedding2], 0)
+    if self.freeze_size:
+      assert self.trainable
+      embedding, embedding2 = tf.split(self.embedding, [self.vocab_size - self.freeze_size, self.freeze_size], 0)
+      self.embedding = tf.concat([embedding, tf.stop_gradient(embedding2)], 0)
 
   def call(self, x):
     #print('---------', self.embedding)

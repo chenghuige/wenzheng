@@ -358,7 +358,30 @@ def to_gbk(text):
 def to_utf8(text):
   return text.decode('gbk', 'ignore').encode('utf8', 'ignore')
 
+# sentence piece
+sp = None
+def init_sp(path=None):
+  import sentencepiece as spm 
+  global sp
+  if sp is None: 
+    sp = spm.SentencePieceProcessor()
+    if path is None:
+      path = './sp.model'
+    sp.Load(path)
+
+  assert sp
+
 def word_cut(text):
+  if gezi.env_has('SENTENCE_PIECE'):
+    init_sp()
+    l = sp.EncodeAsPieces(text)
+    if l:
+      if l[0] == '▁':
+        l =  l[1:]
+      elif l[0].startswith('▁'):
+        l[0] = l[0][1:]
+    return l
+
   if gezi.env_has('STANFORD_NLP'):
     import emoji
     init_stanford_nlp()
@@ -640,7 +663,6 @@ class JiebaSegmentor(object):
     return words
 
 Segmentor = JiebaSegmentor
-
 
 if gezi.encoding == 'gbk' or gezi.env_has('BSEG'):
   import libgezi

@@ -22,6 +22,9 @@ FLAGS = flags.FLAGS
 import sys 
 import os
 
+from tensorflow import keras
+
+import gezi
 import melt
 logging = melt.logging
 import numpy as np
@@ -64,6 +67,7 @@ class Encoder(melt.Model):
                                       concat_layers=self.concat_layers,
                                       bw_dropout=self.bw_dropout,
                                       residual_connect=self.residual_connect,
+                                      train_init_state=FLAGS.rnn_train_init_state,
                                       cell=type)
       elif type == 'cnn' or type == 'convnet':
         logging.info('encoder num_filters:{}'.format(FLAGS.num_filters))
@@ -111,3 +115,225 @@ class Encoder(melt.Model):
       else:
         seq = encode(seq, seq_len, training=training)
     return seq
+
+class TextEncoder(melt.Model):
+  """
+  Bidirectional Encoder 
+  can be used for Language Model and also for text classification or others 
+  input is batch of sentence ids [batch_size, num_steps]
+  output is [batch_size, num_steps, 2 * hidden_dim]
+  for text classification you can use pooling to get [batch_size, dim] as text resprestation
+  for language model you can just add fc layer to convert 2 * hidden_dim to vocab_size -1 and calc cross entropy loss
+  Notice you must oututs hidden_dim(forward) and hidden_dim(back_ward) concated at last dim as 2 * hidden dim, so MUST be bidirectional
+  """
+  def __init__(self,
+               config, 
+               embedding_weight=None,
+               use_char=False,
+               use_char_emb=True,
+               use_pos=False,
+               use_ner=False,
+               lm_model=False,
+              ):
+    super(TextEncoder, self).__init__()
+
+    Rnn = melt.layers.CudnnRnn
+
+    word_config = config['word']
+    vocab_file = word_config['vocab']
+    vocab = gezi.Vocabulary(vocab_file)
+    vocab_size = vocab.size()
+    word_config['vocab_size'] = vocab_size
+    num_layers = word_config['num_layers']
+    hidden_size = word_config['hidden_size']
+    emb_dim = word_config['emb_dim']
+    word_embedding_file = word_config['embedding_file']
+    finetune_word_embedding = word_config['trainable']
+    num_finetune_words = word_config['num_finetune']
+    embedding_weight = embedding_weight if embedding_weight is not None else word_embedding_file
+
+    # vocab2_size = 0
+    # if num_finetune_words:
+    #   vocab2_size = vocab_size - num_finetune_words
+    #   vocab_size = num_finetune_words
+    
+    # # TODO FIXME TypeError: Eager execution of tf.constant with unsupported shape (value has 2039400 elements, shape is (144299, 300) with 43289700 elements).
+    # # For large vocab not Eager mode not ok..
+    # self.embedding = wenzheng.Embedding(vocab_size, 
+    #                                     emb_dim, 
+    #                                     embedding_weight, 
+    #                                     trainable=finetune_word_embedding,
+    #                                     vocab2_size=vocab2_size)
+    num_freeze_words = 0
+    if num_finetune_words:
+      num_freeze_words = vocab_size - num_finetune_words
+    self.embedding = wenzheng.Embedding(vocab_size, 
+                                        emb_dim, 
+                                        embedding_weight, 
+                                        trainable=finetune_word_embedding,
+                                        freeze_size=num_freeze_words)
+
+    self.char_embedding = None
+    if use_char:
+      char_config = config['char']
+      char_config['use_char_emb'] = use_char_emb
+      if use_char_emb:
+        char_vocab_file = vocab_file.replace('vocab.txt', 'char_vocab.txt')
+        assert os.path.exists(char_vocab_file)
+        char_config['vocab'] = char_vocab_file
+        char_vocab = gezi.Vocabulary(char_vocab_file)
+        char_vocab_size = char_vocab.size()
+        char_config['char_vocab_size'] = char_vocab_size
+        char_emb_dim = char_config['emb_dim']
+        char_embedding_weight = word_embedding_file.replace('emb.npy', 'char_emb.npy') if word_embedding_file else None
+        char_config['embedding_weight'] = char_embedding_weight
+        finetune_char_embedding = char_config['trainable']
+        num_finetune_chars = char_config['num_finetune']
+        num_freeze_chars = 0
+        if num_finetune_chars:
+          num_freeze_chars = char_vocab_size - num_finetune_chars
+        self.char_embedding = wenzheng.Embedding(char_vocab_size, 
+                                                 char_emb_dim, 
+                                                 char_embedding_weight, 
+                                                 trainable=finetune_char_embedding,
+                                                 freeze_size=num_freeze_chars)
+      else:
+        self.char_embedding = self.embedding
+
+    dropout_rate = config['dropout_rate']
+    self.keep_prob = 1 - dropout_rate
+    recurrent_dropout = config['recurrent_dropout']
+    cell = config['cell']
+    rnn_padding = config['rnn_padding']
+    rnn_no_padding = config['rnn_no_padding']
+    concat_layers = config['concat_layers']
+    train_init_state = config['rnn_train_init_state']
+
+    if use_char:
+      char_hidden_size = char_config['hidden_size']
+      self.char_hidden_size = char_hidden_size
+      char_output_method = char_config['output_method']
+      char_combiner = char_config['combiner']
+      self.char_combiner = char_combiner
+      char_padding = char_config['padding']
+      self.char_padding = char_padding
+      self.char_limit = char_config['limit']
+      self.char_encode = Rnn(
+            num_layers=1,
+            num_units=char_hidden_size,
+            keep_prob=1 - dropout_rate,
+            recurrent_dropout=recurrent_dropout,
+            concat_layers=False,
+            train_init_state=False if lm_model else train_init_state,
+            cell=cell,
+        )    
+
+      self.char_pooling = melt.layers.Pooling(char_output_method)
+      if char_combiner == 'sfu':
+        self.char_sfu_combine = melt.layers.SemanticFusionCombine(keep_prob=self.keep_prob)
+
+    self.pos_embedding = None
+    if use_pos:
+      pos_config = config['pos']
+      tag_emb_dim = pos_config['emb_dim']
+      pos_vocab_file = vocab_file.replace('vocab.txt', 'pos_vocab.txt')
+      assert os.path.exists(pos_vocab_file)
+      pos_config['vocab'] = pos_vocab_file
+      pos_vocab = gezi.Vocabulary(pos_vocab_file)
+      self.pos_embedding = wenzheng.Embedding(pos_vocab.size(), tag_emb_dim)
+
+    self.ner_embedding = None
+    if use_ner:
+      ner_config = config['ner']
+      tag_emb_dim = ner_config['emb_dim']
+      ner_vocab_file = vocab_file.replace('vocab.txt', 'ner_vocab.txt')
+      assert os.path.exists(ner_vocab_file)
+      ner_config['vocab'] = ner_vocab_file
+      ner_vocab = gezi.Vocabulary(ner_vocab_file)
+      self.ner_embedding = wenzheng.Embedding(ner_vocab.size(), tag_emb_dim)
+
+    hidden_size = word_config['hidden_size']
+    num_layers = word_config['num_layers']
+
+    if lm_model:
+      assert config['encoder'] == 'rnn'
+
+    if not lm_model and config['encoder'] != 'rnn':
+      self.encode = Encoder(config['encoder'])   
+    else:
+      self.encode = Rnn(
+            num_layers=num_layers,
+            num_units=hidden_size,
+            keep_prob=1 - dropout_rate,
+            recurrent_dropout=recurrent_dropout,
+            concat_layers=concat_layers,
+            # just for simple finetune... since now init state var scope has some problem
+            train_init_state=False,
+            cell=cell,
+      )
+
+    factor = num_layers if concat_layers else 1
+    output_size = 2 * hidden_size * factor
+
+    self.vocab_size = vocab_size
+    self.output_size = output_size
+    self.rnn_no_padding = rnn_no_padding
+    self.use_char = use_char 
+    self.use_pos, self.use_ner = use_pos, use_ner
+    self.num_units = hidden_size
+
+    if lm_model:
+      # -1 for excluding padding  0
+      self.hidden2tag = keras.layers.Dense(self.vocab_size - 1)
+    
+    self.lm_model = lm_model
+
+    try:
+      import yaml 
+      logging.info('config\n', yaml.dump(config, default_flow_style=False))
+    except Exception:
+      logging.info('config', config)
+
+  # TODO training not needed, since pytorch has model.eval model.train here just compact for tensorflow
+  def call(self, input, c_len=None, max_c_len=None, training=False):
+    assert isinstance(input, dict)
+    x = input['content'] 
+
+    batch_size = melt.get_shape(x, 0)
+    if c_len is None or max_c_len is None:
+      c_len, max_c_len = melt.length2(x)
+
+    if self.rnn_no_padding:
+      logging.info('------------------no padding! train or eval')
+      c_len = max_c_len
+
+    x = self.embedding(x)
+
+    if FLAGS.use_char:
+      cx = input['char']
+
+      cx = tf.reshape(cx, [batch_size * max_c_len, FLAGS.char_limit])
+      chars_len = melt.length(cx)
+      cx = self.char_embedding(cx)
+      cx = self.char_encode(cx, chars_len, training=training)
+      cx = self.char_pooling(cx, chars_len)
+      cx = tf.reshape(cx, [batch_size, max_c_len, 2 * self.num_units])
+
+      if self.char_combiner == 'concat':
+        x = tf.concat([x, cx], axis=2)
+      elif self.char_combiner == 'sfu':
+        x = self.char_sfu_combine(x, cx, training=training)
+
+    if FLAGS.use_pos:
+      px = input['pos']      
+      px = self.pos_embedding(px)
+      x = tf.concat([x, px], axis=2)
+
+    if FLAGS.use_ner:
+      nx = input['ner']      
+      nx = self.ner_embedding(nx)
+      x = tf.concat([x, nx], axis=2)
+
+    x = self.encode(x, c_len, training=training)
+
+    return x

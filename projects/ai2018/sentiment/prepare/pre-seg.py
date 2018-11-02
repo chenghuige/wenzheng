@@ -20,6 +20,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('seg_method', 'basic', '')
 flags.DEFINE_string('name', None, '')
 flags.DEFINE_bool('for_pretrain', False, '')
+flags.DEFINE_string('sp_path', None, '')
 
 assert FLAGS.seg_method
 
@@ -50,11 +51,14 @@ counter2 = WordCounter(most_common=0, min_count=1)
 
 print('seg_method:', FLAGS.seg_method, file=sys.stderr)
 
+if gezi.env_has('SENTENCE_PIECE'):
+  assert FLAGS.sp_path 
+  gezi.segment.init_sp(FLAGS.sp_path)
+
 def seg(id, text, out, type):
   text = filter.filter(text)
   counter.add(START_WORD)
   counter.add(END_WORD)
-
   l = gezi.cut(text, type)
 
   if type != 'word':

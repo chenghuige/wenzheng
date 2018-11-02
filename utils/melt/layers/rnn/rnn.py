@@ -35,9 +35,12 @@ from melt import dropout
 class InitStates(Layer):
   def __init__(self, num_layers, num_units, name='init_fw'):
     super(InitStates, self).__init__()
+    # problem in naming.. might use check point list ?
     self.init = [None] * num_layers
     for layer in range(num_layers):
       self.init[layer] = self.add_variable("%s_%d" % (name, layer), [1, num_units], initializer=tf.zeros_initializer())
+
+    self.init = tf.contrib.checkpoint.List(self.init)
 
   def call(self, layer, batch_size=None):
     if batch_size is None:
@@ -161,6 +164,27 @@ class CudnnRnn(keras.Model):
     if self.train_init_state:
       # well TODO! add_variable not allowed in keras.Model but using keras.layers.Layer you should not use other layers otherwise not save them
       # TODO name is not very ok... without scope ...
+      # embedding_kernel (DT_FLOAT) [20,300]  # should in r_net
+      # global_step (DT_INT64) []
+      # init_bw_0 (DT_FLOAT) [1,200]  # should in cudnn_rnn
+      # init_bw_0_1 (DT_FLOAT) [1,200]
+      # init_bw_0_2 (DT_FLOAT) [1,200]
+      # init_bw_0_3 (DT_FLOAT) [1,200]
+      # init_bw_1 (DT_FLOAT) [1,200]
+      # init_fw_0 (DT_FLOAT) [1,200]
+      # init_fw_0_1 (DT_FLOAT) [1,200]
+      # init_fw_0_2 (DT_FLOAT) [1,200]
+      # init_fw_0_3 (DT_FLOAT) [1,200]
+      # init_fw_1 (DT_FLOAT) [1,200]
+      # learning_rate_weight (DT_FLOAT) []
+      # r_net/cudnn_rnn_2/cu_dnngru_6/bias (DT_FLOAT) [1200]
+      # r_net/cudnn_rnn_2/cu_dnngru_6/kernel (DT_FLOAT) [1100,600]
+      # r_net/cudnn_rnn_2/cu_dnngru_6/recurrent_kernel (DT_FLOAT) [200,600]
+      # r_net/cudnn_rnn_2/cu_dnngru_7/bias (DT_FLOAT) [1200]
+      # r_net/cudnn_rnn_2/cu_dnngru_7/kernel (DT_FLOAT) [1100,600]
+      # r_net/cudnn_rnn_2/cu_dnngru_7/recurrent_kernel (DT_FLOAT) [200,600]
+      # r_net/cudnn_rnn_3/cu_dnngru_8/bias (DT_FLOAT) [1200]
+
       self.init_fw_layer = InitStates(num_layers, num_units, 'init_fw')
       self.init_bw_layer = InitStates(num_layers, num_units, 'init_bw')
       if self.cell == 'lstm':
