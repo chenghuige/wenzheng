@@ -39,7 +39,7 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC/torch.word.lm.2layer.nopad/latest.pyt \
+        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC.long/torch.word.lm.nopad/latest.pyt \
         --dynamic_finetune=1 \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \

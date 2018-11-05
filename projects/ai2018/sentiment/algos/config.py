@@ -32,20 +32,12 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_bool('use_class_weights', False, '')
 flags.DEFINE_bool('att_dropout', True, 'for tf rnet by default att with dropout')
-
-flags.DEFINE_string('lm_path', None, '')
-flags.DEFINE_float('lm_lr_factor', 1., '')
-
-flags.DEFINE_bool('lm_model', False, '')
-flags.DEFINE_bool('dynamic_finetune', False, '')
-flags.DEFINE_string('char_encoder', 'rnn', '')
 
 flags.DEFINE_integer('char_min_count', None, '')
 flags.DEFINE_integer('tag_min_count', None, '')
 
-flags.DEFINE_integer('num_finetune_words', None, '')
-flags.DEFINE_integer('num_finetune_chars', None, '')
 #flags.DEFINE_float('label_smoothing', 0, '')
 
 flags.DEFINE_integer('content_limit', 0, '')
@@ -93,17 +85,6 @@ flags.DEFINE_bool('use_simple_char', False, '')
 flags.DEFINE_string('simple_char_combiner', 'concat', '')
 ## in prepare.config
 #flags.DEFINE_bool('use_char', False, '')
-flags.DEFINE_bool('use_char_emb', True, 'if use char and not use char emb then use another char emb different from emb other wise share to use one emb')
-flags.DEFINE_bool('use_simple_ngrams', False, '')
-flags.DEFINE_string('char_combiner', 'concat', '')
-flags.DEFINE_bool('char_padding', False, '')
-
-flags.DEFINE_bool('use_ngrams', False, '')
-flags.DEFINE_bool('use_fngrams', False, '')
-flags.DEFINE_integer('ngram_emb_dim', 300, '')
-flags.DEFINE_string('ngram_combiner', 'sum', 'sum or concat or dsfu')
-flags.DEFINE_string('ngram_self_combiner', 'sum', 'sum or concat')
-flags.DEFINE_bool('ngram_only', False, '')
 
 flags.DEFINE_bool('use_token_info', False, '')
 flags.DEFINE_bool('use_info_fc', False, '')

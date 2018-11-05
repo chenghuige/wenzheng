@@ -32,7 +32,7 @@ class TextEncoder(nn.Module):
   output is [batch_size, num_steps, 2 * hidden_dim]
   for text classification you can use pooling to get [batch_size, dim] as text resprestation
   for language model you can just add fc layer to convert 2 * hidden_dim to vocab_size -1 and calc cross entropy loss
-  Notice you must oututs hidden_dim(forward) and hidden_dim(back_ward) concated at last dim as 2 * hidden dim, so MUST be bidirectional
+  Notice you must outputs hidden_dim(forward) and hidden_dim(back_ward) concated at last dim as 2 * hidden dim, so MUST be bidirectional
   """
   def __init__(self,
                config, 
@@ -182,18 +182,23 @@ class TextEncoder(nn.Module):
     except Exception:
       logging.info('config', config)
 
+  def get_mask(self, x):
+    if self.rnn_no_padding:
+      x_mask = torch.zeros_like(x, dtype=torch.uint8)   
+    else:
+      x_mask = x.eq(0)
+
+    return x_mask
+
   # TODO training not needed, since pytorch has model.eval model.train here just compact for tensorflow
   def forward(self, input, mask=None, training=False):
     assert isinstance(input, dict)
     x = input['content'] 
 
     #print(x.shape)
-    x_mask = mask if mask is not None else x.eq(0)
+    x_mask = mask if mask is not None else self.get_mask(x)
     batch_size = x.size(0)
     max_c_len = x.size(1)
-
-    if self.rnn_no_padding:
-      x_mask = torch.zeros_like(x, dtype=torch.uint8)
 
     x = self.embedding(x)
 

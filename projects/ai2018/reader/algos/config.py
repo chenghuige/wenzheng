@@ -19,7 +19,10 @@ FLAGS = flags.FLAGS
 CLASSES = ['neg', 'pos', 'na']
 NUM_CLASSES = 3
 
-flags.DEFINE_string('model', 'Model', '')
+flags.DEFINE_integer('char_limit', 6, '')
+flags.DEFINE_bool('use_char', False, '')
+
+flags.DEFINE_string('model', None, '')
 
 flags.DEFINE_bool('use_type', False, '')
 flags.DEFINE_bool('use_type_emb', False, '')
@@ -63,18 +66,6 @@ flags.DEFINE_string('encoder_combiner', 'concat', '')
 
 flags.DEFINE_bool('use_mlp', False, '')
 flags.DEFINE_bool('use_word', True, '')
-flags.DEFINE_bool('use_simple_char', False, '')
-flags.DEFINE_string('simple_char_combiner', 'concat', '')
-flags.DEFINE_bool('use_char', False, '')
-flags.DEFINE_bool('use_simple_ngrams', False, '')
-flags.DEFINE_string('char_combiner', 'concat', '')
-
-flags.DEFINE_bool('use_ngrams', False, '')
-flags.DEFINE_bool('use_fngrams', False, '')
-flags.DEFINE_integer('ngram_emb_dim', 300, '')
-flags.DEFINE_string('ngram_combiner', 'sum', 'sum or concat or dsfu')
-flags.DEFINE_string('ngram_self_combiner', 'sum', 'sum or concat')
-flags.DEFINE_bool('ngram_only', False, '')
 
 flags.DEFINE_bool('use_pos', False, '')
 flags.DEFINE_bool('use_tag', False, '')

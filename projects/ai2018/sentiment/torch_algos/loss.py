@@ -20,40 +20,57 @@ FLAGS = flags.FLAGS
 
 import sys 
 import os
+import numpy as np
 
 from algos.weights import *
-from algos.config import NUM_CLASSES
+from algos.config import NUM_CLASSES, NUM_ATTRIBUTES
 
 import lele
 import torch
 
 from torch import nn
 
-loss_fn = torch.nn.CrossEntropyLoss()
-loss_fn2 = torch.nn.CrossEntropyLoss(reduction='none')
-bloss_fn = nn.BCEWithLogitsLoss()
+class Criterion(object):
+  def __init__(self, class_weights=None):
+    self.class_weights = class_weights
+    self.loss_fn = torch.nn.CrossEntropyLoss()
+    self.loss_fn2 = torch.nn.CrossEntropyLoss(reduction='none')
+    self.bloss_fn = nn.BCEWithLogitsLoss()
+    # if FLAGS.use_class_weights:
+    #   self.weighted_loss_fn = [None] * NUM_ATTRIBUTES
+    #   class_weights = np.reshape(class_weights, [NUM_ATTRIBUTES, NUM_CLASSES])
+    #   class_weights = np.log(np.log(class_weights + 1.) + 1.)
+    #   logging.info('class_weights', class_weights)
+    #   for i in range(NUM_ATTRIBUTES):
+    #     self.weighted_loss_fn[i] = torch.nn.CrossEntropyLoss(weight=torch.Tensor(class_weights[i]).cuda())
 
-def criterion(model, x, y, training=False):
-  y_ = model(x)
-  
-  #print(y.shape, y_.shape)
-  # without view Expected target size (32, 4), got torch.Size([32, 20])
-  if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
-    loss = loss_fn2(y_.view(-1, model.num_classes), y.view(-1)).view(-1, NUM_ATTRIBUTES)
-    # stop some gradients due to learning_rate weights
-    loss = lele.adjust_lrs(loss)
-    loss = loss.mean()
-  else:
-    loss = loss_fn(y_.view(-1, model.num_classes), y.view(-1))  
-  
-  # depreciated add neu binary not help final ensemble
-  if FLAGS.loss_type == 'add_neu_binary':
-    cid = 2
-    y_ = y_[:,:,cid]
-    y = (y == 2).float()
+  def forward(self, model, x, y, training=False):
+    y_ = model(x)
     
-    bloss = bloss_fn(y_, y)
-    loss = loss + bloss * FLAGS.other_loss_factor
+    #print(y.shape, y_.shape)
+    # without view Expected target size (32, 4), got torch.Size([32, 20])
+    if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
+      loss = self.loss_fn2(y_.view(-1, model.num_classes), y.view(-1)).view(-1, NUM_ATTRIBUTES)
+      # stop some gradients due to learning_rate weights
+      loss = lele.adjust_lrs(loss)
+      loss = loss.mean()
+    # elif FLAGS.use_class_weights:
+    #   losses = []
+    #   for i in range(NUM_ATTRIBUTES):
+    #     loss = self.weighted_loss_fn[i](y_[:,i,:], y[:,i])
+    #     losses.append(loss)
+    #   loss = torch.mean(torch.stack(losses))
+    else:
+      loss = self.loss_fn(y_.view(-1, model.num_classes), y.view(-1))  
+    
+    # depreciated add neu binary not help final ensemble
+    if FLAGS.loss_type == 'add_neu_binary':
+      cid = 2
+      y_ = y_[:,:,cid]
+      y = (y == 2).float()
+      
+      bloss = self.bloss_fn(y_, y)
+      loss = loss + bloss * FLAGS.other_loss_factor
 
-  return loss
+    return loss
  

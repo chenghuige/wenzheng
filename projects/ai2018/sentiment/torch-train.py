@@ -28,7 +28,7 @@ import lele
 
 from wenzheng.utils import input_flags 
 
-from torch_algos.loss import criterion
+from torch_algos.loss import Criterion
 import torch_algos.model as base
 from dataset import Dataset
 import evaluate as ev
@@ -89,9 +89,12 @@ def main(_):
     optimizer = lele.training.optimizers.NoamOpt(128, 2, 4000,
         torch.optim.Adamax(model.parameters(), lr=0))
 
+  #criterion = Criterion(ev.class_weights)
+  criterion = Criterion()
+  
   train(Dataset,
         model,  
-        criterion,
+        criterion.forward,
         eval_fn=ev.evaluate, 
         valid_write_fn=ev.valid_write,
         infer_write_fn=ev.infer_write,

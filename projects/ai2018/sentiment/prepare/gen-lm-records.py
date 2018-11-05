@@ -80,6 +80,7 @@ def build_features(file_):
     for line in tqdm(open(file_), total=1e6, ascii=True):
       try:
         line = line.rstrip('\n')
+        line = filter.filter(line)
         words = line.split(' ')
         words = gezi.add_start_end(words)
         words_list = gezi.break_sentence(words, FLAGS.max_sentence_len)
@@ -140,7 +141,9 @@ def main(_):
   FLAGS.word_limit = 2000
   global vocab, char_vocab
   vocab = gezi.Vocabulary(FLAGS.vocab_)
-  char_vocab = gezi.Vocabulary(FLAGS.vocab_.replace('vocab.txt', 'char_vocab.txt'))
+  print('vocab file', FLAGS.vocab_, 'vocab size', vocab.size())
+  if FLAGS.use_char:
+    char_vocab = gezi.Vocabulary(FLAGS.vocab_.replace('vocab.txt', 'char_vocab.txt'))
 
   files = glob.glob(FLAGS.input + '/*') 
   pool = multiprocessing.Pool(multiprocessing.cpu_count())

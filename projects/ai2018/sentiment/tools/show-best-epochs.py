@@ -16,46 +16,48 @@ import sys
 import os
 
 import glob
+import gezi
 
-model_dir = sys.argv[1]
+model_dir = '..'
+if len(sys.argv) > 1:
+  model_dir = sys.argv[1] 
 
-key = 'adjusted_f1'
+key = 'adjusted_f1/mean'
 
 if len(sys.argv) > 2:
   key = sys.argv[2]
 
 print('key', key)
 
-def parse(x, key='adjusted_f1'):
-  idx = x.index('epoch:')
-  idx2 = x.index(' ', idx)
-  epoch = int(float(line[idx:idx2].split('/')[0].split(':')[1]))
-  
-  idx = x.index(f'{key}/mean:')
-  idx2 = x.index("'", idx)
-  score = float(x[idx:idx2].split(':')[-1])
-
-  return epoch, score
-
 if key != 'loss':
   cmp = lambda x, y: x > y 
 else:
   cmp = lambda x, y: x < y
 
+# model.ckpt-3.00-9846.valid.metrics
+# ckpt-4.valid.metrics 
 for dir_ in glob.glob(f'{model_dir}/*/*'):
   if not os.path.isdir(dir_):
     continue
-  print(dir_)
   best_score = 0 if key != 'loss' else 1e10
   best_epoch = None
 
-  for file_ in glob.glob(f'{dir_}/log.txt*'): 
-    for line in open(file_):
-      if 'epoch_valid' in line:
-        epoch, score = parse(line, key)
-        #print(epoch, score, best_score, cmp(score, best_score))
-        if cmp(score, best_score):
-          best_score = score
-          best_epoch = epoch
-  print('best_epoch:', best_epoch, 'best_score:', best_score) 
+  files = glob.glob(f'{dir_}/epoch/*.valid.metrics')
+  if not files:
+    files = glob.glob(f'{dir_}/ckpt/*.valid.metrics')
 
+  find = False
+  for file_ in files: 
+    epoch = int(float(gezi.strip_suffix(file_, 'valid.metrics').split('-')[1]))
+    for line in open(file_):
+      name, score = line.strip().split()
+      score = float(score)
+      if name != key:
+        continue 
+      if cmp(score, best_score):
+        find = True
+        best_score = score
+        best_epoch = epoch
+  if find:
+    print(dir_)
+    print('best_epoch:', best_epoch, 'best_score:', best_score) 

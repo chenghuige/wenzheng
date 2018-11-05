@@ -254,24 +254,31 @@ class MReader(ModelBase):
 
     x = self.encode(input, x_mask, training=training)
 
-    label_emb = self.label_embedding.weight
-    label_seq = lele.tile(label_emb.unsqueeze(0), 0, batch_size)
-    x2_mask = torch.zeros(batch_size, self.label_emb_height).byte().cuda()
-    if not FLAGS.use_label_rnn:
-      label_seq = self.label_forward(label_seq)
+    if FLAGS.use_label_att:
+      label_emb = self.label_embedding.weight
+      label_seq = lele.tile(label_emb.unsqueeze(0), 0, batch_size)
+      x2_mask = torch.zeros(batch_size, self.label_emb_height).byte().cuda()
+      if not FLAGS.use_label_rnn:
+        label_seq = self.label_forward(label_seq)
+      else:
+        label_seq = self.label_forward(label_seq, x2_mask)
+      # Align and aggregate
+      c_check = x
+      q = label_seq
     else:
-      label_seq = self.label_forward(label_seq, x2_mask)
-    # Align and aggregate
-    c_check = x
-    q = label_seq
+      c_check = x
     
     #print(c_check.shape, q.shape, x2_mask.shape)
     for i in range(FLAGS.hop):
-      q_tilde = self.interactive_aligners[i].forward(c_check, q, x2_mask)
-      c_bar = self.interactive_SFUs[i].forward(c_check, torch.cat([q_tilde, c_check * q_tilde, c_check - q_tilde], 2))
-      c_tilde = self.self_aligners[i].forward(c_bar, x_mask)
-      c_hat = self.self_SFUs[i].forward(c_bar, torch.cat([c_tilde, c_bar * c_tilde, c_bar - c_tilde], 2))
-      c_check = self.aggregate_rnns[i].forward(c_hat, x_mask)
+      if FLAGS.use_label_att:
+        q_tilde = self.interactive_aligners[i].forward(c_check, q, x2_mask)
+        c_bar = self.interactive_SFUs[i].forward(c_check, torch.cat([q_tilde, c_check * q_tilde, c_check - q_tilde], 2))
+      else:
+        c_bar = c_check
+      if FLAGS.use_self_att:
+        c_tilde = self.self_aligners[i].forward(c_bar, x_mask)
+        c_hat = self.self_SFUs[i].forward(c_bar, torch.cat([c_tilde, c_bar * c_tilde, c_bar - c_tilde], 2))
+        c_check = self.aggregate_rnns[i].forward(c_hat, x_mask)
     
     x = c_check
 

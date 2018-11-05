@@ -27,6 +27,7 @@ flags.DEFINE_bool('binary', False, '')
 flags.DEFINE_integer('limit', 5000, '')
 flags.DEFINE_integer('max_examples', None, '')
 flags.DEFINE_integer('threads', None, '')
+flags.DEFINE_bool('use_char', False, '')
 
 import traceback
 import multiprocessing

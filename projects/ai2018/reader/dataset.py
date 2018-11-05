@@ -51,12 +51,24 @@ class Dataset(melt.tfrecords.Dataset):
       'answer': tf.FixedLenFeature([], tf.int64),
       'answer_str':  tf.FixedLenFeature([], tf.string),
       'query': tf.VarLenFeature(tf.int64),
+      'query_char': tf.VarLenFeature(tf.int64),
+      'query_pos': tf.VarLenFeature(tf.int64),
       'query_str':  tf.FixedLenFeature([], tf.string),
       'passage': tf.VarLenFeature(tf.int64),
+      'passage_char': tf.VarLenFeature(tf.int64),
+      'passage_pos': tf.VarLenFeature(tf.int64),
       'passage_str':  tf.FixedLenFeature([], tf.string),
       'candidate_neg':  tf.VarLenFeature(tf.int64),
+      'candidate_neg_char': tf.VarLenFeature(tf.int64),
+      'candidate_neg_pos': tf.VarLenFeature(tf.int64),
       'candidate_pos':  tf.VarLenFeature(tf.int64),
+      'candidate_pos_char': tf.VarLenFeature(tf.int64),
+      'candidate_pos_pos': tf.VarLenFeature(tf.int64),
       'candidate_na': tf.VarLenFeature(tf.int64),
+      'candidate_na_char': tf.VarLenFeature(tf.int64),
+      'candidate_na_pos': tf.VarLenFeature(tf.int64),
+      'query_char': tf.VarLenFeature(tf.int64),
+      'query_pos': tf.VarLenFeature(tf.int64),
       'alternatives':  tf.FixedLenFeature([], tf.string),
       'candidates':  tf.FixedLenFeature([], tf.string),
       'type':  tf.FixedLenFeature([], tf.int64),
@@ -75,23 +87,37 @@ class Dataset(melt.tfrecords.Dataset):
     candidate_pos = melt.sparse_tensor_to_dense(candidate_pos)
     candidate_na = melt.sparse_tensor_to_dense(candidate_na)
 
-    def add_start_end(text):
-      return  tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), text, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
+    def s2d(name):
+      x = features[name]
+      x = melt.sparse_tensor_to_dense(x)
+      features[name] = x
 
-    if FLAGS.add_start_end:
-      query = add_start_end(query)
+    l = ['query_char', 'query_pos', \
+         'passage_char', 'passage_pos', \
+         'candidate_neg_char', 'candidate_neg_pos', \
+         'candidate_pos_char', 'candidate_pos_pos', \
+         'candidate_na_char', 'candidate_na_pos',
+        ]
+    for name in l:
+      s2d(name)
+
+    # def add_start_end(text):
+    #   return  tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), text, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
+
+    # if FLAGS.add_start_end:
+    #   query = add_start_end(query)
     features['query'] = query
 
-    if FLAGS.add_start_end:
-      passage = add_start_end(passage)
+    # if FLAGS.add_start_end:
+    #   passage = add_start_end(passage)
     features['passage'] = passage
 
-    if not FLAGS.add_start_end:
-      features['content'] = tf.concat([passage, tf.constant([vocabulary.end_id()], dtype=tf.int64), query], 0)
-      features['rcontent'] = tf.concat([query, tf.constant([vocabulary.end_id()], dtype=tf.int64), passage], 0)
-    else:
-        features['content'] = tf.concat([passage, query[1:]], 0)
-        features['rcontent'] = tf.concat([query, passage[1:]], 0)    
+    # if not FLAGS.add_start_end:
+    #   features['content'] = tf.concat([passage, tf.constant([vocabulary.end_id()], dtype=tf.int64), query], 0)
+    #   features['rcontent'] = tf.concat([query, tf.constant([vocabulary.end_id()], dtype=tf.int64), passage], 0)
+    # else:
+    features['content'] = tf.concat([passage, query[1:]], 0)
+    features['rcontent'] = tf.concat([query, passage[1:]], 0)    
 
     # if FLAGS.add_start_end:
     #   candidate_neg = add_start_end(candidate_neg)

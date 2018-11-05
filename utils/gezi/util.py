@@ -28,6 +28,9 @@ import time
 
 import gezi
 
+def is_cn(word):
+   return '\u4e00' <= item[0] <= '\u9fa5' 
+
 def break_sentence(sentence, max_sent_len):
   """
   For example, for a sentence with 70 words, supposing the the `max_sent_len'

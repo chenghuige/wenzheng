@@ -16,10 +16,10 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('input', './mount/temp/ai2018/reader/tfrecord/valid/*record,', '')
+flags.DEFINE_string('input', './mount/temp/ai2018/sentiment/tfrecord/valid/*record,', '')
 flags.DEFINE_integer('batch_size_', 512, '')
 flags.DEFINE_string('type', 'debug', '')
-flags.DEFINE_string('base', './mount/temp/ai2018/reader/tfrecord/', '')
+flags.DEFINE_string('base', './mount/temp/ai2018/sentiment/tfrecord/', '')
 #flags.DEFINE_integer('fold', None, '')
 
 import tensorflow as tf
@@ -40,10 +40,13 @@ import melt
 logging = melt.logging
 from dataset import Dataset
 
+from tqdm import tqdm
+
 # TODO by default save all ? so do not need to change the code ? 
 # _asdict() https://stackoverflow.com/questions/26180528/python-named-tuple-to-dictionary
+# err... valid and test data share same id...
 def deal(dataset, infos):
-  for x, _ in dataset:
+  for x, _ in tqdm(dataset, ascii=True):
     for key in x:
       x[key] = x[key].numpy()
       if type(x[key][0]) == bytes:
@@ -55,9 +58,10 @@ def deal(dataset, infos):
         infos[ids[j]][key] = x[key][j]
 
 def main(_):
+
   base = FLAGS.base
   logging.set_logging_path('./mount/tmp/')
-  vocab_path = os.path.join(os.path.dirname(os.path.dirname(FLAGS.input)), 'vocab.txt')
+  vocab_path = f'{base}/vocab.txt'
   ids2text.init(vocab_path)
   FLAGS.vocab = f'{base}/vocab.txt'
 
@@ -74,7 +78,7 @@ def main(_):
   if FLAGS.fold is not None:
     inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
 
-  if FLAGS.type != 'dump':
+  if FLAGS.type == 'debug':
     print('type', FLAGS.type, 'inputs', inputs, file=sys.stderr)
 
     dataset = Dataset('valid')
@@ -84,42 +88,57 @@ def main(_):
 
     timer = gezi.Timer('read record')
     for i, (x, y) in enumerate(dataset):
-      if i % 10 == 1:
-        print(x['passage'][0])
-        print(ids2text.ids2text(x['passage'][0], sep='|'))
-        print(ids2text.ids2text(x['candidate_pos'][0], sep='|'))
-        print(ids2text.ids2text(x['candidate_neg'][0], sep='|'))
-        print(x['passage'])
-        print(x['candidate_pos'])
-        print(x['candidate_neg'])
-        print(x['candidate_na'])
-        print(x['candidate_na'].shape[1])
-        print(x['candidate_na'].numpy())
-        print(len(x['candidate_na'].numpy()))
-        print(type(x['id'].numpy()[0]) == bytes) 
-        print(x['id'].numpy().dtype)
-        print(x['passage'].numpy().dtype)
-        break
-  else:
-    infos = {}
-    inputs = gezi.list_files(f'{base}/valid/*record')
+      # if i % 10 == 1:
+      #   print(x['id'])
+      #   print(x['content'][0])
+      #   print(ids2text.ids2text(x['content'][0], sep='|'))
+      #   print(x['content'])
+      #   print(type(x['id'].numpy()[0]) == bytes)
+      #   break
+      x['id'] = gezi.decode(x['id'].numpy())
+      x['content_str'] = gezi.decode(x['content_str'].numpy())
+      for j, id in enumerate(x['id']):
+        if id == '573':
+          print(id, x['content_str'][j])
+  elif FLAGS.type == 'dump':
+    valid_infos = {}
+    test_infos = {}
+    inputs = gezi.list_files(f'{base}/train/*record')
     dataset = Dataset('valid')
     dataset = dataset.make_batch(1, inputs)
-    deal(dataset, infos)
-    print('after valid', len(infos))
+    deal(dataset, valid_infos)
+    print('after valid', len(valid_infos))
     inputs = gezi.list_files(f'{base}/test/*record')
     dataset = Dataset('test')
     dataset = dataset.make_batch(1, inputs)
-    deal(dataset, infos)
-    print('after test', len(infos))
+    deal(dataset, test_infos)
+    print('after test', len(test_infos))
 
-    for key in infos:
-      print(infos[key])
+    for key in valid_infos:
+      print(valid_infos[key])
+      print(ids2text.ids2text(valid_infos[key]['content']))
       break
 
     ofile = f'{base}/info.pkl'
     with open(ofile, 'wb') as out:
-      pickle.dump(infos, out)    
+      pickle.dump(valid_infos, out)  
+
+    ofile = ofile.replace('.pkl', '.test.pkl')  
+    with open(ofile, 'wb') as out:
+      pickle.dump(test_infos, out)
+  elif FLAGS.type == 'show_info':
+    valid_infos = pickle.load(open(f'{base}/info.pkl', 'rb'))
+    lens = [len(valid_infos[key]['content']) for key in valid_infos]
+    unks = [list(valid_infos[key]['content']).count(1) for key in valid_infos]
+    print('num unks per doc:', sum(unks) / len(unks))
+    print('num doc with unk ratio:', len([x for x in unks if x != 0]) / len(unks)) 
+    print('un unk tokens ratio:', sum(unks) / sum(lens))
+    print('len max:', np.max(lens))
+    print('len min:', np.min(lens))
+    print('len mean:', np.mean(lens))
+  else:
+    raise ValueError(FLAGS.type)
+
 
 if __name__ == '__main__':
   tf.app.run()

@@ -10,7 +10,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys, os
+import sys, os, io
+# for p40...
+sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
 
 import tensorflow as tf 
 flags = tf.app.flags
@@ -33,6 +36,7 @@ from dataset import Dataset
 import evaluate as ev
 
 def main(_):
+  FLAGS.num_folds = 10
   melt.apps.init()
 
   Model = getattr(base, FLAGS.model)

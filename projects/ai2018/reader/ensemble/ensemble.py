@@ -30,6 +30,7 @@ import numpy as np
 import gezi
 from tqdm import tqdm
 import copy
+from scipy.stats import rankdata
 
 DEBUG = 0
 idir = '.'
@@ -37,13 +38,16 @@ idir = '.'
 def parse(input):
   return np.array([float(x.strip()) for x in input[1:-1].split(' ') if x.strip()])
 
-
 def blend_weights(weights, norm_factor=0.1):
   weights_min = np.min(weights)
   weights_max = np.max(weights)
   gap = weights_max - weights_min
   for i in range(len(weights)):
     weights[i] = ((weights[i] - weights_min) / gap) + norm_factor
+  # ranked = rankdata(weights)
+  # sum_rank = np.sum(ranked)
+  # for j in range(len(weights)):
+  #   weights[j] = ranked[j] / sum_rank
 
 def main(_):
   DEBUG = FLAGS.debug

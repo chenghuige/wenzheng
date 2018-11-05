@@ -24,6 +24,7 @@ flags.DEFINE_float('norm_factor', 0.0001, 'attr weights used norm factor')
 flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 72532 so.. a bit dangerous')
 flags.DEFINE_float('thre', 0.69, '')
 flags.DEFINE_string('weight_by', 'adjusted_f1', '')
+flags.DEFINE_integer('num_grids', 10, '')
 
 
 import sys 
@@ -193,18 +194,20 @@ def blend_weights(weights, norm_facotr):
       weights[j][i] = ranked[j] / sum_rank
 
 # class factors is per class dynamic adjust for class weights
-def grid_search_class_factors(probs, labels, weights):
+def grid_search_class_factors(probs, labels, weights, num_grids=10):
   class_factors = np.ones([num_attrs, num_classes])  
+  # TODO multi process
   for i in tqdm(range(num_attrs), ascii=True):
+    print(i, ATTRIBUTES[i])
     index = np.argsort(-np.array(weights[i]))
     def is_ok(factor):
       return np.sum(np.argsort(-factor) == index) == 4
 
     best = 0
-    for a in tqdm(range(1,11), ascii=True):
-      for b in range(1,11):
-        for c in range(1,11):
-          for d in range(1,11):
+    for a in tqdm(range(1,1 + num_grids), ascii=True):
+      for b in range(1,1 + num_grids):
+        for c in range(1,1 + num_grids):
+          for d in range(1,1 + num_grids):
             factor = np.array([a, b, c, d], dtype=np.float)
             factor2 = factor * weights[i]
             if not is_ok(factor2):
@@ -212,7 +215,7 @@ def grid_search_class_factors(probs, labels, weights):
             preds = probs[:,i] * factor2 
             f1 = f1_score(labels[:,i] + 2, np.argmax(preds, 1), average='macro')
             if f1 > best:
-              print(factor, factor2, f1)
+              print('\n', ATTRIBUTES[i], factor, factor2, f1)
               best = f1
               class_factors[i] = factor
   return class_factors
@@ -396,7 +399,7 @@ def main(_):
 
   class_factors = np.ones([num_attrs, num_classes])
   if FLAGS.grid_search:
-    class_factors = grid_search_class_factors(gezi.softmax(np.reshape(results, [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), labels, class_weights)
+    class_factors = grid_search_class_factors(gezi.softmax(np.reshape(results, [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), labels, class_weights, num_grids=FLAGS.num_grids)
       
   print('class_factors')
   print(class_factors)

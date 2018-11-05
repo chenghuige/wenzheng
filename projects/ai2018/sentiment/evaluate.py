@@ -18,7 +18,6 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('info_path', None, '')
 flags.DEFINE_bool('auc_need_softmax', True, '')
 
-flags.DEFINE_bool('use_class_weights', False, '')
 flags.DEFINE_string('class_weights_path', './mount/temp/ai2018/sentiment/class_weights.npy', '')
 flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 72532 so.. a bit dangerous')
 
@@ -353,11 +352,11 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
   df= df.sort_values('id') 
   if not is_infer:
     # TODO FIXME new run, seg fild seems luanma.. only on p40 new run..
-    df['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
+    #df['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
   if is_infer:
     df2 = df
-    df2['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
+    #df2['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
     df2.to_csv(ofile2, index=False, encoding="utf_8_sig")
 
 def valid_write(ids, labels, predicts, ofile):

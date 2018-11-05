@@ -16,48 +16,52 @@ import sys
 import os
 
 import glob
+import gezi
 
 model_dir = '../' if not len(sys.argv) > 1 else sys.argv[1]
 
-thre = 0.7 if not len(sys.argv) > 2 else float(sys.argv[2])
+thre = 0.71 if not len(sys.argv) > 2 else float(sys.argv[2])
 
-key = 'adjusted_f1' if not len(sys.argv) > 3 else sys.argv[3]
+key = 'adjusted_f1/mean' if not len(sys.argv) > 3 else sys.argv[3]
 
 print('model_dir', model_dir, 'thre', thre, 'key', key)
 
-def parse(x, key='adjusted_f1'):
-  idx = x.index('epoch:')
-  idx2 = x.index(' ', idx)
-  epoch = int(float(line[idx:idx2].split('/')[0].split(':')[1]))
-  
-  idx = x.index(f'{key}/mean:')
-  idx2 = x.index("'", idx)
-  score = float(x[idx:idx2].split(':')[-1])
-
-  return epoch, score
-  
 if key != 'loss':
   cmp = lambda x, y: x > y 
 else:
   cmp = lambda x, y: x < y
 
+# model.ckpt-3.00-9846.valid.metrics
+# ckpt-4.valid.metrics 
 for dir_ in glob.glob(f'{model_dir}/*/*'):
   if not os.path.isdir(dir_):
     continue
   print(dir_)
   best_score = 0 if key != 'loss' else 1e10
   best_epoch = None
-  
-  for file_ in glob.glob(f'{dir_}/log.txt*'): 
+  best_iepoch = None
+
+  in_epoch_dir = True
+  files = glob.glob(f'{dir_}/epoch/*.valid.metrics')
+  if not files:
+    in_epoch_dir = False
+    files = glob.glob(f'{dir_}/ckpt/*.valid.metrics')
+
+  for file_ in files: 
+    epoch = gezi.strip_suffix(file_, 'valid.metrics').split('-')[1]
+    iepoch = int(float(epoch))
     for line in open(file_):
-      if 'epoch_valid' in line:
-        epoch, score = parse(line, key)
-        if cmp(score, best_score):
-          best_score = score
-          best_epoch = epoch
-  print('best_epoch:', best_epoch, 'best_score:', best_score)  
+      name, score = line.strip().split()
+      score = float(score)
+      if name != key:
+        continue 
+      if cmp(score, best_score):
+        best_score = score
+        best_epoch = epoch
+        best_iepoch = iepoch
+  print('best_epoch:', best_epoch, 'best_score:', best_score) 
   if best_epoch and best_score > thre:
-    if not 'torch' in dir_:
+    if in_epoch_dir:
       command = f'ensemble-cp.py {dir_}/epoch/model.ckpt-{best_epoch}'
     else:
       command = f'ensemble-cp.py {dir_}/ckpt/ckpt-{best_epoch}'

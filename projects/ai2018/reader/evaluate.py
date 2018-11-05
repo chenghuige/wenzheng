@@ -10,7 +10,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys, os, time
+import sys, os, time, io
+sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
+
 import tensorflow as tf 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -28,17 +31,23 @@ logging = melt.logging
 
 from wenzheng.utils import ids2text
 
+from sklearn.metrics import log_loss
+
 import pickle
 
-infos = {}
+valid_infos = {}
+test_infos = {}
+
 decay = None
 wnames = []
 
 def init():
-  global infos 
+  global valid_infos, test_infos
   global wnames
   with open(FLAGS.info_path, 'rb') as f:
-    infos = pickle.load(f)
+    valid_infos = pickle.load(f)
+  with open(FLAGS.info_path.replace('.pkl', '.test.pkl'), 'rb') as f:
+    test_infos = pickle.load(f)
 
   ids2text.init()
 
@@ -87,7 +96,7 @@ def calc_acc(labels, predicts, ids, model_path):
 
   predicts1, predicts2, labels1, labels2 = [], [], [], []
   for i, id in enumerate(ids):
-    type = infos[id]['type']
+    type = valid_infos[id]['type']
     if type == 0:
       predicts1.append(predicts[i])
       labels1.append(labels[i])
@@ -108,6 +117,50 @@ def calc_acc(labels, predicts, ids, model_path):
         names += [f'weights/{name}' for name in wnames]
 
   return vals, names
+
+def calc_loss(labels, predicts, ids, model_path=None):
+  """
+  softmax loss, mean loss and per attr loss
+  """
+  names = ['loss', 'loss_if', 'loss_wether'] 
+
+  predicts1, predicts2, labels1, labels2 = [], [], [], []
+  for i, id in enumerate(ids):
+    type = valid_infos[id]['type']
+    if type == 0:
+      predicts1.append(predicts[i])
+      labels1.append(labels[i])
+    else:
+      predicts2.append(predicts[i])
+      labels2.append(labels[i])
+
+  loss = log_loss(labels, predicts)
+  loss_if = log_loss(labels1, predicts1)
+  loss_wether = log_loss(labels2, predicts2)
+  vals = [loss, loss_if, loss_wether]
+
+  if model_path is None:
+    if FLAGS.decay_target and FLAGS.decay_target == 'loss':
+      if  FLAGS.num_learning_rate_weights <= 1:
+        target = loss
+      elif FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
+        target = losses
+      else:
+        raise f'Unsupported weights number{FLAGS.num_learning_rate_weights}'
+
+      weights = decay.add(target)
+
+  return vals, names
+
+def evaluate(labels, predicts, ids=None, model_path=None):
+  vals, names = calc_acc(labels, predicts, ids, model_path)
+  probs = gezi.softmax(predicts)
+  vals_loss, names_loss = calc_loss(labels, probs, ids, model_path)
+  
+  vals += vals_loss
+  names += names_loss
+
+  return vals, names
   
 valid_write = None
 infer_write = None 
@@ -115,6 +168,7 @@ infer_write = None
 valid_names = ['id', 'label', 'predict', 'score', 'candidates', 'type', 'query', 'passage', 'query_seg', 'passage_seg']
 
 def write(id, label, predict, out, out2=None, is_infer=False):
+  infos = valid_infos if not is_infer else test_infos
   info = infos[id]
   score = gezi.softmax(predict)
   predict = np.argmax(predict)
@@ -122,8 +176,14 @@ def write(id, label, predict, out, out2=None, is_infer=False):
   if label is not None:
     label = candidates[label]
   predict = candidates[predict]
-  print(id, label, predict, score, gezi.csv(info['candidates']), info['type'], gezi.csv(info['query_str']), gezi.csv(info['passage_str']),
-        gezi.csv(ids2text.ids2text(info['query'], sep='|')), gezi.csv(ids2text.ids2text(info['passage'], sep='|')), sep=',', file=out)
+  #.. on P40 not ok.. WHY ? FIXME
+  # print(id, label, predict, score, gezi.csv(info['candidates']), info['type'], gezi.csv(info['query_str']), gezi.csv(info['passage_str']),
+  #       gezi.csv(ids2text.ids2text(info['query'], sep='|')), gezi.csv(ids2text.ids2text(info['passage'], sep='|')), sep=',', file=out)
+  # File "/home/slurm/job/tmp/job-58821/wenzheng/projects/ai2018/reader/evaluate.py", line 178, in write 
+  # print(id, label, predict, score, gezi.csv(info['candidates']), info['type'], gezi.csv(info['query_str']), gezi.csv(info['passage_str']), sep=',', file=out) 
+  # UnicodeEncodeError: 'latin-1' codec can't encode characters in position 0-1: ordinal not in range(256) 
+  print(id, label, predict, score, gezi.csv(info['candidates']), info['type'], gezi.csv(info['query_str']), gezi.csv(info['passage_str']), sep=',', file=out)
+  #print(id, label, predict, score, sep=',', file=out)
   if is_infer:
     #for contest
     print(id, predict, sep='\t', file=out2)

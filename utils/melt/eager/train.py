@@ -76,7 +76,7 @@ def evaluate(model, dataset, eval_fn, model_path=None,
     ids_list = []
     ofile = model_path + suffix if model_path else None
     if write_streaming:
-      out = open(ofile, 'w') if ofile else None
+      out = open(ofile, 'w', encoding='utf-8') if ofile else None
       if out:
         if names is not None:
           print(*names, sep=sep, file=out)
@@ -152,10 +152,10 @@ def inference(model, dataset, model_path,
   ofile2 = ofile + '.debug'
   if write_streaming:
     if write_fn and len(inspect.getargspec(write_fn).args) == 4:
-      out_debug = open(ofile2, 'w')
+      out_debug = open(ofile2, 'w', encoding='utf-8')
     else:
       out_debug = None
-    out = open(ofile, 'w') 
+    out = open(ofile, 'w', encoding='utf-8') 
   else:
     out = None
     out_debug = None
@@ -270,12 +270,11 @@ def train(Dataset,
   batch_size_ = batch_size
 
   if FLAGS.fold is not None:
-    inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold)]
+    inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold) and not x.endswith('%d.tfrecord' % FLAGS.fold)]
     # if FLAGS.valid_input:
     #   inputs += [x for x in gezi.list_files(FLAGS.valid_input) if not x.endswith('%d.record' % FLAGS.fold)]
   logging.info('inputs', len(inputs), inputs[:100])
   num_folds = FLAGS.num_folds or len(inputs) + 1
-
 
   train_dataset_ = Dataset('train')
   train_dataset = train_dataset_.make_batch(batch_size, inputs)
@@ -480,6 +479,9 @@ def train(Dataset,
 
   if FLAGS.torch_lr:
     learning_rate.assign(optimizer.rate(1))
+  if FLAGS.torch:
+    learning_rate.assign(optimizer.param_groups[0]['lr'])
+    logging.info('learning rate got from pytorch latest.py as', learning_rate)
 
   learning_rate.assign(learning_rate * FLAGS.learning_rate_start_factor)
   if learning_rate_weights is not None:
@@ -740,6 +742,8 @@ def train(Dataset,
 
       if global_step.numpy() % FLAGS.save_interval_steps == 0:
         if FLAGS.torch:
+          # TODO why p40 has many latest.pyt.... generated..
+          #if not gezi.env_has('CLUSTER'):
           state = {
                   'epoch': epoch,
                   'step': global_step.numpy(),
@@ -859,5 +863,8 @@ def train(Dataset,
   if FLAGS.log_dir != FLAGS.model_dir:
     assert FLAGS.log_dir
     command = 'rsync -l -r -t %s/* %s' % (FLAGS.log_dir, FLAGS.model_dir) 
+    print(command, file=sys.stderr)
+    os.system(command)
+    command = 'rm -rf %s/latest.pyt.*' % (FLAGS.model_dir) 
     print(command, file=sys.stderr)
     os.system(command)

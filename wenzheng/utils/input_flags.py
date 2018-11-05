@@ -187,3 +187,24 @@ flags.DEFINE_bool('mask_pooling', True, '')
 flags.DEFINE_integer('hop', 2, '')
 flags.DEFINE_integer('label_hop', 1, '')
 
+#--------------------
+flags.DEFINE_integer('num_finetune_words', None, '')
+flags.DEFINE_integer('num_finetune_chars', None, '')
+
+flags.DEFINE_string('lm_path', None, '')
+flags.DEFINE_float('lm_lr_factor', 1., '')
+flags.DEFINE_bool('lm_model', False, '')
+flags.DEFINE_bool('dynamic_finetune', False, '')
+flags.DEFINE_string('char_encoder', 'rnn', '')
+
+flags.DEFINE_bool('use_char_emb', True, 'if use char and not use char emb then use another char emb different from emb other wise share to use one emb')
+flags.DEFINE_bool('use_simple_ngrams', False, '')
+flags.DEFINE_string('char_combiner', 'concat', '')
+flags.DEFINE_bool('char_padding', False, '')
+
+flags.DEFINE_bool('use_ngrams', False, '')
+flags.DEFINE_bool('use_fngrams', False, '')
+flags.DEFINE_integer('ngram_emb_dim', 300, '')
+flags.DEFINE_string('ngram_combiner', 'sum', 'sum or concat or dsfu')
+flags.DEFINE_string('ngram_self_combiner', 'sum', 'sum or concat')
+flags.DEFINE_bool('ngram_only', False, '')

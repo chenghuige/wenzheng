@@ -98,7 +98,7 @@ class Vocabulary(object):
 
       reserved_vocab2 = []
       if not fixed and not simple:
-        if unk_word not in reverse_vocab and unk.lower() not in reverse_vocab:
+        if unk_word not in reverse_vocab and unk_word.lower() not in reverse_vocab:
           reserved_vocab2.append(unk_word)
         if start_word not in reverse_vocab and start_word.lower() not in reverse_vocab:
           reserved_vocab2.append(start_word)
