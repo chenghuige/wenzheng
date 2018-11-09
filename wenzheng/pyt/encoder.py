@@ -194,8 +194,9 @@ class TextEncoder(nn.Module):
   def forward(self, input, mask=None, training=False):
     assert isinstance(input, dict)
     x = input['content'] 
-
     #print(x.shape)
+    #print(input['source'])
+
     x_mask = mask if mask is not None else self.get_mask(x)
     batch_size = x.size(0)
     max_c_len = x.size(1)

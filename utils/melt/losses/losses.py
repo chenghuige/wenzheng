@@ -258,7 +258,13 @@ def bilm_loss(model, x, y, training=False):
   fw_mask = fw_y > 0
   bw_mask = bw_y > 0  
 
-  y_ = model.encode(x, training=training)
+  ## Well intersting if you just use model.encode() then you will get text_encoder/ as namespace
+  ## if you use model() then you will get like rnet/text_encoder or bi_language_model
+  ## TODO FIXME so by default should use model.encode() that but now I want to use rent pretrain only just set this..
+  # so how to better handle tf pretrain and finetune, bert code need to learn later! maybe that's best way though still a bit complex
+  #y_ = model.encode(x, training=training)
+  y_ = model(x, training=training)
+  
   fw_y_, bw_y_ = tf.split(y_, 2, axis=-1)
 
   fw_y_ = model.encode.hidden2tag(fw_y_)

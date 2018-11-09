@@ -80,15 +80,6 @@ def main(_):
             ]
 
   train = melt.apps.get_train()
-
-  optimizer = None
-  if FLAGS.optimizer == 'noam':
-    # Hard to find optim parmas so not to use currently 
-    # optimizer = lele.training.optimizers.NoamOpt(FLAGS.emb_dim, 2, 4000,
-    #         torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
-    optimizer = lele.training.optimizers.NoamOpt(128, 2, 4000,
-        torch.optim.Adamax(model.parameters(), lr=0))
-
   #criterion = Criterion(ev.class_weights)
   criterion = Criterion()
   
@@ -100,7 +91,6 @@ def main(_):
         infer_write_fn=ev.infer_write,
         valid_suffix='.valid.csv',
         infer_suffix='.infer.csv',
-        optimizer=optimizer,
         param_groups=param_groups)   
 
 if __name__ == '__main__':

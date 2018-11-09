@@ -37,12 +37,13 @@ UNK_ID = 1
 
 # code above is dpreciated juse use Models derived from ModelBase
 class ModelBase(melt.Model):
-  def __init__(self, embedding=None, lm_model=False):
+  def __init__(self, embedding=None, lm_model=False, use_text_encoder=True):
     super(ModelBase, self).__init__()
     
     self.num_units = FLAGS.rnn_hidden_size if FLAGS.encoder_type != 'convnet' else FLAGS.num_filters
     self.dropout_rate = 1 - FLAGS.keep_prob
     self.keep_prob = 1 - self.dropout_rate
+    self.num_layers = FLAGS.num_layers
 
     config = {
       'word': {
@@ -81,15 +82,20 @@ class ModelBase(melt.Model):
       'concat_layers': FLAGS.concat_layers,
     }
 
-    self.encode = wenzheng.TextEncoder(config, 
-                                      embedding,
-                                      use_char=FLAGS.use_char,
-                                      use_char_emb=FLAGS.use_char_emb,
-                                      use_pos=FLAGS.use_pos,
-                                      use_ner=FLAGS.use_ner,
-                                      lm_model=lm_model)
+    self.lm_model = None
+    if use_text_encoder:
+      if FLAGS.pretrain_encoder == 'bilm':
+        self.encode = wenzheng.TextEncoder(config, 
+                                          embedding,
+                                          use_char=FLAGS.use_char,
+                                          use_char_emb=FLAGS.use_char_emb,
+                                          use_pos=FLAGS.use_pos,
+                                          use_ner=FLAGS.use_ner,
+                                          lm_model=lm_model)
+      else:
+        self.encode = wenzheng.BertEncoder(embedding)
 
-    self.lm_model = self.encode.lm_model
+      self.lm_model = self.encode.lm_model
 
     if not self.lm_model:
       # hier not improve
@@ -123,13 +129,48 @@ class ModelBase(melt.Model):
         self.num_classes = 1
       self.logits = keras.layers.Dense(NUM_ATTRIBUTES * self.num_classes, activation=None)
 
+  def unk_aug(self, x, x_mask=None, training=False):
+    """
+    randomly make 10% words as unk
+    TODO this works, but should this be rmoved and put it to Dataset so can share for both pyt and tf
+    """
+    # if not self.training or not FLAGS.unk_aug or melt.epoch() < FLAGS.unk_aug_start_epoch:
+    #   return x 
+    if not training or not FLAGS.unk_aug:
+      return x
+      
+    def aug(x, x_mask):
+      # print('---------------do unk aug')
+      # print('ori_x....', x)
+      if x_mask is None:
+        x_mask = x > 0
+      x_mask = tf.to_int64(x_mask)
+      ratio = tf.random_uniform([1,], 0, FLAGS.unk_aug_max_ratio)
+      mask = tf.random_uniform([melt.get_shape(x, 0), melt.get_shape(x, 1)])  > ratio
+      mask = tf.to_int64(mask)
+      rmask = FLAGS.unk_id * (1 - mask)
+      x = (x * mask + rmask) * x_mask
+      #print('aug_x....', x)
+      return x
+
+    # print('----------------', FLAGS.unk_aug_start_step)
+    # print(tf.constant(FLAGS.unk_aug_start_step))
+    # print(tf.train.get_global_step())
+    # print(tf.train.get_global_step() < tf.constant(FLAGS.unk_aug_start_step))
+    # well, below eager ok, but graph mode, get_global_step() is None
+    #return tf.cond(tf.train.get_global_step() < tf.constant(FLAGS.unk_aug_start_step), lambda: x, lambda: aug(x, x_mask))
+    return tf.cond(tf.train.get_or_create_global_step() < tf.constant(FLAGS.unk_aug_start_step, dtype=tf.int64), lambda: x, lambda: aug(x, x_mask))
+
 class BiLanguageModel(ModelBase):
-  def __init__(self, embedding=None):
+  def __init__(self, embedding=None, lm_model=True):
     super(BiLanguageModel, self).__init__(embedding, lm_model=True)
 
+  def call(self, input, training=False):
+    return self.encode(input, training=False)
+
 class RNet(ModelBase):
-  def __init__(self, embedding=None):
-    super(RNet, self).__init__(embedding)
+  def __init__(self, embedding=None, lm_model=False):
+    super(RNet, self).__init__(embedding, lm_model=lm_model)
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       #assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
@@ -157,6 +198,7 @@ class RNet(ModelBase):
      
   def call(self, input, training=False):
     x = input['content'] 
+    x = self.unk_aug(x, training=training)
 
     c_mask = tf.cast(x, tf.bool)
     batch_size = melt.get_shape(x, 0)
@@ -169,6 +211,9 @@ class RNet(ModelBase):
 
     x = self.encode(input, c_len, max_c_len, training=training)
 
+    if self.lm_model:
+      return x
+    
     # not help
     if self.hier_encode is not None:
       x = self.hier_encode(x, c_len)
@@ -215,8 +260,8 @@ class RNet(ModelBase):
 
 # same as Model but for math attention using SeqAttn
 class RNetV2(RNet):
-  def __init__(self, embedding=None):
-    super(RNetV2, self).__init__(embedding)
+  def __init__(self, embedding=None, lm_model=False):
+    super(RNetV2, self).__init__(embedding, lm_model=lm_model)
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       #assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
@@ -244,7 +289,68 @@ class RNetV2(RNet):
       self.match_dot_attention = melt.layers.SelfAttnMatch(combiner=FLAGS.att_combiner, identity=True, diag=False, keep_prob=self.keep_prob)
       self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
       #self.match_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=0.5)
+  
+  def call(self, input, training=False):
+    x = input['content'] 
+    x = self.unk_aug(x, training=training)
 
+    c_mask = tf.cast(x, tf.bool)
+    batch_size = melt.get_shape(x, 0)
+    c_len, max_c_len = melt.length2(x)
+
+    if FLAGS.rnn_no_padding:
+      logging.info('------------------no padding! train or eval')
+      #c_len = tf.ones([batch_size], dtype=x.dtype) * tf.cast(melt.get_shape(x, -1), x.dtype)
+      c_len = max_c_len
+
+    x = self.encode(input, c_len, max_c_len, training=training)
+
+    if self.lm_model:
+      return x
+    
+    # not help
+    if self.hier_encode is not None:
+      x = self.hier_encode(x, c_len)
+
+    if FLAGS.use_label_att:
+      label_emb = self.label_embedding(None)
+      label_seq = tf.tile(tf.expand_dims(label_emb, 0), [batch_size, 1, 1])
+      if FLAGS.use_label_rnn:
+        label_seq = self.label_encode(label_seq, tf.ones([batch_size], tf.int32) * tf.cast(melt.get_shape(label_emb, 1), tf.int32))
+      x = self.att_dot_attention(x, label_seq, mask=tf.ones([batch_size, self.label_emb_height], tf.bool), training=training)
+
+      if not FLAGS.simple_label_att:
+        x = self.att_encode(x, c_len, training=training)
+
+    # put self match at last, selfmatch help a bit
+    if FLAGS.use_self_match:
+       x = self.match_dot_attention(x, mask=c_mask, training=training) 
+       x = self.match_encode(x, c_len, training=training) 
+
+    x = self.pooling(x, c_len, calc_word_scores=self.debug)
+
+    # not help much
+    if self.dense is not None:
+      x = self.dense(x)
+      x = self.dropout(x, training=training)
+
+    if not FLAGS.use_label_emb:
+      x = self.logits(x)
+    else:
+      x = self.label_dense(x)
+      # TODO..
+      x = melt.dot(x, self.label_embedding(None))
+
+    # # No help match
+    # if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES * NUM_CLASSES:
+    #   x = melt.adjust_lrs(x)
+
+    if FLAGS.loss_type == 'regression':
+      x = tf.nn.sigmoid(x) * 10
+    else:
+      x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, self.num_classes])
+      
+    return x
 
 # same as RNetV2 but is gate + sfu
 class RNetV3(RNet):
@@ -305,8 +411,8 @@ class MReader(ModelBase):
   def __init__(self, embedding=None):
     super(MReader, self).__init__()
 
-    if FLAGS.hop > 1:
-      assert self.num_layers == 1 and FLAGS.att_combiner == 'sfu', 'mreader must set num layers to 1 so can iterative align if you set hop > 1, and use sfu as combiner'
+    #same input dim then outpu dim , if concat will * num_layers
+    assert not FLAGS.concat_layers
 
     if FLAGS.use_label_emb or FLAGS.use_label_att:
       #assert not (FLAGS.use_label_emb and FLAGS.use_label_att)
@@ -336,6 +442,7 @@ class MReader(ModelBase):
     
   def call(self, input, training=False):
     x = input['content'] 
+    x = self.unk_aug(x, training=training)
 
     c_mask = tf.cast(x, tf.bool)
     batch_size = melt.get_shape(x, 0)
@@ -380,4 +487,90 @@ class MReader(ModelBase):
 
     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, self.num_classes])
     
+    return x
+
+#--------------BERT!
+# using bert transformer
+
+from third.bert import modeling
+
+class Transformer(ModelBase):
+  def __init__(self, embedding=None):
+    super(Transformer, self).__init__(embedding, lm_model=False, use_text_encoder=False)
+
+    self.init_checkpoint = None
+    
+    if FLAGS.bert_dir:
+      bert_dir = FLAGS.bert_dir
+      bert_config_file = f'{bert_dir}/bert_config.json' 
+      bert_config = modeling.BertConfig.from_json_file(bert_config_file)
+      self.init_checkpoint= f'{bert_dir}/bert_model.ckpt' 
+    elif FLAGS.bert_config_file:
+      bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
+    else:
+      bert_config = {
+        "attention_probs_dropout_prob": 0.1, 
+        "directionality": "bidi", 
+        "hidden_act": "gelu", 
+        "hidden_dropout_prob": 0.1, 
+        "hidden_size": 768, 
+        "initializer_range": 0.02, 
+        "intermediate_size": 3072, 
+        "max_position_embeddings": 512, 
+        "num_attention_heads": 12, 
+        "num_hidden_layers": 12, 
+        "pooler_fc_size": 768, 
+        "pooler_num_attention_heads": 12, 
+        "pooler_num_fc_layers": 3, 
+        "pooler_size_per_head": 128, 
+        "pooler_type": "first_token_transform", 
+        "type_vocab_size": 2, 
+        "vocab_size": gezi.Vocabulary(FLAGS.vocab).size()
+      }
+      bert_config = modeling.BertConfig.from_dict(bert_config)
+
+    self.bert_config = bert_config
+
+    if FLAGS.transformer_add_rnn:
+       self.rnn_encode = melt.layers.CudnnRnn(num_layers=1, num_units=self.num_units, keep_prob=self.keep_prob)
+
+  def restore(self):
+    tvars = tf.trainable_variables()
+    (assignment_map,
+    initialized_variable_names) = modeling.get_assigment_map_from_checkpoint(
+        tvars, self.init_checkpoint)
+
+    tf.train.init_from_checkpoint(self.init_checkpoint, assignment_map)
+
+    logging.info("**** Trainable Variables ****")
+    for var in tvars:
+      init_string = ""
+      if var.name in initialized_variable_names:
+        init_string = ", *INIT_FROM_CKPT*"
+      logging.info("  name = %s, shape = %s%s", var.name, var.shape,
+                      init_string)  
+
+  def call(self, input, training=False):
+    self.step += 1
+    x = input['content']
+    x = self.unk_aug(x, training=training)
+    batch_size = melt.get_shape(x, 0) 
+    model = modeling.BertModel(
+      config=self.bert_config,
+      is_training=training,
+      input_ids=x)
+
+    if self.step == 0 and self.init_checkpoint:
+      self.restore()
+
+    c_len = melt.length(x)
+    x = model.get_sequence_output()
+
+    x = x * 0.1 + tf.stop_gradient(x) * 0.9
+    
+    if FLAGS.transformer_add_rnn:
+      x = self.rnn_encode(x, c_len)
+    x = self.pooling(x, c_len)
+    x = self.logits(x)
+    x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, NUM_CLASSES])
     return x

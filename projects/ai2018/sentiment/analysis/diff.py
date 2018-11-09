@@ -45,7 +45,7 @@ import os
 
 import pandas as pd 
 import numpy as np 
-from tqdm import tqdm
+
 import gezi
 
 ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_district', 'location_easy_to_find',
@@ -60,19 +60,9 @@ num_attrs = len(ATTRIBUTES)
 classes = ['NA', 'NEG', 'NEU', 'POS']
 num_classes = 4
 
-def parse(l):
-  if ',' in l:
-    return np.array([float(x.strip()) for x in l[1:-1].split(',')])
-  else:
-    return np.array([float(x.strip()) for x in l[1:-1].split()])
-
 
 ifile = sys.argv[1]
 ifile2 = sys.argv[2]
-
-type = 'valid'
-if 'infer' in ifile:
-  type = 'infer'
 
 df = pd.read_csv(ifile)
 df = df.sort_values('id')
@@ -80,38 +70,88 @@ df = df.sort_values('id')
 df2 = pd.read_csv(ifile2)
 df2 = df2.sort_values('id')
 
-assert len(df) == len(df2)
+is_valid = False 
+if len(df.columns) > 2 * num_attrs:
+  is_valid = True
 
-assert set(df['id'].values) == set(df2['id'].values)
+idx = 2
+num_diff_docs = 0
+num_diff_attrs = 0
+for i in range(0, len(df)):
+  first = True
+  for j in range(num_attrs):
+    cur = idx + j
+    if df.iloc[i][cur] != df2.iloc[i][cur]:
+      num_diff_attrs += 1
+      if first:
+        first = False
+        print(df.iloc[i]['content'])
+        num_diff_docs += 1
+      attr = ATTRIBUTES[j]
+      if not is_valid:
+        print(attr, df.iloc[i][cur], df2.iloc[i][cur])
+      else:
+        print(attr, df.iloc[i][cur], df2.iloc[i][cur], df.iloc[i][cur + num_attrs])
 
+print('num_diff_docs', num_diff_docs, file=sys.stderr)
+print('num_diff_attrs', num_diff_attrs, file=sys.stderr)
 
-total_comment = len(df)
-total_attrs = total_comment * num_attrs
+# for _, row in df.iterrows():
+#   label = row[attr + '_y'] + 2
+#   label = classes[label]
+#   predict = row[attr] + 2
+#   predict = classes[predict]
+#   score = row[FLAGS.key]
+#   score = gezi.str2scores(score)
+#   score = score[idx:idx + 4]
+#   prob = gezi.softmax(score)
+#   id = row['id']
+#   if FLAGS.id:
+#     if id != FLAGS.id:
+#       continue
+#     else:
+#       print(id, score)
+#       print(id, prob)
+#       print(attr, 'label  :', label)
+#       print(attr, 'predict:', predict)
+#       labels = row[2:2+num_attrs]
+#       labels += 2
+#       predicts = row[2+num_attrs:2+2*num_attrs]
+#       predicts += 2
+#       print(list(zip(ATTRIBUTES, [classes[x] for x in labels])))
+#       print(list(zip(ATTRIBUTES, [classes[x] for x in predicts])))
+#       print(row['content'])
+#       print(row['seg'])  
+#       exit(0)      
 
-num_comment_diff = 0
-num_attr_diff = 0
+#   if FLAGS.label:
+#     if label == FLAGS.label.upper():
+#       print(id, score)
+#       print(id, prob)
+#       print(attr, 'label  :', label)
+#       print(attr, 'predict:', predict)
+#       labels = row[2:2+num_attrs]
+#       labels += 2
+#       predicts = row[2+num_attrs:2+2*num_attrs]
+#       predicts += 2
+#       print(list(zip(ATTRIBUTES, [classes[x] for x in labels])))
+#       print(list(zip(ATTRIBUTES, [classes[x] for x in predicts])))
+#       print(row['content'])
+#       print(row['seg'])      
+#       num_errs += 1
+#   else:
+#     if label != predict or FLAGS.id:
+#       print(id, score)
+#       print(id, prob)
+#       print(attr, 'label  :', label)
+#       print(attr, 'predict:', predict)
+#       print(row['content'])
+#       print(row['seg'])
+#       num_errs += 1
+#     else:
+#       num_oks += 1
 
-for i in tqdm(range(len(df)), ascii=True):
-  row = df.iloc[i]
-  row2 = df2.iloc[i]
-  if type == 'infer':
-    labels = None
-    idx = 2
-  else:
-    labels = row[2:2+num_attrs]
-    idx = 2 + num_attrs
-
-  predicts = row[idx:idx+num_attrs]
-  predicts2 = row2[idx:idx+num_attrs]
-
-  diff = 0
-  for i in range(num_attrs):
-    if predicts[i] != predicts2[i]:
-      diff += 1
-  
-  num_comment_diff += int(diff > 0)
-  num_attr_diff += diff
-  
-
-print('num_comment_diff:', num_comment_diff, 'diff_ratio:', num_comment_diff / total_comment)
-print('num_attr_diff', num_attr_diff, 'diff_ratio:', num_attr_diff / total_attrs)
+#   if num_errs == total:
+#     print('num_oks', num_oks, 'num_errs', num_errs)
+#     break
+    

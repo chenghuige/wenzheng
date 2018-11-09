@@ -248,6 +248,7 @@ def train(Dataset,
           write_streaming=False,
           optimizer=None,
           param_groups=None,
+          init_fn=None,
           sep=','):
   if FLAGS.torch:
     #torch.cuda.set_device(0)  # set the device back to 0
@@ -386,7 +387,11 @@ def train(Dataset,
   checkpoint_prefix2 = os.path.join(ckpt_dir2, 'ckpt')
 
   if not FLAGS.torch:
-    optimizer = optimizer or melt.get_optimizer(FLAGS.optimizer)(learning_rate)
+    try:
+      optimizer = optimizer or melt.get_optimizer(FLAGS.optimizer)(learning_rate)
+    except Exception:
+      logging.warning(f'Fail to using {FLAGS.optimizer} use adam instead')
+      optimizer = melt.get_optimizer('adam')(learning_rate)
     
     # TODO...
     if  learning_rate_weights is None:
@@ -411,7 +416,22 @@ def train(Dataset,
     start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint and 'ckpt' in latest_checkpoint else 0
   else:
     # TODO torch with learning rate adjust
-    optimizer = optimizer or torch.optim.Adamax(param_groups if param_groups else model.parameters(), lr=FLAGS.learning_rate)
+    if optimizer is None:
+      import lele
+      is_dynamic_opt = True
+      if FLAGS.optimizer == 'noam':
+        optimizer = lele.training.optimizers.NoamOpt(128, 2, 4000, torch.optim.Adamax(model.parameters(), lr=0))
+      elif FLAGS.optimizer == 'bert':
+        optimizer = lele.training.optimizers.BertOpt(
+                            FLAGS.learning_rate, 
+                            FLAGS.min_learning_rate,
+                            num_steps_per_epoch * (FLAGS.num_decay_epochs or FLAGS.num_epochs),
+                            FLAGS.warmup_steps or num_steps_per_epoch * FLAGS.num_epochs * FLAGS.warmup_proportion,
+                            torch.optim.Adamax(model.parameters(), lr=0))
+      else:
+        is_dynamic_opt = False
+        optimizer = torch.optim.Adamax(param_groups if param_groups else model.parameters(), lr=FLAGS.learning_rate)
+
 
     # if latest_checkpoint:
     #   latest_path = latest_checkpoint + '.pyt'
@@ -472,7 +492,9 @@ def train(Dataset,
     checkpoint.restore(latest_checkpoint)
     checkpoint2 = copy.deepcopy(checkpoint)
 
-
+  if FLAGS.torch and is_dynamic_opt:
+    optimizer._step = global_step.numpy()
+    
   #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
   #model.save('./weight3.hd5')
   logging.info('optimizer:\n', optimizer)
@@ -599,6 +621,8 @@ def train(Dataset,
     for i, (x, y) in enumerate(train_dataset):
       # print(x, y)
       # continue
+      if FLAGS.torch and is_dynamic_opt:
+        learning_rate.assign(optimizer.rate())
 
       if FLAGS.torch:
         x, y = to_torch(x, y)
@@ -660,7 +684,7 @@ def train(Dataset,
                       'batches/s:[%.2f]' % steps_per_second,
                       'insts/s:[%d]' % instances_per_second,
                       '%s' % epoch_time_info,
-                      'lr:[%.7f]' % learning_rate.numpy(),
+                      'lr:[%.8f]' % learning_rate.numpy(),
                       'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
                       'valid_loss:[%.4f]' % epoch_valid_loss_avg.result().numpy())
           if global_step.numpy() % FLAGS.eval_interval_steps == 0:
@@ -676,7 +700,7 @@ def train(Dataset,
                       'batches/s:[%.2f]' % steps_per_second,
                       'insts/s:[%d]' % instances_per_second,
                       '%s' % epoch_time_info,
-                      'lr:[%.7f]' % learning_rate.numpy(),
+                      'lr:[%.8f]' % learning_rate.numpy(),
                       'train_loss:[%.4f]' % epoch_loss_avg.result().numpy())      
 
         if global_step.numpy() % FLAGS.eval_interval_steps == 0:
@@ -719,8 +743,7 @@ def train(Dataset,
             for param_group in optimizer.param_groups:
               # important learning rate decay
               param_group['lr'] = learning_rate.numpy()
-          else:
-            learning_rate.assign(optimizer.rate())
+          
           model.train()
 
         if names and vals:
@@ -795,7 +818,7 @@ def train(Dataset,
     logging.info('epoch:%d/%d' % (epoch + 1, num_epochs), 
                  'step:%d' % global_step.numpy(), 
                  'batch_size:[%d]' % batch_size,
-                 'lr:[%.7f]' % learning_rate.numpy(),
+                 'lr:[%.8f]' % learning_rate.numpy(),
                  'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
                  'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
 

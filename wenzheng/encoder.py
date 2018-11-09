@@ -18,6 +18,9 @@ FLAGS = flags.FLAGS
 
 #flags.DEFINE_string('input', '', '')
 #flags.DEFINE_string('output', '', '')
+flags.DEFINE_string('bert_dir', None, '')
+flags.DEFINE_string('bert_config_file', None, '')
+
 
 import sys 
 import os
@@ -116,6 +119,7 @@ class Encoder(melt.Model):
         seq = encode(seq, seq_len, training=training)
     return seq
 
+#-----------------Both TexEncoder and BertEncoder are for pretraining then loading for finetune
 class TextEncoder(melt.Model):
   """
   Bidirectional Encoder 
@@ -336,4 +340,74 @@ class TextEncoder(melt.Model):
 
     x = self.encode(x, c_len, training=training)
 
+    return x
+
+from third.bert import modeling
+class BertEncoder(melt.Model):
+ #embedding not used just for compatct with TextEncoder
+  def __init__(self, embedding=None):
+    super(BertEncoder, self).__init__(embedding)
+
+    self.init_checkpoint = None
+    
+    if FLAGS.bert_dir:
+      bert_dir = FLAGS.bert_dir
+      bert_config_file = f'{bert_dir}/bert_config.json' 
+      bert_config = modeling.BertConfig.from_json_file(bert_config_file)
+      self.init_checkpoint= f'{bert_dir}/bert_model.ckpt' 
+    elif FLAGS.bert_config_file:
+      bert_config = modeling.BertConfig.from_json_file(FLAGS.bert_config_file)
+    else:
+      bert_config = {
+        "attention_probs_dropout_prob": 0.1, 
+        "directionality": "bidi", 
+        "hidden_act": "gelu", 
+        "hidden_dropout_prob": 0.1, 
+        "hidden_size": 768, 
+        "initializer_range": 0.02, 
+        "intermediate_size": 3072, 
+        "max_position_embeddings": 512, 
+        "num_attention_heads": 12, 
+        "num_hidden_layers": 12, 
+        "pooler_fc_size": 768, 
+        "pooler_num_attention_heads": 12, 
+        "pooler_num_fc_layers": 3, 
+        "pooler_size_per_head": 128, 
+        "pooler_type": "first_token_transform", 
+        "type_vocab_size": 2, 
+        "vocab_size": gezi.Vocabulary(FLAGS.vocab).size()
+      }
+      bert_config = modeling.BertConfig.from_dict(bert_config)
+
+    self.bert_config = bert_config
+
+  def restore(self):
+    tvars = tf.trainable_variables()
+    (assignment_map,
+    initialized_variable_names) = modeling.get_assigment_map_from_checkpoint(
+        tvars, self.init_checkpoint)
+
+    tf.train.init_from_checkpoint(self.init_checkpoint, assignment_map)
+
+    logging.info("**** Trainable Variables ****")
+    for var in tvars:
+      init_string = ""
+      if var.name in initialized_variable_names:
+        init_string = ", *INIT_FROM_CKPT*"
+      logging.info("  name = %s, shape = %s%s", var.name, var.shape,
+                      init_string)  
+
+  def call(self, input, c_len=None, max_c_len=None, training=False):
+    self.step += 1
+    x = input['content'] if isinstance(input, dict) else input
+    batch_size = melt.get_shape(x, 0) 
+    model = modeling.BertModel(
+      config=self.bert_config,
+      is_training=training,
+      input_ids=x,
+      input_mask=(x > 0) if c_len is not None else None)
+
+    if self.step == 0 and self.init_checkpoint:
+      self.restore()
+    x = model.get_sequence_output()
     return x

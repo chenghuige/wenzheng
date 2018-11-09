@@ -39,7 +39,7 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC/torch.word.lm.nopad/latest.pyt \
+        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC.long/torch.word.lm.nopad/latest.pyt \
         --dynamic_finetune=1 \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \
@@ -51,7 +51,7 @@ python $exe \
         --att_combiner='sfu' \
         --rnn_no_padding=1 \
         --rnn_padding=0 \
-        --model=RNet \
+        --model=MReader \
         --label_emb_height=20 \
         --fold=$fold \
         --use_label_att=0 \

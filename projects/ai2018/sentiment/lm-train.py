@@ -42,7 +42,7 @@ def main(_):
     embedding = np.load(FLAGS.word_embedding_file)
     FLAGS.emb_dim = embedding.shape[1]
 
-  model = getattr(base, FLAGS.model)(embedding)
+  model = getattr(base, FLAGS.model)(embedding, lm_model=True)
 
   logging.info(model)
 

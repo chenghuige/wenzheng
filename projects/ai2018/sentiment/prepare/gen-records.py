@@ -34,6 +34,10 @@ flags.DEFINE_string('mode_', None, '')
 flags.DEFINE_bool('ignore_start_end', False, 'If you have not remove start and end quota before,you can filter here')
 flags.DEFINE_bool('add_start_end_', True, '')
 flags.DEFINE_bool('has_position', False, '')
+flags.DEFINE_bool('fixed_vocab', False, '')
+flags.DEFINE_string('start_mark', '<S>', '')
+flags.DEFINE_string('end_mark', '</S>', '')
+flags.DEFINE_string('unk_word', '<UNK>', '')
 
 import six
 import traceback
@@ -103,7 +107,7 @@ def build_features(index):
 
   start_index = FLAGS.start_index
 
-  out_file = os.path.dirname(FLAGS.vocab) + '/{0}/{1}.record'.format(mode, index + start_index)
+  out_file = os.path.dirname(FLAGS.vocab_) + '/{0}/{1}.record'.format(mode, index + start_index)
   os.system('mkdir -p %s' % os.path.dirname(out_file))
   print('---out_file', out_file)
   # TODO now only gen one tfrecord file 
@@ -131,7 +135,7 @@ def build_features(index):
             continue
           words = seg_result[id]
           if FLAGS.add_start_end_:
-            words = gezi.add_start_end(words)
+            words = gezi.add_start_end(words, FLAGS.start_mark, FLAGS.end_mark)
         if pos_result:
           pos = pos_result[id]
           if FLAGS.add_start_end_:
@@ -249,9 +253,10 @@ def main(_):
   mode = get_mode(FLAGS.input)
 
   assert FLAGS.use_fold
-  text2ids.init(FLAGS.vocab_)
+  #text2ids.init(FLAGS.vocab_)
   global vocab, char_vocab, pos_vocab, ner_vocab, seg_result, pos_result, ner_result
-  vocab = text2ids.vocab
+  #vocab = text2ids.vocab
+  vocab = gezi.Vocabulary(FLAGS.vocab_, fixed=FLAGS.fixed_vocab, unk_word=FLAGS.unk_word)
   print('vocab size:', vocab.size())
   char_vocab_file = FLAGS.vocab_.replace('vocab.txt', 'char_vocab.txt')
   if os.path.exists(char_vocab_file):
@@ -316,9 +321,9 @@ def main(_):
   print('len(seg_result)', len(seg_result))
   print('len(ner_result)', len(ner_result))
 
-  print('to_lower:', FLAGS.to_lower, 'feed_single:', FLAGS.feed_single, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
-  print(text2ids.ids2text(text2ids_('傻逼脑残B')))
-  print(text2ids.ids2text(text2ids_('喜欢玩孙尚香的加我好友：2948291976')))
+  # print('to_lower:', FLAGS.to_lower, 'feed_single:', FLAGS.feed_single, 'feed_single_en:', FLAGS.feed_single_en, 'seg_method', FLAGS.seg_method)
+  # print(text2ids.ids2text(text2ids_('傻逼脑残B')))
+  # print(text2ids.ids2text(text2ids_('喜欢玩孙尚香的加我好友：2948291976')))
 
   global df
   df = pd.read_csv(FLAGS.input, lineterminator='\n')

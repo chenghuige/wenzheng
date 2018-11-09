@@ -31,7 +31,7 @@ import gezi
 def is_cn(word):
    return '\u4e00' <= item[0] <= '\u9fa5' 
 
-def break_sentence(sentence, max_sent_len):
+def break_sentence(sentence, max_sent_len, additional=5):
   """
   For example, for a sentence with 70 words, supposing the the `max_sent_len'
   is 30, break it into 3 sentences.
@@ -44,7 +44,7 @@ def break_sentence(sentence, max_sent_len):
   cur = 0
   length = len(sentence)
   while cur < length:
-    if cur + max_sent_len + 5 >= length:
+    if cur + max_sent_len + additional >= length:
       ret.append(sentence[cur: length])
       break
     ret.append(sentence[cur: min(length, cur + max_sent_len)])

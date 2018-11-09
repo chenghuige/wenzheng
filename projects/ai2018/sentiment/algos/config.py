@@ -32,6 +32,15 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_string('pretrain_encoder', 'bilm', 'bilm or bert')
+flags.DEFINE_bool('transformer_add_rnn', False, '')
+
+flags.DEFINE_bool('unk_aug', False, '')
+flags.DEFINE_integer('unk_id', 1, '')
+flags.DEFINE_integer('unk_aug_start_epoch', 2, '')
+flags.DEFINE_integer('unk_aug_start_step', 7000, '')
+flags.DEFINE_float('unk_aug_max_ratio', 0.02, '')
+
 flags.DEFINE_bool('use_class_weights', False, '')
 flags.DEFINE_bool('att_dropout', True, 'for tf rnet by default att with dropout')
 
@@ -40,6 +49,7 @@ flags.DEFINE_integer('tag_min_count', None, '')
 
 #flags.DEFINE_float('label_smoothing', 0, '')
 
+flags.DEFINE_bool('cut_front', False, '')
 flags.DEFINE_integer('content_limit', 0, '')
 flags.DEFINE_float('other_corpus_factor', 1., '')
 

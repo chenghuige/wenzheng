@@ -22,7 +22,7 @@ flags.DEFINE_string('method', 'blend', '')
 flags.DEFINE_string('idir', '.', '')
 flags.DEFINE_float('norm_factor', 0.0001, 'attr weights used norm factor')
 flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 72532 so.. a bit dangerous')
-flags.DEFINE_float('thre', 0.69, '')
+flags.DEFINE_float('thre', 0.6, '')
 flags.DEFINE_string('weight_by', 'adjusted_f1', '')
 flags.DEFINE_integer('num_grids', 10, '')
 

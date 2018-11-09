@@ -233,7 +233,7 @@ class CudnnRnn(keras.Model):
     batch_size = melt.get_batch_size(x)
 
     if sequence_length is None:
-      len_ = melt.get_shape(xcor(), 1)
+      len_ = melt.get_shape(x, 1)
       sequence_length = tf.ones([batch_size,], dtype=tf.int64) * len_
 
     for layer in range(self.num_layers):

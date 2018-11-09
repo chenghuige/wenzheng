@@ -176,12 +176,17 @@ def tf_train_flow(train_once_fn,
   #load all var in checkpoint try to save all var(might more then original checkpoint) if not specifiy variables_to_save
   varnames_in_checkpoint = melt.get_checkpoint_varnames(model_dir)
   #logging.info('varnames_in_checkpoint: {}'.format(varnames_in_checkpoint))
+
+  # TODO has someproblem say  tf.Variable 'r_net/text_encoder/cudnn_rnn/cu_dnngru/recurrent_kernel/adam_v:0' even though in checkpoint I have renated it as ignore/rnet
   variables_to_restore_from_model = slim.get_variables_to_restore(include=varnames_in_checkpoint)
   #logging.info('variables_to_restore_from_model: {}'.format(variables_to_restore_from_model))
   if not variables_to_restore:
     variables_to_restore = variables_to_restore_from_model
   else:
     variables_to_restore = [v for v in variables_to_restore if v in variables_to_restore_from_model]
+  if restore_exclude:
+    for excl in restore_exclude:
+      variables_to_restore = [v for v in  variables_to_restore if not excl in v.name]
   #--tf 1.6 adadelta will have same vars... 
   variables_to_restore = list(set(variables_to_restore))
   #logging.info('variables_to_restore', variables_to_restore[:100])
@@ -260,8 +265,8 @@ def tf_train_flow(train_once_fn,
     #model.save()
     #model.save_weights('./weights')
     timer.print()
-    pre_step = melt.get_model_step(model_path) - 1
-    pre_epoch = melt.get_model_epoch(model_path)
+    pre_step = melt.get_model_step(model_path) - 1 if FLAGS.global_step is None else FLAGS.global_step -1
+    pre_epoch = melt.get_model_epoch(model_path) if FLAGS.global_epoch is None else FLAGS.global_epoch
     fixed_pre_step = pre_step
     if pre_epoch is not None:
       #like using batch size 32, then reload train using batch size 64

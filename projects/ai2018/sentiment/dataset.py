@@ -75,6 +75,11 @@ class Dataset(melt.tfrecords.Dataset):
 
     content = features['content']
     content = melt.sparse_tensor_to_dense(content)
+    if FLAGS.content_limit:
+      if not FLAGS.cut_front:
+        content = content[:FLAGS.content_limit]
+      else:
+        content = content[-FLAGS.content_limit:]
     # if FLAGS.add_start_end:
     #   content = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), content, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
     # NOTICE! not work in dataset... so put to later step like in call but should do the same thing again for pytorch..

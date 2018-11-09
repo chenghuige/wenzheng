@@ -23,10 +23,11 @@ model_dir = '../' if not len(sys.argv) > 1 else sys.argv[1]
 thre = 0.71 if not len(sys.argv) > 2 else float(sys.argv[2])
 
 key = 'adjusted_f1/mean' if not len(sys.argv) > 3 else sys.argv[3]
+#key = 'loss/mean' if not len(sys.argv) > 3 else sys.argv[3]
 
 print('model_dir', model_dir, 'thre', thre, 'key', key)
 
-if key != 'loss':
+if 'loss' not in key:
   cmp = lambda x, y: x > y 
 else:
   cmp = lambda x, y: x < y
@@ -37,7 +38,7 @@ for dir_ in glob.glob(f'{model_dir}/*/*'):
   if not os.path.isdir(dir_):
     continue
   print(dir_)
-  best_score = 0 if key != 'loss' else 1e10
+  best_score = 0 if 'loss' not in key else 1e10
   best_epoch = None
   best_iepoch = None
 

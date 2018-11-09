@@ -124,6 +124,9 @@ flags.DEFINE_string('learning_rate_values', None, 'like 0.1,0.05,0.005')
 flags.DEFINE_string('learning_rate_step_boundaries', None, 'like 10000,20000')
 flags.DEFINE_string('learning_rate_epoch_boundaries', None, 'like 10,30 or 10.5,30.6')
 flags.DEFINE_integer('num_learning_rate_weights', 0, '')
+flags.DEFINE_float('warmup_proportion', 0.1, '')
+flags.DEFINE_integer('warmup_steps', None, 'if set then warmup proportion not on effect, can be set like 2000')
+flags.DEFINE_float('num_decay_epochs', None, '')
 
 #cosine learning rate method
 flags.DEFINE_float('learning_rate_cosine_t_mul', 2., '')
@@ -232,6 +235,8 @@ flags.DEFINE_string('big_batch_sizes', None, '')
 flags.DEFINE_integer('big_batch_size', None, '')
 
 flags.DEFINE_boolean('adjust_global_step', False, '')
+flags.DEFINE_integer('global_step', None, '')
+flags.DEFINE_integer('global_epoch', None, '')
 
 flags.DEFINE_boolean('eager', False, '')
 
@@ -256,7 +261,10 @@ def init():
 
   if 'DOUBLE_BATCH' in os.environ:
     FLAGS.batch_size *= 2
-    FLAGS.model_dir = os.path.join(os.path.dirname(FLAGS.model_dir.rstrip('/')) + '/double', os.path.basename(FLAGS.model_dir.rstrip('/')))
+    if FLAGS.batch_sizes:
+      l = [str(int(x) * 2) for x in FLAGS.batch_sizes.split(',')]
+      FLAGS.batch_sizes = ','.join(l)
+    #FLAGS.model_dir = os.path.join(os.path.dirname(FLAGS.model_dir.rstrip('/')) + '/double', os.path.basename(FLAGS.model_dir.rstrip('/')))
 
   if 'FOLD' in os.environ:
     try:
@@ -630,6 +638,7 @@ def train_flow(ops,
                output_node_names=None,
                num_steps=None,
                num_epochs=None,
+               num_train_examples=None,
                model=None,
                sess=None):
   """
@@ -669,7 +678,7 @@ def train_flow(ops,
   #if set num_steps_per_decay then inital step actually the same as readding from check point global step not modify for batch size change
   #be realy golbal step(not fixed global step)
   # TODO FIXME not flexible... since if you want to use global step in classifier graph.. can not tf.train.get_or_create_global_step()
-  initial_step = melt.get_global_step(model_dir, num_steps_per_epoch, fix_step=(not FLAGS.num_steps_per_decay))
+  initial_step = melt.get_global_step(model_dir, num_steps_per_epoch, fix_step=(not FLAGS.num_steps_per_decay)) if FLAGS.global_step is None else FLAGS.global_step
   logging.info('global_step init with initial_step from model_dir as %d' % initial_step)
   # TODO right now has global_scope above global_step might need to remove using function creator show_and_tell/global_step (DT_INT64) []
   # global_step = tf.get_variable(tf.GraphKeys.GLOBAL_STEP, shape=[], dtype=tf.int64, 
@@ -724,6 +733,7 @@ def train_flow(ops,
   else:
     optimizer = melt.util.get_optimizer(optimizer)
   logging.info('optimizer:{} {}'.format(FLAGS.optimizer, optimizer))
+  
   if not isinstance(ops[0], (list,tuple)):  
     # train_op = tf.contrib.layers.optimize_loss(
     #     loss=ops[0],
@@ -750,8 +760,21 @@ def train_flow(ops,
     # TODO...
     update_ops = ops[0][1]
     ops[0] = ops[0][0]
-    if FLAGS.variable_strategy == 'cpu' and FLAGS.num_gpus and FLAGS.num_gpus > 1:
-      with tf.device('/cpu:0'):
+
+    if FLAGS.optimizer != 'bert':
+      if FLAGS.variable_strategy == 'cpu' and FLAGS.num_gpus and FLAGS.num_gpus > 1:
+        with tf.device('/cpu:0'):
+          train_op = melt.layers.optimize_loss(
+              losses=ops[0],
+              num_gpus=num_gpus,
+              global_step=global_step,
+              learning_rate=learning_rate,
+              optimizer=optimizer,
+              clip_gradients=FLAGS.clip_gradients,
+              learning_rate_decay_fn=learning_rate_decay_fn,
+              update_ops=update_ops,
+              name=optimize_scope)
+      else:
         train_op = melt.layers.optimize_loss(
             losses=ops[0],
             num_gpus=num_gpus,
@@ -763,16 +786,15 @@ def train_flow(ops,
             update_ops=update_ops,
             name=optimize_scope)
     else:
-      train_op = melt.layers.optimize_loss(
-          losses=ops[0],
-          num_gpus=num_gpus,
-          global_step=global_step,
-          learning_rate=learning_rate,
-          optimizer=optimizer,
-          clip_gradients=FLAGS.clip_gradients,
-          learning_rate_decay_fn=learning_rate_decay_fn,
-          update_ops=update_ops,
-          name=optimize_scope)
+      from third.bert import optimization
+      num_train_steps = int(
+        num_train_examples / FLAGS.batch_size * (FLAGS.num_decay_epochs or num_epochs))
+      num_warmup_steps = FLAGS.warmup_steps or int(num_train_steps * FLAGS.warmup_proportion) 
+      use_tpu = False
+      train_op = optimization.create_optimizer(
+          ops[0], FLAGS.learning_rate, num_train_steps, num_warmup_steps, FLAGS.min_learning_rate, use_tpu)
+
+      learning_rate = tf.get_collection('bert_learning_rate')[-1]
       
     #set the last tower loss as loss in ops
     # TODO FIXME how to check if ops[0] here should be scalar ?
@@ -787,6 +809,8 @@ def train_flow(ops,
   ops.insert(1, learning_rate)
 
   tf.add_to_collection('learning_rate', learning_rate)
+
+  logging.info('learning_rate', learning_rate)
   
   try:
     sess.run(tf.variables_initializer([learning_rate]))
@@ -1165,6 +1189,7 @@ def train(Dataset,
     test_dataset = None
   logging.info('num_test_examples:', num_test_examples)
 
+  scope_name = ''
   #with tf.variable_scope('model') as scope:
   #iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
   batch = iter.get_next()
@@ -1271,8 +1296,10 @@ def train(Dataset,
              inference_fn=inference_fn,
              num_steps_per_epoch=num_steps_per_epoch,
              model=model,
-             init_fn=init_fn)
-
+             init_fn=init_fn,
+             num_train_examples=num_examples,
+             num_epochs=FLAGS.num_epochs,
+             )
 
 def get_train():
   train = melt.eager.train if tf.executing_eagerly() else melt.apps.train

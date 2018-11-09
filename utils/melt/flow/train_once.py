@@ -291,7 +291,7 @@ def train_once(sess,
         else:
           hours_per_epoch = num_steps_per_epoch / interval_steps * elapsed / 3600
           epoch_time_info = ' 1epoch:[{:.2f}h]'.format(hours_per_epoch)
-        info.write('elapsed:[{:.3f}] batch_size:[{}]{} batches/s:[{:.2f}] insts/s:[{:.2f}] {} lr:[{:.5f}]'.format(
+        info.write('elapsed:[{:.3f}] batch_size:[{}]{} batches/s:[{:.2f}] insts/s:[{:.2f}] {} lr:[{:.8f}]'.format(
                       elapsed, batch_size, gpu_info, steps_per_second, instances_per_second, epoch_time_info, learning_rate))
 
       if print_avg_loss:

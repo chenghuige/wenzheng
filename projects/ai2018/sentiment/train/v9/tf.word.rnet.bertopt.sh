@@ -38,6 +38,10 @@ if [ "$INFER" = "2"  ];
   fold=0
 fi
 
+        #--decay_target=loss \
+        #--decay_patience=1 \
+        #--decay_factor=0.8 \
+        #--decay_start_epoch_=2. \
 python $exe \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \
@@ -75,10 +79,6 @@ python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=bert \
-        --learning_rate=5e-5 \
-        --decay_target=loss \
-        --decay_patience=1 \
-        --decay_factor=0.8 \
-        --decay_start_epoch_=2. \
+        --learning_rate=0.001 \
         --num_epochs=$num_epochs \
 

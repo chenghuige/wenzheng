@@ -146,7 +146,7 @@ class Vocabulary(object):
     if not fixed and not simple:
       self._start_id = vocab[start_word]
       self._end_id = vocab[end_word] 
-      self._unk_id = vocab[unk_word] 
+    self._unk_id = vocab[unk_word] 
 
     self._buckets = buckets
     self.num_reserved_ids = num_reserved_ids

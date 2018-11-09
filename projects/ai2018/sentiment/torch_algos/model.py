@@ -101,6 +101,26 @@ class ModelBase(nn.Module):
       self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
       self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)
 
+  def unk_aug(self, x, x_mask=None):
+    """
+    randomly make 10% words as unk
+    TODO this works, but should this be rmoved and put it to Dataset so can share for both pyt and tf
+    """
+    if not self.training or not FLAGS.unk_aug or melt.epoch() < FLAGS.unk_aug_start_epoch:
+      return x 
+
+    if x_mask is None:
+      x_mask = x > 0
+    x_mask = x_mask.long()
+
+    ratio = np.random.uniform(0, FLAGS.unk_aug_max_ratio)
+    mask = torch.cuda.FloatTensor(x.size(0), x.size(1)).uniform_() > ratio
+    mask = mask.long()
+    rmask = FLAGS.unk_id * (1 - mask)
+
+    x = (x * mask + rmask) * x_mask
+    return x
+
 class BiLanguageModel(ModelBase):
   def __init__(self, embedding=None):
     super(BiLanguageModel, self).__init__(embedding, lm_model=True)
@@ -160,6 +180,8 @@ class RNet(ModelBase):
     x_mask = x.eq(0)
     batch_size = x.size(0)
 
+    x = self.unk_aug(x, x_mask)
+
     if FLAGS.rnn_no_padding:
       x_mask = torch.zeros_like(x, dtype=torch.uint8)
 
@@ -195,23 +217,23 @@ class MReader(ModelBase):
     Rnn = lele.layers.StackedBRNN 
     doc_hidden_size = self.encode.output_size
 
-    self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
-    self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
-
-    # here linear better or another rnn is better ?
-    if not FLAGS.use_label_rnn:
-      self.label_forward = nn.Linear(FLAGS.emb_dim, doc_hidden_size)
-    else:
-      self.label_forward = Rnn(
-            input_size=emb_dim,
-            hidden_size=self.num_units,
-            num_layers=1,
-            dropout_rate=self.dropout_rate,
-            dropout_output=False,
-            concat_layers=False,
-            rnn_type=FLAGS.cell,
-            padding=FLAGS.rnn_padding,
-        )    
+    if FLAGS.use_label_att:
+      self.label_emb_height = NUM_CLASSES if not FLAGS.label_emb_height else FLAGS.label_emb_height
+      self.label_embedding = nn.Embedding(self.label_emb_height, FLAGS.emb_dim)
+      # here linear better or another rnn is better ?
+      if not FLAGS.use_label_rnn:
+        self.label_forward = nn.Linear(FLAGS.emb_dim, doc_hidden_size)
+      else:
+        self.label_forward = Rnn(
+              input_size=emb_dim,
+              hidden_size=self.num_units,
+              num_layers=1,
+              dropout_rate=self.dropout_rate,
+              dropout_output=False,
+              concat_layers=False,
+              rnn_type=FLAGS.cell,
+              padding=FLAGS.rnn_padding,
+          )    
 
     # Interactive aligning, self aligning and aggregating
     self.interactive_aligners = nn.ModuleList()
@@ -222,24 +244,26 @@ class MReader(ModelBase):
     
     for i in range(FLAGS.hop):
       # interactive aligner
-      self.interactive_aligners.append(layers.SeqAttnMatch(doc_hidden_size, identity=True))
-      self.interactive_SFUs.append(layers.SFU(doc_hidden_size, 3 * doc_hidden_size))
+      if FLAGS.use_label_att:
+        self.interactive_aligners.append(layers.SeqAttnMatch(doc_hidden_size, identity=True))
+        self.interactive_SFUs.append(layers.SFU(doc_hidden_size, 3 * doc_hidden_size))
       # self aligner
-      self.self_aligners.append(layers.SelfAttnMatch(doc_hidden_size, identity=True, diag=False))
-      self.self_SFUs.append(layers.SFU(doc_hidden_size, 3 * doc_hidden_size))
-      # aggregating
-      self.aggregate_rnns.append(
-          Rnn(
-              input_size=doc_hidden_size,
-              hidden_size=self.num_units,
-              num_layers=1,
-              dropout_rate=self.dropout_rate,
-              dropout_output=False,
-              concat_layers=False,
-              rnn_type=FLAGS.cell,
-              padding=FLAGS.rnn_padding,
-          )
-      )
+      if FLAGS.use_self_match:
+        self.self_aligners.append(layers.SelfAttnMatch(doc_hidden_size, identity=True, diag=False))
+        self.self_SFUs.append(layers.SFU(doc_hidden_size, 3 * doc_hidden_size))
+        # aggregating
+        self.aggregate_rnns.append(
+            Rnn(
+                input_size=doc_hidden_size,
+                hidden_size=self.num_units,
+                num_layers=1,
+                dropout_rate=self.dropout_rate,
+                dropout_output=False,
+                concat_layers=False,
+                rnn_type=FLAGS.cell,
+                padding=FLAGS.rnn_padding,
+            )
+        )
 
   def forward(self, input, training=False):
     #print('------------', input['source'])
@@ -248,6 +272,8 @@ class MReader(ModelBase):
     x_mask = x.eq(0)
     batch_size = x.size(0)
     max_c_len = x.size(1)
+
+    x = self.unk_aug(x, x_mask)
 
     if FLAGS.rnn_no_padding:
       x_mask = torch.zeros_like(x, dtype=torch.uint8)
@@ -275,7 +301,7 @@ class MReader(ModelBase):
         c_bar = self.interactive_SFUs[i].forward(c_check, torch.cat([q_tilde, c_check * q_tilde, c_check - q_tilde], 2))
       else:
         c_bar = c_check
-      if FLAGS.use_self_att:
+      if FLAGS.use_self_match:
         c_tilde = self.self_aligners[i].forward(c_bar, x_mask)
         c_hat = self.self_SFUs[i].forward(c_bar, torch.cat([c_tilde, c_bar * c_tilde, c_bar - c_tilde], 2))
         c_check = self.aggregate_rnns[i].forward(c_hat, x_mask)
@@ -305,6 +331,9 @@ class Fastai(ModelBase):
 
   def forward(self, input, training=False):
     x = input['content']
+
+    x = self.unk_aug(x)
+
     # TODO ..
     #x = x.permute(1, 0)
     x = x.transpose(0, 1)
