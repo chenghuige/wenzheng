@@ -39,7 +39,7 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --num_finetune_words=6000 \
+        --num_finetune_words=3000 \
         --num_finetune_chars=3000 \
         --model=Transformer \
         --fold=$fold \

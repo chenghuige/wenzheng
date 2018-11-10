@@ -41,7 +41,7 @@ fi
 python $exe \
         --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC.long/torch.char.lm.nopad/latest.pyt \
         --dynamic_finetune=1 \
-        --num_finetune_words=6000 \
+        --num_finetune_words=3000 \
         --use_char=0 \
         --concat_layers=0 \
         --recurrent_dropout=0 \
@@ -64,7 +64,7 @@ python $exe \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets=500,1000 \
+        --buckets=600,1200 \
         --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \

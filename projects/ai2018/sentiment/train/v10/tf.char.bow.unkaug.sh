@@ -50,8 +50,7 @@ python $exe \
         --unk_aug=1 \
         --unk_aug_max_ratio=0.02 \
         --unk_aug_start_step=7000 \
-        --num_finetune_words=6000 \
-        --num_finetune_chars=3000 \
+        --num_finetune_words=3000 \
         --model=RNet \
         --use_char=0 \
         --concat_layers=1 \
@@ -69,7 +68,7 @@ python $exe \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets=500,1000 \
+        --buckets=600,1200 \
         --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=bow \

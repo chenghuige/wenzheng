@@ -39,8 +39,8 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --bert_dir=$base/data/my-embedding/bert-char/ckpt/92000 \
-        --num_finetune_words=6000 \
+        --bert_dir=$base/data/my-embedding/bert-char/ckpt/100000 \
+        --num_finetune_words=3000 \
         --num_finetune_chars=3000 \
         --model=Transformer \
         --fold=$fold \
@@ -65,7 +65,7 @@ python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=bert \
-        --learning_rate=2e-5 \
+        --learning_rate=5e-5 \
         --min_learning_rate=5e-6 \
         --num_decay_epochs=5 \
         --warmup_steps=2000 \

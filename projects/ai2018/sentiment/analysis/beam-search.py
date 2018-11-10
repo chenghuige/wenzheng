@@ -40,9 +40,10 @@ idx = 2
 
 infile = sys.argv[1] if len(sys.argv) > 1 else './mount/temp/ai2018/sentiment/submit6/word.glove_rnet.3layer_model.ckpt-13.00-42666.valid.csv'
 df = pd.read_csv(infile)
-scores = df['score'].values
+#scores = df['score'].values
 
-scores = df['score']
+#scores = df['score']
+scores = df['prob']
 scores = [gezi.str2scores(score) for score in scores] 
 scores = np.array(scores)
 scores = np.reshape(scores, [-1, NUM_ATTRIBUTES, NUM_CLASSES])
@@ -51,7 +52,7 @@ probs = gezi.softmax(scores)
 labels = df.iloc[:,idx:idx+num_attrs].values
 predicts = df.iloc[:,idx+num_attrs:idx+2*num_attrs].values
 
-index = 1
+index = 0
 scores = scores[:, index, :]
 labels = labels[:, index]
 probs = probs[:, index, :]
@@ -60,8 +61,8 @@ probs = np.reshape(probs, [NUM_CLASSES, -1])
 x = scores
 y = labels + 2
 
-print(scores)
-print(scores.shape)
+print(probs)
+print(probs.shape)
 
 print(y)
 print(y.shape)
@@ -86,16 +87,16 @@ print(y.shape)
 bi_concave_iters = 1000
 conf_opt_iters = 100
 
-weights = np.load('./mount/temp/ai2018/sentiment/class_weights.npy')
-weights = weights[index]
-weights = weights * weights * weights
+# weights = np.load('./mount/temp/ai2018/sentiment/class_weights.npy')
+# weights = weights[index]
+# weights = weights * weights * weights
 
-#weights = [1.] * len(CLASSES)
-#weights = np.array(weights)
+weights = [1.] * len(CLASSES)
+weights = np.array(weights)
 y = labels + 2
 
-eps = 0.1
-reg = 0.1
+eps = 0.001
+reg = 0.001
 thresh = 0.1
 
 print(y.shape)
@@ -110,7 +111,7 @@ result = beam_f.seed_beam_f(N,
                             eps, 
                             reg, 
                             thresh, 
-                            last_k=100,
+                            last_k=1,
                             out_put=None, 
                             restarts=5)
 

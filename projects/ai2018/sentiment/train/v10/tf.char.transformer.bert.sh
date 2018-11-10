@@ -40,7 +40,7 @@ fi
 
 python $exe \
         --bert_dir=$base/data/word-emb/chinese_L-12_H-768_A-12 \
-        --num_finetune_words=6000 \
+        --num_finetune_words=3000 \
         --num_finetune_chars=3000 \
         --model=Transformer \
         --fold=$fold \

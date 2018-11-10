@@ -74,7 +74,7 @@ is_valid = False
 if len(df.columns) > 2 * num_attrs:
   is_valid = True
 
-idx = 2
+idx = 2 if not is_valid else 2 + num_attrs
 num_diff_docs = 0
 num_diff_attrs = 0
 for i in range(0, len(df)):
@@ -91,7 +91,7 @@ for i in range(0, len(df)):
       if not is_valid:
         print(attr, df.iloc[i][cur], df2.iloc[i][cur])
       else:
-        print(attr, df.iloc[i][cur], df2.iloc[i][cur], df.iloc[i][cur + num_attrs])
+        print(attr, df.iloc[i][cur], df2.iloc[i][cur], df.iloc[i][cur - num_attrs])
 
 print('num_diff_docs', num_diff_docs, file=sys.stderr)
 print('num_diff_attrs', num_diff_attrs, file=sys.stderr)

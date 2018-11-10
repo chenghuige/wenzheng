@@ -23,7 +23,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v10/$fold/$SRC/torch.word.mreader.nopad.lm.$CELL.bertopt.nolatt.unkaug.hidden400/
+model_dir=$base/temp/ai2018/sentiment/model/v10/$fold/$SRC/torch.word.mreader.nopad.lm.$CELL.bertopt.nolatt.unkaug.hidden300/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -49,7 +49,7 @@ python $exe \
         --unk_aug=1 \
         --unk_aug_start_epoch=2 \
         --unk_aug_max_ratio=0.02 \
-        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC/torch.word.lm.nopad.gru.hidden400/latest.pyt \
+        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC/torch.word.lm.nopad.gru.hidden300/latest.pyt \
         --dynamic_finetune=1 \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \
@@ -81,7 +81,7 @@ python $exe \
         --cell=$CELL \
         --keep_prob=0.7 \
         --num_layers=2 \
-        --rnn_hidden_size=400 \
+        --rnn_hidden_size=300 \
         --encoder_output_method=topk,att \
         --eval_interval_steps 1000 \
         --metric_eval_interval_steps 1000 \

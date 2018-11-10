@@ -6,13 +6,6 @@ else
   SRC='word.jieba.ft'
   echo 'use default SRC word.jieba.ft'
 fi 
-
-if [ $CELL ];
-  then echo 'CELL:' $CELL 
-else
-  CELL='gru'
-  echo 'use default CELL gru'
-fi 
 dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
 
 fold=0
@@ -23,7 +16,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v10/$fold/$SRC/torch.word.mreader.nopad.lm.$CELL.bertopt.nolatt.unkaug.hidden400/
+model_dir=$base/temp/ai2018/sentiment/model/v11/$fold/$SRC/torch.mix.mreader/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -46,14 +39,9 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --unk_aug=1 \
-        --unk_aug_start_epoch=2 \
-        --unk_aug_max_ratio=0.02 \
-        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC/torch.word.lm.nopad.gru.hidden400/latest.pyt \
         --dynamic_finetune=1 \
         --num_finetune_words=6000 \
-        --num_finetune_chars=3000 \
-        --use_char=1 \
+        --use_char=0 \
         --concat_layers=0 \
         --recurrent_dropout=0 \
         --use_label_rnn=0 \
@@ -64,7 +52,7 @@ python $exe \
         --model=MReader \
         --label_emb_height=20 \
         --fold=$fold \
-        --use_label_att=0 \
+        --use_label_att=1 \
         --use_self_match=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
@@ -72,16 +60,17 @@ python $exe \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
+        --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets=500,1000 \
+        --buckets=600,1200 \
         --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \
-        --cell=$CELL \
+        --cell=gru \
         --keep_prob=0.7 \
         --num_layers=2 \
-        --rnn_hidden_size=400 \
+        --rnn_hidden_size=768 \
         --encoder_output_method=topk,att \
         --eval_interval_steps 1000 \
         --metric_eval_interval_steps 1000 \
@@ -90,10 +79,11 @@ python $exe \
         --valid_interval_epochs=1 \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
-        --optimizer=bert \
+        --optimizer=adamax \
         --learning_rate=0.002 \
-        --min_learning_rate=1e-5 \
-        --num_decay_epochs=5 \
-        --warmup_steps=2000 \
+        --decay_target=loss \
+        --decay_patience=1 \
+        --decay_factor=0.8 \
+        --decay_start_epoch_=2. \
         --num_epochs=$num_epochs \
 

@@ -27,12 +27,19 @@ ATTRIBUTES = ['location_traffic_convenience', 'location_distance_from_business_d
               'dish_portion', 'dish_taste', 'dish_look', 'dish_recommendation',
               'others_overall_experience', 'others_willing_to_consume_again']
 
+is_valid = False 
+if len(df.columns) > 2 * len(ATTRIBUTES):
+  is_valid = True
 
+idx = 2 if not is_valid else 2 + len(ATTRIBUTES)
 counts = np.zeros([len(ATTRIBUTES), 4], dtype=np.int64)
 for (_, row) in df.iterrows():
-  labels = list(row[2:])
+  labels = list(row[idx: idx + len(ATTRIBUTES)])
   for i, label in enumerate(labels):
     counts[i][label + 2] += 1
 
+# for attr, count in zip(ATTRIBUTES, counts):
+#   print(attr, ['%.3f' % (x / len(df)) for x in count])
+
 for attr, count in zip(ATTRIBUTES, counts):
-  print(attr, [x / len(df) for x in count])
+  print(attr, count)

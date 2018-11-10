@@ -69,6 +69,10 @@ def load_class_weights():
       for j in range(num_classes):
         x = class_weights[i][j]
         class_weights[i][j] = x * x * x 
+    
+    # for location from business and overall experience need to pay more attention to minor classes
+    class_weights[1][-2] = class_weights[1][-2] * 1.2
+    class_weights[-2][0] = class_weights[-2][0] * 1.2
   return class_weights
 
 

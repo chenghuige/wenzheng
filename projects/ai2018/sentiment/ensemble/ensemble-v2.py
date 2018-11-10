@@ -26,7 +26,9 @@ flags.DEFINE_float('thre', 0.69, '')
 flags.DEFINE_string('weight_by', 'adjusted_f1', '')
 flags.DEFINE_integer('num_grids', 10, '')
 flags.DEFINE_integer('num_climbs', 25, '')
+flags.DEFINE_integer('num_train', 10000, 'num train of climbs')
 flags.DEFINE_bool('detail', False, '')
+flags.DEFINE_bool('more_adjust', True, '')
 
 
 import sys 
@@ -137,6 +139,11 @@ for i in range(len(class_weights)):
     # well this make single model adjusted f1 improve by adding 100...
     #class_weights[i][j] = x * x * x + 100
     class_weights[i][j] = x * x * x 
+
+  if FLAGS.more_adjust:
+    #this has been tested to be effective as for both fold 0 and 1 and different model combinations
+    class_weights[1][-2] = class_weights[1][-2] * 1.2
+    class_weights[-2][0] = class_weights[-2][0] * 1.2
 
   # for i in range(len(class_weights)):
   #   for j in range(4):
@@ -268,62 +275,80 @@ valid_files_ = []
 Initializes an empty ensemble
 """
 def init_hillclimb():
-    best_ensemble = {}
-    for label in LABELS:
-        best_ensemble[label] = []
-    best_score = {}
-    for label in LABELS:
-        best_score[label] = 0
-    
-    return best_ensemble, best_score
+  best_ensemble = {}
+  for label in LABELS:
+      best_ensemble[label] = []
+  best_score = {}
+  best_loss = {}
+  valid_score = {}
+  valid_loss = {}
+  for label in LABELS:
+    best_score[label] = 0
+    best_loss[label] = 1000
+    valid_score[label] = None
+    valid_loss[label] = None
+  
+  return best_ensemble, best_score, best_loss, valid_score, valid_loss
 
 """
 Scores average AUC for an ensemble per label
 """
 def score_ensemble(ensemble, label):
-    blend_preds = np.zeros([len(scores_list[0]), NUM_CLASSES])
-    
-    for model in ensemble:
-        scores = scores_list[model]
-        scores = np.reshape(scores, [-1, NUM_ATTRIBUTES, NUM_CLASSES])
-        scores = scores[:, label]
-        blend_preds += scores
-        
-    predict = to_one_predict(blend_preds, label, len(ensemble))
-    score = f1_score(labels_list[model][:, label], predict, average='macro')
-    #score = log_loss(labels_list[model][:, label], gezi.softmax(blend_preds / len(ensemble)))
-    return score
+  blend_preds = np.zeros([len(scores_list[0]), NUM_CLASSES])
+  
+  for model in ensemble:
+    scores = scores_list[model]
+    scores = np.reshape(scores, [-1, NUM_ATTRIBUTES, NUM_CLASSES])
+    scores = scores[:, label]
+    blend_preds += scores
+      
+  predict = to_one_predict(blend_preds, label, len(ensemble))
+  index = FLAGS.num_train
+  score = f1_score(labels_list[model][:, label][:index], predict[:index], average='macro')
+  probs = gezi.softmax(blend_preds / len(ensemble))
+  loss = log_loss(labels_list[model][:, label][:index], probs[:index])
+  
+  valid_score = f1_score(labels_list[model][:, label][index:], predict[index:], average='macro')
+  valid_loss = log_loss(labels_list[model][:, label][index:], probs[index:])
+  return score, loss, valid_score, valid_loss
 
 """
 Finds the optimal model to add next to an ensemble
 """
 def find_best_improvement(ensemble, label):
-    best_score = 0 
-    #best_score = 1000
-    best_ensemble = []
-    
-    for i in range(0,len(labels_list)):
-        ensemble = ensemble + [i]
+  best_score = 0 
+  best_loss = 1000
+  best_ensemble = []
 
-        score = score_ensemble(ensemble, label)
-        
-        if score > best_score:
-        #if score < best_score:
-            best_score  = score
-            best_ensemble = ensemble
-            
-        ensemble = ensemble[:-1]
+  best_valid_score = None
+  best_valid_loss = None
+  
+  for i in range(0,len(labels_list)):
+    ensemble = ensemble + [i]
+
+    score, loss, valid_score, valid_loss = score_ensemble(ensemble, label)
     
-    return best_ensemble, best_score
+    if score > best_score and loss <= best_loss:
+    #if score < best_score:
+      best_score  = score
+      best_loss = loss
+      best_ensemble = ensemble
+
+      best_valid_score = valid_score 
+      best_valid_loss = valid_loss
+        
+    ensemble = ensemble[:-1]
+  
+  return best_ensemble, best_score, best_loss, best_valid_score, best_valid_loss
         
 """
 Performs a step for each label
 """
-def climb(best_ensemble, best_score):
+def climb(best_ensemble, best_score, best_loss, valid_score, valid_loss):
     for label in LABELS:        
-        best_ensemble[label], best_score[label] = find_best_improvement(best_ensemble[label], ATTRIBUTES.index(label))
+        best_ensemble[label], best_score[label], best_loss[label], valid_score[label], valid_loss[label] = find_best_improvement(best_ensemble[label], ATTRIBUTES.index(label))
         
-    return best_ensemble, best_score
+    return best_ensemble, best_score, best_loss, valid_score, valid_loss
 
 """
 Gets optimal blending weights after hillclimb
@@ -445,18 +470,28 @@ def main(_):
   print('weights by weight blending')
   print(weights)
 
-  best_ensemble, best_score = init_hillclimb()
+  best_ensemble, best_score, best_loss, valid_score, valid_loss = init_hillclimb()
   
   # Run hillclimb
   for i in range(FLAGS.num_climbs):
     print("-------------")
     print("Step", i)    
-    best_ensemble, best_score = climb(best_ensemble, best_score)
+    best_ensemble, best_score, best_loss, valid_score, valid_loss = climb(best_ensemble, best_score, best_loss, valid_score, valid_loss)
     print("Best ensemble:")
     print(best_ensemble)
     print("Best score:")
     print(best_score)
     print("F1:", np.mean([best_score[label] for label in LABELS]))
+    print("Best loss:")
+    print(best_loss)
+    print("Loss:", np.mean([best_loss[label] for label in LABELS]))
+
+    print("Valid score:")
+    print(best_score)
+    print("Valid F1:", np.mean([valid_score[label] for label in LABELS]))
+    print("Valid loss:")
+    print(best_loss)
+    print("Valid Loss:", np.mean([valid_loss[label] for label in LABELS]))
   
   # Get optimal weights
   opt_w = get_optimal_weights(best_ensemble)
