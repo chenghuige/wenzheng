@@ -564,13 +564,20 @@ class Transformer(ModelBase):
       self.restore()
 
     c_len = melt.length(x)
-    x = model.get_sequence_output()
+
+    if FLAGS.encoder_output_method == 'last':
+      x = model.get_pooled_output()
+    else:
+      x = model.get_sequence_output()
 
     x = x * 0.1 + tf.stop_gradient(x) * 0.9
     
     if FLAGS.transformer_add_rnn:
+      assert FLAGS.encoder_output_method != 'last'
       x = self.rnn_encode(x, c_len)
-    x = self.pooling(x, c_len)
+    
+    if FLAGS.encoder_output_method != 'last':
+      x = self.pooling(x, c_len)
     x = self.logits(x)
     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, NUM_CLASSES])
     return x

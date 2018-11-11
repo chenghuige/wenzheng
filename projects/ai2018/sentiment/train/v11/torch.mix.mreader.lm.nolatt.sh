@@ -3,15 +3,17 @@ base=./mount
 if [ $SRC ];
   then echo 'SRC:' $SRC 
 else
-  SRC='word.jieba.ft'
-  echo 'use default SRC word.jieba.ft'
+  SRC='char.ft'
+  echo 'use default SRC char.ft'
 fi 
+
 if [ $CELL ];
   then echo 'CELL:' $CELL 
 else
   CELL='gru'
   echo 'use default CELL gru'
 fi 
+
 dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
 
 fold=0
@@ -22,7 +24,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v11/$fold/$SRC/torch.mix.mreader.$CELL/
+model_dir=$base/temp/ai2018/sentiment/model/v11/$fold/$SRC/torch.mix.mreader.lm.$CELL.nolatt/
 num_epochs=20
 
 mkdir -p $model_dir/epoch 
@@ -45,6 +47,7 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
+        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC.long/torch.char.lm.$CELL.nopad/latest.pyt \
         --dynamic_finetune=1 \
         --num_finetune_words=6000 \
         --use_char=0 \
@@ -58,7 +61,7 @@ python $exe \
         --model=MReader \
         --label_emb_height=20 \
         --fold=$fold \
-        --use_label_att=1 \
+        --use_label_att=0 \
         --use_self_match=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
@@ -76,7 +79,7 @@ python $exe \
         --cell=$CELL \
         --keep_prob=0.7 \
         --num_layers=2 \
-        --rnn_hidden_size=400 \
+        --rnn_hidden_size=200 \
         --encoder_output_method=topk,att \
         --eval_interval_steps 1000 \
         --metric_eval_interval_steps 1000 \

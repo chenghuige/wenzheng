@@ -29,17 +29,18 @@ if len(sys.argv) > 2:
 
 print('key', key)
 
-if key != 'loss':
+if not 'loss' in key:
   cmp = lambda x, y: x > y 
 else:
   cmp = lambda x, y: x < y
 
 # model.ckpt-3.00-9846.valid.metrics
 # ckpt-4.valid.metrics 
+res = []
 for dir_ in glob.glob(f'{model_dir}/*/*'):
   if not os.path.isdir(dir_):
     continue
-  best_score = 0 if key != 'loss' else 1e10
+  best_score = 0 if not 'loss' in key else 1e10
   best_epoch = None
 
   files = glob.glob(f'{dir_}/epoch/*.valid.metrics')
@@ -59,5 +60,11 @@ for dir_ in glob.glob(f'{model_dir}/*/*'):
         best_score = score
         best_epoch = epoch
   if find:
-    print(dir_)
-    print('best_epoch:', best_epoch, 'best_score:', best_score) 
+    #print(dir_)
+    #print('best_epoch:', best_epoch, 'best_score:', best_score) 
+    res.append((dir_.replace('../', ''), best_epoch, best_score))
+
+  res.sort(key=lambda x: x[-1], reverse=not 'loss' in key)
+
+for dir_, best_epoch, best_score in res:
+  print('%.5f' % best_score, best_epoch, dir_)

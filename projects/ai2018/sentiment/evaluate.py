@@ -25,9 +25,11 @@ flags.DEFINE_bool('show_detail', False, '')
 
 flags.DEFINE_string('i', '.', '')
 
-flags.DEFINE_string('metric_name', 'adjusted_f1', '')
+flags.DEFINE_string('metric_name', 'adjusted_f1/mean', '')
 flags.DEFINE_float('min_thre', 0., '0.705')
 flags.DEFINE_float('max_thre', 1000., '')
+flags.DEFINE_bool('adjust', True, '')
+flags.DEFINE_bool('more_adjust', True, '')
 
 #from sklearn.utils.extmath import softmax
 from sklearn.metrics import f1_score, log_loss, roc_auc_score
@@ -47,6 +49,7 @@ from algos.config import ATTRIBUTES, NUM_ATTRIBUTES, NUM_CLASSES, CLASSES
 
 import pickle
 import pandas as pd
+import traceback
 
 #since we have same ids... must use valid and test 2 infos
 valid_infos = {}
@@ -62,19 +65,23 @@ class_weights = None
 def load_class_weights():
   global class_weights
   if class_weights is None:
-    if not os.path.exists(FLAGS.class_weights_path):
-      FLAGS.class_weights_path = '/home/gezi/temp/ai2018/sentiment/class_weights.npy'
-    class_weights = np.load(FLAGS.class_weights_path)
-    for i in range(len(class_weights)):
-      for j in range(num_classes):
-        x = class_weights[i][j]
-        class_weights[i][j] = x * x * x 
-    
-    # for location from business and overall experience need to pay more attention to minor classes
-    class_weights[1][-2] = class_weights[1][-2] * 1.2
-    class_weights[-2][0] = class_weights[-2][0] * 1.2
+    if FLAGS.adjust:
+      if not os.path.exists(FLAGS.class_weights_path):
+        FLAGS.class_weights_path = '/home/gezi/temp/ai2018/sentiment/class_weights.npy'
+        if not os.path.exists(FLAGS.class_weights_path):
+          FLAGS.class_weights_path = './class_weights.npy'
+      class_weights = np.load(FLAGS.class_weights_path)
+      for i in range(len(class_weights)):
+        for j in range(num_classes):
+          x = class_weights[i][j]
+          class_weights[i][j] = x * x * x 
+      
+      if FLAGS.more_adjust:
+        class_weights[1][-2] = class_weights[1][-2] * pow(1.2, 22)
+        class_weights[-2][0] = class_weights[-2][0] * 60000
+    else:
+      class_weights = np.ones([NUM_ATTRIBUTES, NUM_CLASSES])
   return class_weights
-
 
 def init():
   global valid_infos, test_infos
@@ -414,21 +421,36 @@ if __name__ == '__main__':
     mnames = []
     m = {}
     for file in glob.glob('%s/*valid.csv' % input):
-      fname = os.path.basename(file)
-      fnames.append(fname)
-      mname = fname.replace('.valid.csv', '').split('_ckpt-')[0].split('_model.ckpt-')[0]
-      mnames.append(mname)
-      
-      vals, names = evaluate_file(file)
-      for val, name in zip(vals, names):
-        if name not in m:
-          m[name] = [val]
-        else:
-          m[name].append(val)
-        if name == FLAGS.metric_name and (val < FLAGS.min_thre or val > FLAGS.max_thre):
-          print('-----remove file', file, '%s:%f' % (FLAGS.metric_name, val))
-          command = 'mv %s* ./bak' % mname
-          os.system(command)
+      try:
+        fname = os.path.basename(file)
+        fnames.append(fname)
+        fname = gezi.strip_suffix(fname, '.valid.csv')
+
+        if 'ensemble' in file:
+          mname = file
+          suffix = ''
+        else: 
+          if '_ckpt-' in fname:
+            mname, suffix = fname.split('_ckpt-')
+          else:
+            mname, suffix = fname.split('_model.ckpt-')
+            
+        mnames.append(mname)
+        
+        vals, names = evaluate_file(file)
+        for val, name in zip(vals, names):
+          if name not in m:
+            m[name] = [val]
+          else:
+            m[name].append(val)
+          if name == FLAGS.metric_name and (val < FLAGS.min_thre or val > FLAGS.max_thre):
+            print('-----remove file', file, '%s:%f' % (FLAGS.metric_name, val))
+            command = 'mv %s.* ./bak' % fname
+            print(command)
+            os.system(command)
+      except Exception:
+        print(file)
+        traceback.print_exc()
 
     df['model'] = mnames
     df['file'] = fnames

@@ -16,7 +16,7 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_float('thre', 0.9920, '')
+flags.DEFINE_float('thre', 0.992, '')
 
 
 import sys 
@@ -56,7 +56,8 @@ df = pd.read_csv('./models.csv')
 df = df[df['model'] != 'ensemble']
 
 models_ = df['model'].values
-files_ = df['file'].values
+files_ = df['file'].values 
+metrics = df['adjusted_f1/mean'].values
 
 models = []
 files = []
@@ -96,12 +97,16 @@ for method in methods:
       c[i, j] = calc_correlation(dfs[i]['score'], dfs[j]['score'], method=method)    
 
 for i in range(1, len_):
-  for j in range(i):
-    if c[j, i] > FLAGS.thre:
-      print(i, j, models[i], models[j], c[j, i])
-      if os.path.exists(files[j]):
-        command = 'mv %s* bak' % models[j]
-        print(command)
+  for j in range(i + 1, len_):
+    if c[i, j] > FLAGS.thre:
+      print(i, j, models[i],'%.4f' % metrics[i], models[j], '%.4f' % metrics[j], c[i, j])
+      if os.path.exists(files[j]) and not ('ensemble' in models[i] or 'ensemble' in models[j]):
+        if glob.glob('%s_model.ckpt-*' % models[j]):
+          command = 'mv %s_model.ckpt-* bak' % models[j]
+          print(command)
+        else:
+          command = 'mv %s_ckpt-* bak' % models[j]
+          print(command)
         os.system(command)
       continue
 

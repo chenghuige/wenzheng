@@ -6,9 +6,7 @@
 #          \date   2018-09-15 19:0num_classes:21.026718
 #   \Description   ensemble by OOF score blend per attribute
 # ==============================================================================
-"""
-ensemble.py  is depreciated, using ensemble-parallel.py instead
-"""
+
   
 from __future__ import absolute_import
 from __future__ import division
@@ -19,7 +17,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_bool('debug', True, '')
-flags.DEFINE_bool('grid_search', False, '')
+flags.DEFINE_bool('grid_search', True, '')
 flags.DEFINE_string('method', 'blend', '')
 flags.DEFINE_string('idir', '.', '')
 flags.DEFINE_float('norm_factor', 0.0001, 'attr weights used norm factor')
@@ -29,6 +27,8 @@ flags.DEFINE_string('weight_by', 'adjusted_f1', '')
 flags.DEFINE_integer('num_grids', 10, '')
 flags.DEFINE_bool('adjust', True, '')
 flags.DEFINE_bool('more_adjust', True, '')
+flags.DEFINE_integer('seed', None, '')
+flags.DEFINE_integer('num_valid', 3000, '')
 
 import sys 
 import os
@@ -124,29 +124,42 @@ if not os.path.exists(class_weights_path):
 class_weights = np.load(class_weights_path)
 #print('class_weights', class_weights)
 
-for i in range(len(class_weights)):
-  for j in range(4):
-    x = class_weights[i][j]
-    class_weights[i][j] = x * x * x 
-  
-  # well just compact for now, but should change this is a bug.. 
+if FLAGS.adjust:
+  for i in range(len(class_weights)):
+    for j in range(4):
+      #class_weights[i][j] = math.log(class_weights[i][j])
+      #class_weights[i] = gezi.softmax(class_weights[i])
+      #class_weights[i][j] +=  math.sqrt(class_weights[i][j])
+      #class_weights[i][j] += 0.
+      #class_weights[i][j] = math.sqrt(class_weights[i][j])
+      x = class_weights[i][j]
+      # If using prob adjust just set x for logits seems x^3 better
+      #class_weights[i][j] = x 
+      # well this make single model adjusted f1 improve by adding 100...
+      #class_weights[i][j] = x * x * x + 100
+      class_weights[i][j] = x * x * x 
+
+    #if FLAGS.more_adjust:
+    #  #this has been tested to be effective as for both fold 0 and 1 and different model combinations
+    #  class_weights[1][-2] = class_weights[1][-2] * 1.2
+    #  class_weights[-2][0] = class_weights[-2][0] * 1.2
+
   if FLAGS.more_adjust:
     #this has been tested to be effective as for both fold 0 and 1 and different model combinations
-    # well, this should be further ajusted 
-    class_weights[1][-2] = class_weights[1][-2] * 1.2 
-    class_weights[-2][0] = class_weights[-2][0] * 1.2
+    # pow(1.2, 22) 55.2061438912436 
+    class_weights[1][-2] = class_weights[1][-2] * pow(1.2, 22)
+    ## 22.63
+    #x = pow(1.2, 18)  
+    ## * 22644.802257413307
+    #class_weights[-2][0] = class_weights[-2][0] * x * x * x * 1.2
+    class_weights[-2][0] = class_weights[-2][0] * 60000
+      # for i in range(len(class_weights)):
+      #   for j in range(4):
+      #     class_weights[i][j] /= np.sum(class_weights[i])
 
-#if FLAGS.more_adjust:
-#  #this has been tested to be effective as for both fold 0 and 1 and different model combinations
-#  # well, this should be further ajusted 
-#  class_weights[1][-2] = class_weights[1][-2] * pow(1.2, 20) 
-#  class_weights[-2][0] = class_weights[-2][0] * pow(1.2, 20)
-
-  # for i in range(len(class_weights)):
-  #   for j in range(4):
-  #     class_weights[i][j] /= np.sum(class_weights[i])
-
-#class_weights = gezi.softmax(class_weights)
+    #class_weights = gezi.softmax(class_weights)
+  else:
+    class_weights = np.ones_like(class_weights)
 print('class_weights', class_weights)
 
 def to_predict(logits, weights=None, is_single=False, adjust=True):
@@ -161,7 +174,7 @@ def to_predict(logits, weights=None, is_single=False, adjust=True):
       factor =  FLAGS.logits_factor / weights
   #print('factor:', factor)
 
-  if adjust and FLAGS.adjust:
+  if adjust and FLAGS.adjust or FLAGS.grid_search:
     logits = logits * factor
     probs = gezi.softmax(logits, -1) 
     probs *= class_weights
@@ -219,36 +232,50 @@ def adjust_probs(probs, labels):
   f1 = f1_score(labels[:, -2] + 2, np.argmax(probs[:, -2], 1), average='macro')
   print('thers_overall_experience', f1)
 
-
+# TODO FIXME pymp not work class factors seems not locked...
+import pymp
+#class_factors = pymp.shared.array((num_attrs, num_classes), dtype='float') + 1.
 # class factors is per class dynamic adjust for class weights
-def grid_search_class_factors(probs, labels, weights, num_grids=10):
-  #adjust_probs(probs, labels)
-  class_factors = np.ones([num_attrs, num_classes])  
-  # TODO multi process
-  for i in tqdm(range(num_attrs), ascii=True):
-    print(i, ATTRIBUTES[i])
-    print('init counts:', get_counts(probs[:, i]))
-    index = np.argsort(-np.array(weights[i]))
-    def is_ok(factor):
-      return np.sum(np.argsort(-factor) == index) == 4
 
-    best = 0
-    for a in tqdm(range(1,1 + num_grids), ascii=True):
-      for b in range(1,1 + num_grids):
-        for c in range(1,1 + num_grids):
-          for d in range(1,1 + num_grids):
-            factor = np.array([a, b, c, d], dtype=np.float)
-            factor2 = factor * weights[i]
-            if not is_ok(factor2):
-              continue
-            preds = probs[:, i] * factor2 
-            f1 = f1_score(labels[:, i] + 2, np.argmax(preds, 1), average='macro')
-            if f1 > best:
-              print('\n', ATTRIBUTES[i], factor, factor2, f1)
-              best = f1
-              class_factors[i] = factor
-              print('counts:', get_counts(probs[:, i] * factor))
+from multiprocessing import Manager 
+manager = Manager() 
+class_factors_dict = manager.dict()
+def grid_search_class_factors(probs, labels, weights, num_grids=10):
+  global class_factors
+  with pymp.Parallel(12) as p:
+    for i in tqdm(p.range(num_attrs), ascii=True):
+    #for i in p.range(num_attrs):
+      #p.print(i, ATTRIBUTES[i])
+      #p.print('init counts:', get_counts(probs[:, i]))
+      index = np.argsort(-np.array(weights[i]))
+      def is_ok(factor):
+        return np.sum(np.argsort(-factor) == index) == 4
+      best = 0
+      for a in tqdm(range(1,1 + num_grids), ascii=True):
+      #for a in(range(1,1 + num_grids)):
+        for b in range(1,1 + num_grids):
+          for c in range(1,1 + num_grids):
+            for d in range(1,1 + num_grids):
+              factor = np.array([a, b, c, d], dtype=np.float)
+              factor2 = factor * weights[i]
+              if not is_ok(factor2):
+                continue
+              preds = probs[:, i] * factor2 
+              f1 = f1_score(labels[:, i] + 2, np.argmax(preds, 1), average='macro')
+              if f1 > best:
+                #p.print('\n', ATTRIBUTES[i], factor, factor2, f1)
+                best = f1
+                #class_factors[i] = factor
+                class_factors_dict[i] = factor
+                #p.print('counts:', get_counts(probs[:, i] * factor))
+                #p.print('class_factors', i, class_factors_dict[i])
+
+  class_factors = np.ones([num_attrs, num_classes])
+  for i in range(num_attrs):
+    class_factors[i] = class_factors_dict[i]
   return class_factors
+
+num_train = 15000 - FLAGS.num_valid
 
 def main(_):
   print('METHOD:', FLAGS.method)
@@ -291,13 +318,30 @@ def main(_):
   global class_weights
   #print('-----------', class_weights)
 
+  def sort_table(df, randomize, key='id'):
+    df_list = []
+    for i in randomize:
+      df_list.append(df[df[key] == i])
+    return pd.concat(df_list)
+
+  randomize = None
   # weights is for per model weight
   weights = [] 
   scores_list = []
   valid_files_ = []
   for fid, file_ in enumerate(valid_files):
     df = pd.read_csv(file_)
-    df= df.sort_values('id') 
+    # if fid != len(valid_files) - 1:
+    #   df = df.drop(['content'])
+    #df= df.sort_values('id')
+    if randomize is None:
+      np.random.seed(FLAGS.seed)
+      randomize = np.arange(len(df))
+      np.random.shuffle(randomize) 
+    df['id2'] = randomize
+    #df = sort_table(df, randomize)
+    df = df.sort_values('id2')
+
     labels = df.iloc[:,idx:idx+num_attrs].values
     predicts = df.iloc[:,idx+num_attrs:idx+2*num_attrs].values
     scores = df['score']
@@ -311,6 +355,12 @@ def main(_):
     # f1_file = gezi.strip_suffix(file_, '.valid.csv') + '.f1s.npy'
     # f1_adjusted_file = gezi.strip_suffix(file_, '.valid.csv') + '.f1s.adjust.npy'
     # if not os.path.exists(f1_file):
+
+    valid_labels = labels[num_train:]
+    labels =  labels[:num_train]
+    predicts = predicts[:num_train]
+    scores = scores[:num_train]
+
     f1s = calc_f1s(labels, predicts)
     f1s_adjusted = calc_f1s(labels, to_predict(scores, is_single=True))
 
@@ -389,26 +439,26 @@ def main(_):
 
   sum_weights = np.sum(weights, 0)
 
-  adjusted_f1 = calc_f1(labels, to_predict(results, sum_weights))
+  adjusted_f1 = calc_f1(valid_labels, to_predict(results[num_train:], sum_weights))
   results = np.reshape(results, [-1, num_attrs, num_classes]) 
   predicts = np.argmax(results, -1) - 2
-  f1 = calc_f1(labels, predicts)
+  f1 = calc_f1(valid_labels, predicts[num_train:])
 
   print('-----------using logits ensemble')
   print('f1:', f1)
   print('adjusted f1:', adjusted_f1)
 
-  adjusted_f1_prob = calc_f1(labels, to_predict(results2, sum_weights, adjust=False))
+  adjusted_f1_prob = calc_f1(valid_labels, to_predict(results2[num_train:], sum_weights, adjust=False))
   results2 = np.reshape(results2, [-1, num_attrs, num_classes]) 
   predicts2 = np.argmax(results2, -1) - 2
-  f1_prob = calc_f1(labels, predicts2)
+  f1_prob = calc_f1(valid_labels, predicts2[num_train:])
 
   print('-----------using prob ensemble')
   print('f1_prob:', f1_prob)
   print('adjusted f1_prob:', adjusted_f1_prob)
 
   print('-----------detailed f1 infos (ensemble by prob)')
-  _, adjusted_f1_probs, class_f1s = calc_f1_alls(labels, to_predict(results2, sum_weights, adjust=False))
+  _, adjusted_f1_probs, class_f1s = calc_f1_alls(valid_labels, to_predict(results2[num_train:], sum_weights, adjust=False))
 
   for i, attr in enumerate(ATTRIBUTES):
     print(attr, adjusted_f1_probs[i])
@@ -416,7 +466,7 @@ def main(_):
     print(cls, class_f1s[i])
 
   print('-----------detailed f1 infos (ensemble by logits)')
-  _, adjusted_f1s, class_f1s = calc_f1_alls(labels, to_predict(results, sum_weights))
+  _, adjusted_f1s, class_f1s = calc_f1_alls(valid_labels, to_predict(results[num_train:], sum_weights))
 
   for i, attr in enumerate(ATTRIBUTES):
     print(attr, adjusted_f1s[i])
@@ -429,26 +479,26 @@ def main(_):
 
   class_factors = np.ones([num_attrs, num_classes])
   if FLAGS.grid_search:
-    class_factors = grid_search_class_factors(gezi.softmax(np.reshape(results, [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), labels, class_weights, num_grids=FLAGS.num_grids)
+    class_factors = grid_search_class_factors(gezi.softmax(np.reshape(results[:num_train], [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), labels, class_weights, num_grids=FLAGS.num_grids)
       
-  print('class_factors')
+  print('class_factors1')
   print(class_factors)
 
   # adjust class weights to get better result from grid search 
   class_weights = class_weights * class_factors
 
   print('after dynamic adjust class factors')
-  adjusted_f1 = calc_f1(labels, to_predict(results, sum_weights))
+  adjusted_f1 = calc_f1(valid_labels, to_predict(results[num_train:], sum_weights))
   results = np.reshape(results, [-1, num_attrs, num_classes]) 
   predicts = np.argmax(results, -1) - 2
-  f1 = calc_f1(labels, predicts)
+  f1 = calc_f1(valid_labels, predicts[num_train:])
 
   print('-----------using logits ensemble')
   print('f1:', f1)
   print('adjusted f1:', adjusted_f1)
 
   print('-----------detailed f1 infos (ensemble by logits)')
-  _, adjusted_f1s, class_f1s = calc_f1_alls(labels, to_predict(results, sum_weights))
+  _, adjusted_f1s, class_f1s = calc_f1_alls(valid_labels, to_predict(results[num_train:], sum_weights))
 
   for i, attr in enumerate(ATTRIBUTES):
     print(attr, adjusted_f1s[i])
@@ -458,6 +508,67 @@ def main(_):
   print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
   print(f'adjusted f1:[{adjusted_f1}]')
 
+  # class_factors = np.ones([num_attrs, num_classes])
+  # if FLAGS.grid_search:
+  #   class_factors = grid_search_class_factors(gezi.softmax(np.reshape(results[:num_train], [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), labels, class_weights, num_grids=FLAGS.num_grids * 2)
+      
+  # print('class_factors2')
+  # print(class_factors)
+
+  # # adjust class weights to get better result from grid search 
+  # class_weights = class_weights * class_factors
+
+  # print('after dynamic adjust class factors')
+  # adjusted_f1 = calc_f1(valid_labels, to_predict(results[num_train:], sum_weights))
+  # results = np.reshape(results, [-1, num_attrs, num_classes]) 
+  # predicts = np.argmax(results, -1) - 2
+  # f1 = calc_f1(valid_labels, predicts[num_train:])
+
+  # print('-----------using logits ensemble')
+  # print('f1:', f1)
+  # print('adjusted f1:', adjusted_f1)
+
+  # print('-----------detailed f1 infos (ensemble by logits)')
+  # _, adjusted_f1s, class_f1s = calc_f1_alls(valid_labels, to_predict(results[num_train:], sum_weights))
+
+  # for i, attr in enumerate(ATTRIBUTES):
+  #   print(attr, adjusted_f1s[i])
+  # for i, cls in enumerate(CLASSES):
+  #   print(cls, class_f1s[i])
+
+  # print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
+  # print(f'adjusted f1:[{adjusted_f1}]')
+
+  # class_factors = np.ones([num_attrs, num_classes])
+  # if FLAGS.grid_search:
+  #   class_factors = grid_search_class_factors(gezi.softmax(np.reshape(results[:num_train], [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), labels, class_weights, num_grids=FLAGS.num_grids * 3)
+      
+  # print('class_factors3')
+  # print(class_factors)
+
+  # # adjust class weights to get better result from grid search 
+  # class_weights = class_weights * class_factors
+
+  # print('after dynamic adjust class factors')
+  # adjusted_f1 = calc_f1(valid_labels, to_predict(results[num_train:], sum_weights))
+  # results = np.reshape(results, [-1, num_attrs, num_classes]) 
+  # predicts = np.argmax(results, -1) - 2
+  # f1 = calc_f1(valid_labels, predicts[num_train:])
+
+  # print('-----------using logits ensemble')
+  # print('f1:', f1)
+  # print('adjusted f1:', adjusted_f1)
+
+  # print('-----------detailed f1 infos (ensemble by logits)')
+  # _, adjusted_f1s, class_f1s = calc_f1_alls(valid_labels, to_predict(results[num_train:], sum_weights))
+
+  # for i, attr in enumerate(ATTRIBUTES):
+  #   print(attr, adjusted_f1s[i])
+  # for i, cls in enumerate(CLASSES):
+  #   print(cls, class_f1s[i])
+
+  # print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
+  # print(f'adjusted f1:[{adjusted_f1}]')
   #-------------infer
   print('------------infer')
   ofile = os.path.join(idir, 'ensemble.infer.csv')
@@ -469,7 +580,9 @@ def main(_):
   results2 = None
   for fid, file_ in enumerate(infer_files):
     df = pd.read_csv(file_)
-    df = df.sort_values('id')
+    #df = df.sort_values('id')
+    df['id2'] = randomize
+    df = df.sort_values('id2')
     print(fid, file_)
     if results is None:
       results = np.zeros([len(df), num_attrs * num_classes])
@@ -516,7 +629,7 @@ def main(_):
     df[column] = predicts[:, i]
 
   if DEBUG:
-    print('check blend result', calc_f1(df.iloc[:, idx:idx + num_attrs].values, predicts))
+    print('check blend result', calc_f1(df.iloc[:, idx:idx + num_attrs].values[num_train:], predicts[num_train:]))
   print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
   print(f'adjusted f1:[{adjusted_f1}]')
 

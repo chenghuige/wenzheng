@@ -1,17 +1,10 @@
-base=./mount 
+base=./mount
 
 if [ $SRC ];
   then echo 'SRC:' $SRC 
 else
-  SRC='word.jieba.ft'
-  echo 'use default SRC word.jieba.ft'
-fi 
-
-if [ $CELL ];
-  then echo 'CELL:' $CELL 
-else
-  CELL='gru'
-  echo 'use default CELL gru'
+  SRC='char.bert'
+  echo 'use default SRC char.bert'
 fi 
 dir=$base/temp/ai2018/sentiment/tfrecords/$SRC
 
@@ -23,14 +16,14 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v11/$fold/$SRC/torch.char.mreader.$CELL/
-num_epochs=20
+model_dir=$base/temp/ai2018/sentiment/model/v11/$fold/$SRC/tf.char.transformer.bert.finetune.3/
+num_epochs=4
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
 cp $dir/vocab* $model_dir/epoch
 
-exe=./torch-train.py 
+exe=./train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
   exe=./infer.py 
@@ -46,39 +39,24 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --dynamic_finetune=1 \
+        --bert_dir=$base/data/my-embedding/bert-char/ckpt/500000 \
         --num_finetune_words=3000 \
-        --use_char=0 \
-        --concat_layers=0 \
-        --recurrent_dropout=0 \
-        --use_label_rnn=0 \
-        --hop=1 \
-        --att_combiner='sfu' \
-        --rnn_no_padding=1 \
-        --rnn_padding=0 \
-        --model=MReader \
-        --label_emb_height=20 \
+        --num_finetune_chars=3000 \
+        --model=Transformer \
         --fold=$fold \
-        --use_label_att=1 \
-        --use_self_match=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
         --train_input=$dir/train/'*,' \
         --test_input=$dir/test/'*,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
-        --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
         --batch_size 32 \
-        --buckets=600,1200 \
-        --batch_sizes 32,16,8 \
+        --content_limit=512 \
+        --buckets=128,256,320,512 \
+        --batch_sizes 32,16,12,6,2 \
         --length_key content \
-        --encoder_type=rnn \
-        --cell=$CELL \
-        --keep_prob=0.7 \
-        --num_layers=2 \
-        --rnn_hidden_size=400 \
-        --encoder_output_method=topk,att \
+        --encoder_output_method=last \
         --eval_interval_steps 1000 \
         --metric_eval_interval_steps 1000 \
         --save_interval_steps 1000 \
@@ -86,11 +64,10 @@ python $exe \
         --valid_interval_epochs=1 \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
-        --optimizer=adamax \
-        --learning_rate=0.002 \
-        --decay_target=loss \
-        --decay_patience=1 \
-        --decay_factor=0.8 \
-        --decay_start_epoch_=2. \
+        --optimizer=bert \
+        --learning_rate=3e-5 \
+        --min_learning_rate=5e-8 \
+        --num_decay_epochs=4 \
+        --warmup_steps=2000 \
         --num_epochs=$num_epochs \
 

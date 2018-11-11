@@ -162,6 +162,8 @@ def build_features(index):
           assert len(content_ids) == len(words)
         else:
           content_ids = [vocab.id(x) for x in words]
+          #print(words, content_ids)
+          #exit(0)
 
         if len(content_ids) > max_len:
           max_len = len(content_ids)
