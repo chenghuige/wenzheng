@@ -356,10 +356,10 @@ def tf_train_flow(train_once_fn,
 
     if FLAGS.work_mode != 'train':
       assert not os.path.isdir(FLAGS.model_dir), FLAGS.model_dir  
-      if 'valid' in FLAGS.mode:
+      if 'valid' in FLAGS.work_mode:
         vals, names = metric_eval_fn(FLAGS.model_dir)
         logging.info(list(zip(names, vals)))
-      if 'test' in FLAGS.mode:
+      if 'test' in FLAGS.work_mode:
         inference_fn(FLAGS.model_dir)
       exit(0)
 

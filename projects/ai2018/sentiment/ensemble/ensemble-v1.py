@@ -6,7 +6,9 @@
 #          \date   2018-09-15 19:0num_classes:21.026718
 #   \Description   ensemble by OOF score blend per attribute
 # ==============================================================================
-
+"""
+ensemble.py  is depreciated, using ensemble-parallel.py instead
+"""
   
 from __future__ import absolute_import
 from __future__ import division
@@ -122,42 +124,29 @@ if not os.path.exists(class_weights_path):
 class_weights = np.load(class_weights_path)
 #print('class_weights', class_weights)
 
-if FLAGS.adjust:
-  for i in range(len(class_weights)):
-    for j in range(4):
-      #class_weights[i][j] = math.log(class_weights[i][j])
-      #class_weights[i] = gezi.softmax(class_weights[i])
-      #class_weights[i][j] +=  math.sqrt(class_weights[i][j])
-      #class_weights[i][j] += 0.
-      #class_weights[i][j] = math.sqrt(class_weights[i][j])
-      x = class_weights[i][j]
-      # If using prob adjust just set x for logits seems x^3 better
-      #class_weights[i][j] = x 
-      # well this make single model adjusted f1 improve by adding 100...
-      #class_weights[i][j] = x * x * x + 100
-      class_weights[i][j] = x * x * x 
-
-    #if FLAGS.more_adjust:
-    #  #this has been tested to be effective as for both fold 0 and 1 and different model combinations
-    #  class_weights[1][-2] = class_weights[1][-2] * 1.2
-    #  class_weights[-2][0] = class_weights[-2][0] * 1.2
-
+for i in range(len(class_weights)):
+  for j in range(4):
+    x = class_weights[i][j]
+    class_weights[i][j] = x * x * x 
+  
+  # well just compact for now, but should change this is a bug.. 
   if FLAGS.more_adjust:
     #this has been tested to be effective as for both fold 0 and 1 and different model combinations
-    # pow(1.2, 22) 55.2061438912436 
-    class_weights[1][-2] = class_weights[1][-2] * pow(1.2, 22)
-    ## 22.63
-    #x = pow(1.2, 18)  
-    ## * 22644.802257413307
-    #class_weights[-2][0] = class_weights[-2][0] * x * x * x * 1.2
-    class_weights[-2][0] = class_weights[-2][0] * 60000
-      # for i in range(len(class_weights)):
-      #   for j in range(4):
-      #     class_weights[i][j] /= np.sum(class_weights[i])
+    # well, this should be further ajusted 
+    class_weights[1][-2] = class_weights[1][-2] * 1.2 
+    class_weights[-2][0] = class_weights[-2][0] * 1.2
 
-    #class_weights = gezi.softmax(class_weights)
-else:
-  class_weights = np.ones_like(class_weights)
+#if FLAGS.more_adjust:
+#  #this has been tested to be effective as for both fold 0 and 1 and different model combinations
+#  # well, this should be further ajusted 
+#  class_weights[1][-2] = class_weights[1][-2] * pow(1.2, 20) 
+#  class_weights[-2][0] = class_weights[-2][0] * pow(1.2, 20)
+
+  # for i in range(len(class_weights)):
+  #   for j in range(4):
+  #     class_weights[i][j] /= np.sum(class_weights[i])
+
+#class_weights = gezi.softmax(class_weights)
 print('class_weights', class_weights)
 
 def to_predict(logits, weights=None, is_single=False, adjust=True):
@@ -172,7 +161,7 @@ def to_predict(logits, weights=None, is_single=False, adjust=True):
       factor =  FLAGS.logits_factor / weights
   #print('factor:', factor)
 
-  if adjust and FLAGS.adjust or FLAGS.grid_search:
+  if adjust and FLAGS.adjust:
     logits = logits * factor
     probs = gezi.softmax(logits, -1) 
     probs *= class_weights
@@ -230,45 +219,35 @@ def adjust_probs(probs, labels):
   f1 = f1_score(labels[:, -2] + 2, np.argmax(probs[:, -2], 1), average='macro')
   print('thers_overall_experience', f1)
 
-# TODO FIXME pymp not work class factors seems not locked...
-import pymp
-#class_factors = pymp.shared.array((num_attrs, num_classes), dtype='float') + 1.
-# class factors is per class dynamic adjust for class weights
-from multiprocessing import Manager 
-def grid_search_class_factors(probs, labels, weights, num_grids=10):
-  manager = Manager() 
-  class_factors_dict = manager.dict()
-  with pymp.Parallel(12) as p:
-    for i in tqdm(p.range(num_attrs), ascii=True):
-    #for i in p.range(num_attrs):
-      #p.print(i, ATTRIBUTES[i])
-      #p.print('init counts:', get_counts(probs[:, i]))
-      index = np.argsort(-np.array(weights[i]))
-      def is_ok(factor):
-        return np.sum(np.argsort(-factor) == index) == 4
-      best = 0
-      for a in tqdm(range(1,1 + num_grids), ascii=True):
-        #for a in(range(1,1 + num_grids)):
-        for b in range(1,1 + num_grids):
-          for c in range(1,1 + num_grids):
-            for d in range(1,1 + num_grids):
-              factor = np.array([a, b, c, d], dtype=np.float)
-              factor2 = factor * weights[i]
-              if not is_ok(factor2):
-                continue
-              preds = probs[:, i] * factor2 
-              f1 = f1_score(labels[:, i] + 2, np.argmax(preds, 1), average='macro')
-              if f1 > best:
-                #p.print('\n', ATTRIBUTES[i], factor, factor2, f1)
-                best = f1
-                #class_factors[i] = factor
-                class_factors_dict[i] = factor
-                #p.print('counts:', get_counts(probs[:, i] * factor))
-                #p.print('class_factors', i, class_factors_dict[i])
 
-  class_factors = np.ones([num_attrs, num_classes])
-  for i in range(num_attrs):
-    class_factors[i] = class_factors_dict[i]
+# class factors is per class dynamic adjust for class weights
+def grid_search_class_factors(probs, labels, weights, num_grids=10):
+  #adjust_probs(probs, labels)
+  class_factors = np.ones([num_attrs, num_classes])  
+  # TODO multi process
+  for i in tqdm(range(num_attrs), ascii=True):
+    print(i, ATTRIBUTES[i])
+    print('init counts:', get_counts(probs[:, i]))
+    index = np.argsort(-np.array(weights[i]))
+    def is_ok(factor):
+      return np.sum(np.argsort(-factor) == index) == 4
+
+    best = 0
+    for a in tqdm(range(1,1 + num_grids), ascii=True):
+      for b in range(1,1 + num_grids):
+        for c in range(1,1 + num_grids):
+          for d in range(1,1 + num_grids):
+            factor = np.array([a, b, c, d], dtype=np.float)
+            factor2 = factor * weights[i]
+            if not is_ok(factor2):
+              continue
+            preds = probs[:, i] * factor2 
+            f1 = f1_score(labels[:, i] + 2, np.argmax(preds, 1), average='macro')
+            if f1 > best:
+              print('\n', ATTRIBUTES[i], factor, factor2, f1)
+              best = f1
+              class_factors[i] = factor
+              print('counts:', get_counts(probs[:, i] * factor))
   return class_factors
 
 def main(_):
@@ -461,11 +440,11 @@ def main(_):
   print('after dynamic adjust class factors')
   adjusted_f1 = calc_f1(labels, to_predict(results, sum_weights))
   results = np.reshape(results, [-1, num_attrs, num_classes]) 
-  #predicts = np.argmax(results, -1) - 2
-  #f1 = calc_f1(labels, predicts)
+  predicts = np.argmax(results, -1) - 2
+  f1 = calc_f1(labels, predicts)
 
   print('-----------using logits ensemble')
-  #print('f1:', f1)
+  print('f1:', f1)
   print('adjusted f1:', adjusted_f1)
 
   print('-----------detailed f1 infos (ensemble by logits)')
@@ -476,8 +455,8 @@ def main(_):
   for i, cls in enumerate(CLASSES):
     print(cls, class_f1s[i])
 
-  # print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
-  # print(f'adjusted f1:[{adjusted_f1}]')
+  print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
+  print(f'adjusted f1:[{adjusted_f1}]')
 
   #-------------infer
   print('------------infer')

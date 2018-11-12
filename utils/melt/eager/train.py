@@ -382,7 +382,9 @@ def train(Dataset,
   
   if os.path.exists(FLAGS.model_dir + '.index'):
     latest_checkpoint = FLAGS.model_dir  
-  
+  if 'test' in FLAGS.work_mode or 'valid' in FLAGS.work_mode:
+    latest_checkpoint = FLAGS.model_dir
+
   checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
   checkpoint_prefix2 = os.path.join(ckpt_dir2, 'ckpt')
 
@@ -489,8 +491,11 @@ def train(Dataset,
             learning_rate_weights=learning_rate_weights,
             global_step=global_step)
 
-    checkpoint.restore(latest_checkpoint)
-    checkpoint2 = copy.deepcopy(checkpoint)
+    try:
+      checkpoint.restore(latest_checkpoint)
+      checkpoint2 = copy.deepcopy(checkpoint)
+    except Exception:
+      pass
 
   if FLAGS.torch and is_dynamic_opt:
     optimizer._step = global_step.numpy()
@@ -548,6 +553,9 @@ def train(Dataset,
       if FLAGS.torch:
         model.eval()
       if inference_fn is None:
+        # model_path = FLAGS.model_dir + '.pyt' if not latest_checkpoint else latest_checkpoint
+        # logging.info('model_path', model_path)
+        assert latest_checkpoint
         inference(model, test_dataset, latest_checkpoint, 
                   infer_names, infer_debug_names, infer_write_fn, write_streaming,
                   num_test_steps_per_epoch, suffix=infer_suffix)

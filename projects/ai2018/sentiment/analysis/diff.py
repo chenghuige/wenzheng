@@ -70,6 +70,11 @@ df = df.sort_values('id')
 df2 = pd.read_csv(ifile2)
 df2 = df2.sort_values('id')
 
+#df = df.iloc[[0]]
+#print(df)
+#df2 = df2.iloc[[0]]
+#print(df2)
+
 is_valid = False 
 if len(df.columns) > 2 * num_attrs:
   is_valid = True
@@ -96,62 +101,3 @@ for i in range(0, len(df)):
 print('num_diff_docs', num_diff_docs, file=sys.stderr)
 print('num_diff_attrs', num_diff_attrs, file=sys.stderr)
 
-# for _, row in df.iterrows():
-#   label = row[attr + '_y'] + 2
-#   label = classes[label]
-#   predict = row[attr] + 2
-#   predict = classes[predict]
-#   score = row[FLAGS.key]
-#   score = gezi.str2scores(score)
-#   score = score[idx:idx + 4]
-#   prob = gezi.softmax(score)
-#   id = row['id']
-#   if FLAGS.id:
-#     if id != FLAGS.id:
-#       continue
-#     else:
-#       print(id, score)
-#       print(id, prob)
-#       print(attr, 'label  :', label)
-#       print(attr, 'predict:', predict)
-#       labels = row[2:2+num_attrs]
-#       labels += 2
-#       predicts = row[2+num_attrs:2+2*num_attrs]
-#       predicts += 2
-#       print(list(zip(ATTRIBUTES, [classes[x] for x in labels])))
-#       print(list(zip(ATTRIBUTES, [classes[x] for x in predicts])))
-#       print(row['content'])
-#       print(row['seg'])  
-#       exit(0)      
-
-#   if FLAGS.label:
-#     if label == FLAGS.label.upper():
-#       print(id, score)
-#       print(id, prob)
-#       print(attr, 'label  :', label)
-#       print(attr, 'predict:', predict)
-#       labels = row[2:2+num_attrs]
-#       labels += 2
-#       predicts = row[2+num_attrs:2+2*num_attrs]
-#       predicts += 2
-#       print(list(zip(ATTRIBUTES, [classes[x] for x in labels])))
-#       print(list(zip(ATTRIBUTES, [classes[x] for x in predicts])))
-#       print(row['content'])
-#       print(row['seg'])      
-#       num_errs += 1
-#   else:
-#     if label != predict or FLAGS.id:
-#       print(id, score)
-#       print(id, prob)
-#       print(attr, 'label  :', label)
-#       print(attr, 'predict:', predict)
-#       print(row['content'])
-#       print(row['seg'])
-#       num_errs += 1
-#     else:
-#       num_oks += 1
-
-#   if num_errs == total:
-#     print('num_oks', num_oks, 'num_errs', num_errs)
-#     break
-    
