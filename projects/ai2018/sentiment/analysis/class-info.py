@@ -38,8 +38,8 @@ for (_, row) in df.iterrows():
   for i, label in enumerate(labels):
     counts[i][label + 2] += 1
 
-# for attr, count in zip(ATTRIBUTES, counts):
-#   print(attr, ['%.3f' % (x / len(df)) for x in count])
+for attr, count in zip(ATTRIBUTES, counts):
+  print('%-40s' % attr, ['%.5f' % (x / len(df)) for x in count])
 
 for attr, count in zip(ATTRIBUTES, counts):
-  print(attr, count)
+  print('%-40s' % attr, count)

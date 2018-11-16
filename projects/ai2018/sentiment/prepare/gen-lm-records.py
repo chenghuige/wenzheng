@@ -80,10 +80,11 @@ def build_features(file_):
     for line in tqdm(open(file_), total=1e6, ascii=True):
       try:
         line = line.rstrip('\n')
-        line = filter.filter(line)
+        #line = filter.filter(line)
         words = line.split(' ')
         words = gezi.add_start_end(words)
         words_list = gezi.break_sentence(words, FLAGS.max_sentence_len)
+
         for words in words_list:
           content = ' '.join(words)
           content_ids = [vocab.id(x) for x in words]

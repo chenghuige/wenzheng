@@ -1,0 +1,9 @@
+MODE=test INFER=1 SRC=word.sp10w.ft CELL=lstm sh ./train/v11/tf.word.rnet.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.sp10w.ft_tf.word.rnet.lstm_model.ckpt-5.00-16410
+MODE=test INFER=1 SRC=word.jieba.ft CELL=lstm sh ./train/v11/torch.word.mreader.nopad.lm.nolatt.unkaug.hidden400.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.jieba.ft_torch.word.mreader.nopad.lm.lstm.nolatt.unkaug.hidden400_ckpt-7
+MODE=test INFER=1 SRC=word.sp10w.ft CELL=lstm sh ./train/v11/tf.word.rnet.unkaug.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.sp10w.ft_tf.word.rnet.lstm.unkaug_model.ckpt-5.00-16410
+MODE=test INFER=1 SRC=word.jieba.ft CELL=lstm sh ./train/v11/tf.word.rnet.nolatt.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.jieba.ft_tf.word.rnet.lstm.nolatt_model.ckpt-5.00-16410
+MODE=test INFER=1 SRC=word.sp20w.ft CELL=lstm sh ./train/v11/tf.word.rnet.unkaug.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.sp20w.ft_tf.word.rnet.lstm.unkaug_model.ckpt-7.00-22974
+MODE=test INFER=1 SRC=word.jieba.ft CELL=lstm sh ./train/v11/torch.word.mreader.nopad.lm.bertopt.nolatt.unkaug.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.jieba.ft_torch.word.mreader.nopad.lm.lstm.bertopt.nolatt.unkaug_ckpt-12
+MODE=test INFER=1 SRC=word.sp1w.ft CELL=lstm sh ./train/v11/tf.word.rnet.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.sp1w.ft_tf.word.rnet.lstm_model.ckpt-6.00-19692
+MODE=test INFER=1 SRC=word.sp20w.glove CELL=lstm sh ./train/v11/tf.word.rnetv2.nolatt.unkaug.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.sp20w.glove_tf.word.rnetv2.nolatt.lstm.unkaug_model.ckpt-5.00-16410
+MODE=test INFER=1 SRC=word.sp20w.ft CELL=lstm sh ./train/v11/tf.word.rnet.sh /home/gezi/data3/v11/lstm-or-sp20w/submit/word.sp20w.ft_tf.word.rnet.lstm_model.ckpt-5.00-16410

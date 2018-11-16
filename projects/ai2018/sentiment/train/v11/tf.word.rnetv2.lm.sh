@@ -34,14 +34,14 @@ cp $dir/vocab* $model_dir/epoch
 exe=./train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
-  exe=./infer.py 
+  exe=./$exe 
   model_dir=$1
   fold=0
 fi
 
 if [ "$INFER" = "2"  ]; 
   then echo "VALID MODE" 
-  exe=./infer.py 
+  exe=./$exe 
   model_dir=$1
   fold=0
 fi 

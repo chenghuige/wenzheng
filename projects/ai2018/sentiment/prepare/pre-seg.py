@@ -100,23 +100,14 @@ elif 'ner' in FLAGS.name:
   vocab2 = ifile.replace('.csv', '.ner.%s.vocab' % FLAGS.name)
   type_ = 'ner'
 
-ids_set = set()
-fm = 'w'
-if os.path.exists(ofile):
-  fm = 'a'
-  for line in open(ofile):
-    ids_set.add(line.split('\t')[0])
-
-print('%s already done %d' % (ofile, len(ids_set)))
-
 num_errs = 0
-with open(ofile, fm) as out:
+with open(ofile, 'w') as out:
   df = pd.read_csv(ifile, lineterminator='\n')
   contents = df['content'].values 
   ids = df['id'].values
   for i in tqdm(range(len(df)), ascii=True):
-    if str(ids[i]) in ids_set:
-      continue
+    #if str(ids[i]) in ids_set:
+    #  continue
     #if i != 2333:
     #  continue
     #print(gezi.cut(filter.filter(contents[i]), type_))

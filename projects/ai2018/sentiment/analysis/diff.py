@@ -67,9 +67,12 @@ ifile2 = sys.argv[2]
 df = pd.read_csv(ifile)
 df = df.sort_values('id')
 
+print(ifile, len(df))
+
 df2 = pd.read_csv(ifile2)
 df2 = df2.sort_values('id')
 
+print(ifile2, len(df2))
 #df = df.iloc[[0]]
 #print(df)
 #df2 = df2.iloc[[0]]

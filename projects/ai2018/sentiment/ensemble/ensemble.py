@@ -16,15 +16,14 @@ import tensorflow as tf
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-flags.DEFINE_bool('debug', True, '')
-flags.DEFINE_bool('grid_search', False, '')
+flags.DEFINE_bool('debug', False, '')
 flags.DEFINE_string('method', 'blend', '')
 flags.DEFINE_string('idir', '.', '')
 flags.DEFINE_float('norm_factor', 0.0001, 'attr weights used norm factor')
 flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 72532 so.. a bit dangerous')
 flags.DEFINE_float('thre', 0.6, '')
 flags.DEFINE_string('weight_by', 'adjusted_f1', '')
-flags.DEFINE_integer('num_grids', 10, '')
+flags.DEFINE_integer('num_grids', 10, '10')
 flags.DEFINE_bool('adjust', True, '')
 flags.DEFINE_bool('more_adjust', True, '')
 
@@ -83,6 +82,13 @@ def calc_f1s(labels, predicts):
     f1 = f1_score(labels[:,i], predicts[:, i], average='macro')
     f1_list.append(f1)
   return np.array(f1_list)
+
+def calc_loss(labels, predicts):
+  losses = []
+  for i in range(NUM_ATTRIBUTES):
+    loss = log_loss(labels[:,i], predicts[:,i])
+    losses.append(loss)
+  return np.mean(losses)
 
 def calc_losses(labels, predicts):
   losses = []
@@ -172,7 +178,7 @@ def to_predict(logits, weights=None, is_single=False, adjust=True):
       factor =  FLAGS.logits_factor / weights
   #print('factor:', factor)
 
-  if adjust and FLAGS.adjust or FLAGS.grid_search:
+  if adjust and FLAGS.adjust or FLAGS.num_grids:
     logits = logits * factor
     probs = gezi.softmax(logits, -1) 
     probs *= class_weights
@@ -275,7 +281,7 @@ def main(_):
   print('METHOD:', FLAGS.method)
   print('Norm factor:', FLAGS.norm_factor) 
 
-  # if FLAGS.grid_search:
+  # if FLAGS.num_grids:
   #   FLAGS.debug = False
 
   DEBUG = FLAGS.debug 
@@ -303,7 +309,8 @@ def main(_):
   print('num_ensembles', len(valid_files))
   print('num_infers', len(infer_files))
     
-  assert len(valid_files) == len(infer_files), infer_files
+  if not FLAGS.debug:
+    assert len(valid_files) == len(infer_files), infer_files
 
   global num_ensembles
   num_ensembles = len(valid_files)
@@ -447,9 +454,12 @@ def main(_):
   print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
   print(f'adjusted f1:[{adjusted_f1}]')
 
+  loss = calc_loss(labels, gezi.softmax(results.reshape([-1, NUM_ATTRIBUTES, NUM_CLASSES])))
+  print(f'loss:[{loss}]')
+
 
   class_factors = np.ones([num_attrs, num_classes])
-  if FLAGS.grid_search:
+  if FLAGS.num_grids:
     class_factors = grid_search_class_factors(gezi.softmax(np.reshape(results, [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), labels, class_weights, num_grids=FLAGS.num_grids)
       
   print('class_factors')
@@ -491,7 +501,9 @@ def main(_):
   for fid, file_ in enumerate(infer_files):
     df = pd.read_csv(file_)
     df = df.sort_values('id')
-    print(fid, file_)
+    print(fid, file_, len(df))
+    if not FLAGS.debug:
+      assert len(df) == 200000
     if results is None:
       results = np.zeros([len(df), num_attrs * num_classes])
       results2 = np.zeros([len(df), num_attrs * num_classes])
@@ -540,6 +552,7 @@ def main(_):
     print('check blend result', calc_f1(df.iloc[:, idx:idx + num_attrs].values, predicts))
   print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
   print(f'adjusted f1:[{adjusted_f1}]')
+  print(f'loss:[{loss}]')
 
   print('out:', ofile)
   if not DEBUG:
@@ -559,10 +572,10 @@ def main(_):
   print('---------------logits', logits.shape)
   print('----results', results)
   print('----logits', logits)
-  df['logit'] = [x for x in logits] 
+  #df['logit'] = [x for x in logits] 
   probs = np.reshape(probs, [-1, num_attrs * num_classes])
   print('---------------probs', probs.shape)
-  df['prob'] = [x for x in probs]
+  #df['prob'] = [x for x in probs]
 
   if not DEBUG:
     ofile = os.path.join(idir, 'ensemble.infer.debug.csv')

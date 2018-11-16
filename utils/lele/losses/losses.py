@@ -28,6 +28,9 @@ class BiLMCriterion(object):
     fw_y[:, 0:-1] = y[:, 1:]
     bw_y[:, 1:] = y[:, 0:-1]
 
+    # print(fw_y)
+    # print(bw_y)
+
     num_targets = torch.sum((fw_y > 0).long())
     
     fw_mask = fw_y > 0

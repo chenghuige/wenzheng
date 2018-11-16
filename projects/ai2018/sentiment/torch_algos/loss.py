@@ -27,8 +27,8 @@ from algos.config import NUM_CLASSES, NUM_ATTRIBUTES
 
 import lele
 import torch
-
 from torch import nn
+from torch.nn import functional as F
 
 class Criterion(object):
   def __init__(self, class_weights=None):
@@ -44,8 +44,19 @@ class Criterion(object):
     #   for i in range(NUM_ATTRIBUTES):
     #     self.weighted_loss_fn[i] = torch.nn.CrossEntropyLoss(weight=torch.Tensor(class_weights[i]).cuda())
 
+  def calc_soft_label_loss(self, y_, y, num_classes):
+    y = y.view(-1, num_classes)
+    y_ = y_.view(-1, num_classes)
+    log_probs = F.log_softmax(y_, dim=-1)
+    loss = -torch.sum(log_probs * y, -1)
+    loss = loss.mean()
+    return loss
+
   def forward(self, model, x, y, training=False):
     y_ = model(x)
+
+    if FLAGS.use_soft_label:
+      return self.calc_soft_label_loss(y_, y, model.num_classes)
     
     #print(y.shape, y_.shape)
     # without view Expected target size (32, 4), got torch.Size([32, 20])

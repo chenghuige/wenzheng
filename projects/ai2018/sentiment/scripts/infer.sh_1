@@ -1,0 +1,3 @@
+MODE=test INFER=1 SRC=word.sp20w.ft CELL=gru sh ./train/v11/tf.word.rnet.nolatt.sh /home/gezi/data3/v11/lstm-or-sp20w/2/submit/word.sp20w.ft_tf.word.rnet.gru.nolatt_model.ckpt-12.00-39384
+MODE=test INFER=1 SRC=word.sp20w.ft CELL=gru sh ./train/v11/tf.word.rnetv2.unkaug.sh /home/gezi/data3/v11/lstm-or-sp20w/2/submit/word.sp20w.ft_tf.word.rnetv2.gru.unkaug_model.ckpt-15.00-49230
+MODE=test INFER=1 SRC=word.sp20w.ft CELL=gru sh ./train/v11/torch.word.mreader.nopad.lm.bertopt.nolatt.unkaug.hidden400.es.sh /home/gezi/data3/v11/lstm-or-sp20w/2/submit/word.sp20w.ft_torch.word.mreader.nopad.lm.gru.bertopt.nolatt.unkaug.hidden400.es_ckpt-10

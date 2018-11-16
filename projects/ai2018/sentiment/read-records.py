@@ -103,16 +103,13 @@ def main(_):
   elif FLAGS.type == 'dump':
     valid_infos = {}
     test_infos = {}
+    # TODO notice train and valid also share ids.. so valid only save 0 is ok...
+    # 120000 doc but first 15000 train duplicate id with valid so only save valid result for those ids currently
     inputs = gezi.list_files(f'{base}/train/*record')
     dataset = Dataset('valid')
     dataset = dataset.make_batch(1, inputs)
     deal(dataset, valid_infos)
     print('after valid', len(valid_infos))
-    inputs = gezi.list_files(f'{base}/test/*record')
-    dataset = Dataset('test')
-    dataset = dataset.make_batch(1, inputs)
-    deal(dataset, test_infos)
-    print('after test', len(test_infos))
 
     for key in valid_infos:
       print(valid_infos[key])
@@ -123,19 +120,63 @@ def main(_):
     with open(ofile, 'wb') as out:
       pickle.dump(valid_infos, out)  
 
+    del valid_infos
+
+    inputs = gezi.list_files(f'{base}/test/*record')
+    dataset = Dataset('test')
+    dataset = dataset.make_batch(1, inputs)
+    deal(dataset, test_infos)
+    print('after test', len(test_infos))
+
     ofile = ofile.replace('.pkl', '.test.pkl')  
     with open(ofile, 'wb') as out:
       pickle.dump(test_infos, out)
+    for key in test_infos:
+      print(test_infos[key])
+      print(ids2text.ids2text(test_infos[key]['content']))
+      break
   elif FLAGS.type == 'show_info':
     valid_infos = pickle.load(open(f'{base}/info.pkl', 'rb'))
     lens = [len(valid_infos[key]['content']) for key in valid_infos]
     unks = [list(valid_infos[key]['content']).count(1) for key in valid_infos]
-    print('num unks per doc:', sum(unks) / len(unks))
+    print('num unks per doc:', sum(unks) / len(valid_infos))
     print('num doc with unk ratio:', len([x for x in unks if x != 0]) / len(unks)) 
     print('un unk tokens ratio:', sum(unks) / sum(lens))
     print('len max:', np.max(lens))
     print('len min:', np.min(lens))
+    print('len mean:', np.mean(lens)) 
+    print('num docs:', len(valid_infos))
+
+    num_show = 0
+    for key in valid_infos:
+      if list(valid_infos[key]['content']).count(1) > 0:
+        print(valid_infos[key])
+        print(ids2text.ids2text(valid_infos[key]['content']))
+        num_show += 1
+        if num_show > 5:
+          break
+
+    del valid_infos
+    print('--------------for test info:')
+    test_infos = pickle.load(open(f'{base}/info.test.pkl', 'rb'))
+    lens = [len(test_infos[key]['content']) for key in test_infos]
+    unks = [list(test_infos[key]['content']).count(1) for key in test_infos]
+    print('num unks per doc:', sum(unks) / len(test_infos))
+    print('num doc with unk ratio:', len([x for x in unks if x != 0]) / len(test_infos)) 
+    print('un unk tokens ratio:', sum(unks) / sum(lens))
+    print('len max:', np.max(lens))
+    print('len min:', np.min(lens))
     print('len mean:', np.mean(lens))
+    print('num docs:', len(test_infos))
+
+    num_show = 0
+    for key in test_infos:
+      if list(test_infos[key]['content']).count(1) > 0:
+        print(test_infos[key])
+        print(ids2text.ids2text(test_infos[key]['content']))
+        num_show += 1
+        if num_show > 5:
+          break
   else:
     raise ValueError(FLAGS.type)
 

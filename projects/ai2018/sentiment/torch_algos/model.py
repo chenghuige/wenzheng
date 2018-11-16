@@ -97,6 +97,11 @@ class ModelBase(nn.Module):
 
       # input dim not as convinient as tf..
       pre_logits_dim = self.pooling.output_size
+
+      if FLAGS.use_len:
+        len_embedding_dim = 32
+        self.len_embedding = nn.Embedding(3000, len_embedding_dim, padding_idx=0)
+        pre_logits_dim += len_embedding_dim
       
       self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
       self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)
@@ -309,6 +314,11 @@ class MReader(ModelBase):
     x = c_check
 
     x = self.pooling(x, x_mask)
+
+    if FLAGS.use_len:
+      x_len = torch.sum(input['content'] > 0, 1)
+      len_emb = self.len_embedding(x_len)
+      x = torch.cat([x, len_emb], -1)
     
     x = self.logits(x)  
 

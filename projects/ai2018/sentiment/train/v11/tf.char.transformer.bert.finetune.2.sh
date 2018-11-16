@@ -26,18 +26,19 @@ cp $dir/vocab* $model_dir/epoch
 exe=./train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
-  exe=./infer.py 
+  exe=./$exe 
   model_dir=$1
   fold=0
 fi
 
 if [ "$INFER" = "2"  ]; 
   then echo "VALID MODE" 
-  exe=./infer.py 
+  exe=./$exe 
   model_dir=$1
   fold=0
 fi
 
+# 3 5e-6 6 5e-7
 python $exe \
         --bert_dir=$base/data/my-embedding/bert-char/ckpt/500000 \
         --num_finetune_words=3000 \
@@ -56,7 +57,7 @@ python $exe \
         --buckets=128,256,320,512 \
         --batch_sizes 32,16,12,6,2 \
         --length_key content \
-        --encoder_output_method=topk,att \
+        --encoder_output_method=last \
         --eval_interval_steps 1000 \
         --metric_eval_interval_steps 1000 \
         --save_interval_steps 1000 \
@@ -66,8 +67,9 @@ python $exe \
         --freeze_graph=1 \
         --optimizer=bert \
         --learning_rate=5e-5 \
-        --min_learning_rate=5e-6 \
-        --warmup_steps=2000 \
-        --num_decay_epochs=3 \
+        --min_learning_rate=5e-7 \
+        --num_decay_epochs=15 \
+        --warmup_steps=4000 \
+        --num_decay_epochs=6 \
         --num_epochs=$num_epochs \
 

@@ -17,18 +17,20 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_bool('debug', True, '')
-flags.DEFINE_bool('grid_search', True, '')
 flags.DEFINE_string('method', 'blend', '')
 flags.DEFINE_string('idir', '.', '')
 flags.DEFINE_float('norm_factor', 0.0001, 'attr weights used norm factor')
 flags.DEFINE_float('logits_factor', 10, '10 7239 9 7245 but test set 72589 and 72532 so.. a bit dangerous')
 flags.DEFINE_string('weight_by', 'adjusted_f1', '')
-flags.DEFINE_integer('num_grids', 10, '')
+flags.DEFINE_integer('num_grids', 0, '')
 flags.DEFINE_bool('adjust', True, '')
 flags.DEFINE_bool('more_adjust', True, '')
-flags.DEFINE_integer('seed', None, '')
-flags.DEFINE_integer('num_folds', 5, '')
+flags.DEFINE_integer('seed', 10240, '')
+flags.DEFINE_integer('num_folds', 1, '')
 flags.DEFINE_bool('show_detail', False, '')
+flags.DEFINE_bool('infer', False, '')
+flags.DEFINE_string('blend', 'rank', 'blend by rank or by weight')
+flags.DEFINE_bool('minmax_scale', False, '')
 
 import sys 
 import os
@@ -44,6 +46,7 @@ import math
 from scipy.stats import rankdata
 
 from sklearn.model_selection import KFold
+from sklearn.metrics import confusion_matrix
 
 DEBUG = 0
 idir = '.'
@@ -155,13 +158,16 @@ if FLAGS.adjust:
 
   if FLAGS.more_adjust:
     #this has been tested to be effective as for both fold 0 and 1 and different model combinations
+    #class_weights[0][-2] = class_weights[1][-2] * 10.
     # pow(1.2, 22) 55.2061438912436 
     class_weights[1][-2] = class_weights[1][-2] * pow(1.2, 22)
+    #class_weights[1][1] = class_weights[1][-2] * 10
     ## 22.63
     #x = pow(1.2, 18)  
     ## * 22644.802257413307
     #class_weights[-2][0] = class_weights[-2][0] * x * x * x * 1.2
     class_weights[-2][0] = class_weights[-2][0] * 60000
+    #class_weights[-2][1] = class_weights[-2][1] * 2
       # for i in range(len(class_weights)):
       #   for j in range(4):
       #     class_weights[i][j] /= np.sum(class_weights[i])
@@ -184,7 +190,7 @@ def to_predict(logits, weights=None, is_single=False, adjust=True):
       factor =  FLAGS.logits_factor / weights
   #print('factor:', factor)
 
-  if adjust and FLAGS.adjust or FLAGS.grid_search:
+  if adjust and FLAGS.adjust or FLAGS.num_grids:
     logits = logits * factor
     probs = gezi.softmax(logits, -1) 
     probs *= class_weights
@@ -208,7 +214,7 @@ def to_predict(logits, weights=None, is_single=False, adjust=True):
   result = np.reshape(result, [-1, num_attrs])
   return result
 
-def blend_weights(weights, norm_facotr):
+def blend_byrank(weights, norm_facotr):
   for i in range(num_attrs):
     #weights[:, i] = minmax_scale(weights[:, i])
     ws = weights[:, i]
@@ -222,6 +228,36 @@ def blend_weights(weights, norm_facotr):
     sum_rank = np.sum(ranked)
     for j in range(len(weights)):
       weights[j][i] = ranked[j] / sum_rank
+
+  #print(np.sum(weights, 0))
+  return weights
+
+def blend_byweight(weights, norm_facotr):
+  for i in range(num_attrs):
+    if FLAGS.minmax_scale:
+      weights[:, i] = minmax_scale(weights[:, i])
+    ws = weights[:, i]
+    min_ws = np.min(ws)
+    max_ws = np.max(ws)
+    gap = max_ws - min_ws
+    if gap > 0:
+     for j in range(len(weights)):
+       weights[j][i] = ((weights[j][i] - min_ws) / gap) + norm_facotr
+
+  sum_weights = np.sum(weights, 0)
+  # return new weights...
+  weights = weights / sum_weights
+
+  #print(np.sum(weights, 0))
+  return weights
+
+def blend(weights, norm_factor):
+  if FLAGS.blend == 'rank':
+    print('blend by rank')
+    return blend_byrank(weights, norm_factor)
+  else:
+    print('blend by weight')
+    return blend_byweight(weights, norm_factor)
 
 def get_counts(probs):
   predicts = np.argmax(probs, 1)
@@ -284,18 +320,29 @@ def grid_search_class_factors(probs, labels, weights, num_grids=10):
     class_factors[i] = class_factors_dict[i]
   return class_factors
 
+def get_distribution(predicts):
+  counts = np.zeros([len(ATTRIBUTES), 4], dtype=np.int64)
+  for predict in predicts:
+    for i, p in enumerate(predict):
+      counts[i][p + 2] += 1
+  return counts
+
+def print_confusion_matrix(labels, predicts):
+  for i, attr in enumerate(ATTRIBUTES):
+    print(i, '%-40s' % attr)
+    print(confusion_matrix(labels[:, i] + 2, predicts[:, i] + 2))
+
 def main(_):
   print('METHOD:', FLAGS.method)
   print('Norm factor:', FLAGS.norm_factor) 
 
-  if FLAGS.num_grids <= 1:
-    FLAGS.grid_search = False
-
-  # if FLAGS.grid_search:
-  #   FLAGS.debug = False
-
   DEBUG = FLAGS.debug 
   idir = FLAGS.idir
+
+  if not DEBUG:
+    FLAGS.infer = True
+    FLAGS.num_folds = 1
+    #FLAGS.num_grids = 10 
 
   # first id, sencod content ..
   idx = 2
@@ -321,14 +368,19 @@ def main(_):
   global class_weights
   #print('-----------', class_weights)
 
-  kf = KFold(n_splits=FLAGS.num_folds, shuffle=True, random_state=FLAGS.seed)
-
   print('loading all valid csv')
   dfs = []
   for file_ in tqdm(valid_files, ascii=True):
     df = pd.read_csv(file_)
     df = df.sort_values('id')
     dfs.append(df)
+
+  if FLAGS.num_folds > 1:
+    kf = KFold(n_splits=FLAGS.num_folds, shuffle=True, random_state=FLAGS.seed)
+    dataset = kf.split(dfs[0])
+  else:
+    ids = dfs[0]['id'].values
+    dataset = [(ids, ids)]
   
   logits_f1_list = []
   logits_adjusted_f1_list = []
@@ -355,9 +407,9 @@ def main(_):
       num_train = total - num_valid
       return x[:num_train], x[num_train:]
 
-  for fold, (train_index, valid_index) in enumerate(kf.split(dfs[0])):
+  for fold, (train_index, valid_index) in enumerate(dataset):
     print('FOLD_%s---------------------------' % fold)
-    print(train_index, valid_index)
+    print('train:', train_index,  'valid:', valid_index)
     class_factors = np.ones([num_attrs, num_classes])
     class_weights = ori_class_weights
     # logits sum results
@@ -414,7 +466,11 @@ def main(_):
     weights = np.array(weights)
     scores_list = np.array(scores_list)
 
-    blend_weights(weights, FLAGS.norm_factor)
+    weights = blend(weights, FLAGS.norm_factor)
+    sum_weights = np.sum(weights, 0)
+
+    # print('weights\n', weights)
+    # print('sum_weights\n', sum_weights)
 
     # if DEBUG:
     #   print(weights)
@@ -425,6 +481,7 @@ def main(_):
         results = np.zeros([len(scores), num_attrs * num_classes])
         results2 = np.zeros([len(scores), num_attrs * num_classes])
       weight = weights[fid]
+      #print(fid, valid_files[fid], '\n', ['%.5f' % x for x in np.reshape(weight, [-1])])
       if FLAGS.method == 'avg' or FLAGS.method == 'mean': 
         weight = 1.
       for i, score in enumerate(scores):
@@ -446,8 +503,6 @@ def main(_):
         score = np.reshape(score, [-1])
         
         results2[i] += score 
-
-    sum_weights = np.sum(weights, 0)
 
     train_results, valid_results = split_train_valid(results)
     train_results2, valid_results2 = split_train_valid(results2)
@@ -508,7 +563,7 @@ def main(_):
     print('%-40s' % 'adjusted f1 prob:', '%.5f' % adjusted_f1_prob)
     print('%-40s' % 'adjusted f1:', '%.5f' % adjusted_f1)
 
-    if FLAGS.grid_search:
+    if FLAGS.num_grids:
       print('------------grid search num_grids', FLAGS.num_grids)
       class_factors = grid_search_class_factors(gezi.softmax(np.reshape(train_results, [-1, num_attrs, num_classes]) * (FLAGS.logits_factor / sum_weights)), train_labels, class_weights, num_grids=FLAGS.num_grids)
         
@@ -542,18 +597,18 @@ def main(_):
       print('%-40s' % 'adjusted f1 before grids:', '%.5f' % adjusted_f1_before_grids)
       print('%-40s' % 'adjusted f1:', '%.5f' % adjusted_f1)
 
-  print('-------------------------------------OVERALL mean')
-  print('ensemble by probs')
-  print('%-40s' % 'f1', '%.5f' % np.mean(probs_f1_list))
-  print('%-40s' % 'adjustedf f1', '%.5f' % np.mean(probs_adjusted_f1_list))
+  # print('-------------------------------------OVERALL mean')
+  # print('ensemble by probs')
+  # print('%-40s' % 'f1', '%.5f' % np.mean(probs_f1_list))
+  # print('%-40s' % 'adjustedf f1', '%.5f' % np.mean(probs_adjusted_f1_list))
   
-  print('ensemble by logits')
-  print('%-40s' % 'f1:', '%.5f' % np.mean(logits_f1_list))
-  print('%-40s' % 'adjusted f1:', '%.5f' % np.mean(logits_adjusted_f1_list))
+  # print('ensemble by logits')
+  # print('%-40s' % 'f1:', '%.5f' % np.mean(logits_f1_list))
+  # print('%-40s' % 'adjusted f1:', '%.5f' % np.mean(logits_adjusted_f1_list))
 
-  if FLAGS.grid_search:
-    print('ensemble by logits after grid search')
-    print('%-40s' % 'adjusted f1', '%.5f' % np.mean(grids_logits_adjusted_f1_list))
+  # if FLAGS.num_grids:
+  #   print('ensemble by logits after grid search')
+  #   print('%-40s' % 'adjusted f1', '%.5f' % np.mean(grids_logits_adjusted_f1_list))
 
   print('-------------------------------------OVERALL recalc')
   labels = np.concatenate(labels_list, 0)
@@ -562,28 +617,136 @@ def main(_):
   print('%-40s' % 'adjustedf f1', '%.5f' % calc_f1(labels, np.concatenate(probs_adjusted_predict_list, 0)))
 
   print('ensemble by logits')
-  print('%-40s' % 'f1:', '%.5f' % calc_f1(labels, np.concatenate(logits_predict_list, 0)))
-  print('%-40s' % 'adjusted f1:', '%.5f' % calc_f1(labels, np.concatenate(logits_adjusted_predict_list, 0)))
+  predicts = np.concatenate(logits_predict_list, 0)
+  print('%-40s' % 'f1:', '%.5f' % calc_f1(labels, predicts))
+  adjusted_predicts = np.concatenate(logits_adjusted_predict_list, 0)
+  print('%-40s' % 'adjusted f1:', '%.5f' % calc_f1(labels, adjusted_predicts))
 
-  if FLAGS.grid_search:
+  if FLAGS.num_grids:
     print('ensemble by logits after grid search')
-    print('%-40s' % 'adjusted f1 after grid search', '%.5f' % calc_f1(labels, np.concatenate(grids_logits_adjusted_predict_list, 0)))
+    grids_predicts = np.concatenate(grids_logits_adjusted_predict_list, 0)
+    print('%-40s' % 'adjusted f1 after grid search', '%.5f' % calc_f1(labels, grids_predicts))
 
-  _, adjusted_f1s, class_f1s = calc_f1_alls(labels, np.concatenate(logits_adjusted_predict_list, 0))
+  _, adjusted_f1s, class_f1s = calc_f1_alls(labels, adjusted_predicts)
   for i, attr in enumerate(ATTRIBUTES):
     print('%-40s' % attr, '%.5f' % adjusted_f1s[i])
   for i, cls in enumerate(CLASSES):
     print('%-40s' % cls, '%.5f' % class_f1s[i])
-  print('%-40s' % 'f1', '%.5f' % calc_f1(labels, np.concatenate(logits_predict_list, 0)))
-  print('%-40s' % 'adjusted f1', '%.5f' % calc_f1(labels, np.concatenate(logits_adjusted_predict_list, 0)))
-  if FLAGS.grid_search:
-    print('%-40s' % 'adjusted f1 after grid search', '%.5f' % calc_f1(labels, np.concatenate(grids_logits_adjusted_predict_list, 0)))
+  print('%-40s' % 'f1', '%.5f' % calc_f1(labels, predicts))
+  print('%-40s' % 'adjusted f1', '%.5f' % calc_f1(labels, adjusted_predicts))
+  if FLAGS.num_grids:
+    print('%-40s' % 'adjusted f1 after grid search', '%.5f' % calc_f1(labels, grids_predicts))
 
   results = np.concatenate(results_list, 0)
   results = results.reshape([-1, NUM_ATTRIBUTES, NUM_CLASSES]) 
   #factor =  FLAGS.logits_factor / sum_weights
   #print('%-40s' % '* factor loss', '%.5f' % calc_loss(labels, gezi.softmax(results * factor)))
-  print('%-40s' % 'loss', '%.5f' % calc_loss(labels, gezi.softmax(results)))
+  ## directly do softmax on results since sum weights is 1
+  loss = calc_loss(labels, gezi.softmax(results))
+  print('%-40s' % 'loss', '%.5f' % loss)
+
+  print('f1:class predictions distribution')
+  counts = get_distribution(predicts)
+  for attr, count in zip(ATTRIBUTES, counts):
+    print('%-40s' % attr, ['%.5f' % (x / len(predicts)) for x in count])
+  #print_confusion_matrix(labels, predicts)
+
+  print('adjusted f1:class predictions distribution')
+  counts = get_distribution(adjusted_predicts)
+  for attr, count in zip(ATTRIBUTES, counts):
+    print('%-40s' % attr, ['%.5f' % (x / len(predicts)) for x in count])
+  #print_confusion_matrix(labels, adjusted_predicts)
+
+  if FLAGS.num_grids:
+    print('adjusted f1:class predictions distribution after grids search')
+    counts = get_distribution(grids_predicts)
+    for attr, count in zip(ATTRIBUTES, counts):
+      print('%-40s' % attr, ['%.5f' % (x / len(grids_predicts)) for x in count])
+    #print_confusion_matrix(labels, grids_predicts)
+
+  DEBUG = FLAGS.debug
+  if FLAGS.infer:
+    print('------------infer')
+    ofile = os.path.join(idir, 'ensemble.infer.csv')
+    file_ = gezi.strip_suffix(file_, '.debug')
+    df = pd.read_csv(file_)
+
+    idx = 2
+    results = None
+    results2 = None
+    for fid, file_ in enumerate(infer_files):
+      df = pd.read_csv(file_)
+      df = df.sort_values('id')
+      print(fid, file_, len(df))
+      if not FLAGS.debug:
+        assert len(df) == 200000
+      if results is None:
+        results = np.zeros([len(df), num_attrs * num_classes])
+        results2 = np.zeros([len(df), num_attrs * num_classes])
+      scores = df['score']
+      scores = [parse(score) for score in scores]
+      scores = np.array(scores) 
+      weight = weights[fid] 
+      if FLAGS.method == 'avg' and FLAGS.method == 'mean': 
+        weight = 1.
+      for i, score in enumerate(scores):
+        score = np.reshape(np.reshape(score, [num_attrs, num_classes]) * weight, [-1])
+        results[i] += score
+        score = gezi.softmax(np.reshape(score, [num_attrs, num_classes]), -1)
+        score = np.reshape(score, [-1])
+        results2[i] += score 
+
+    #predicts = to_predict(results2, sum_weights)
+    predicts = to_predict(results, sum_weights)
+
+    counts = get_distribution(predicts)
+    for attr, count in zip(ATTRIBUTES, counts):
+      print('%-40s' % attr, ['%.5f' % (x / len(predicts)) for x in count])
+
+    if not DEBUG:
+      columns = df.columns[idx:idx + num_attrs].values
+    else:
+      columns = df.columns[idx + num_attrs:idx + 2 * num_attrs].values
+
+    if not DEBUG:
+      ofile = os.path.join(idir, 'ensemble.infer.csv')
+    else:
+      ofile = os.path.join(idir, 'ensemble.valid.csv')
+
+    if not DEBUG:
+      file_ = gezi.strip_suffix(file_, '.debug')
+      print('temp csv using for write', file_)
+      df = pd.read_csv(file_)
+    else:
+      print('debug test using file', valid_files[-1])
+      df = pd.read_csv(valid_files[-1])
+
+    # for safe must sort id
+    df = df.sort_values('id')
+
+    # TODO better ? not using loop ?
+    for i, column in enumerate(columns):
+      df[column] = predicts[:, i]
+
+    if DEBUG:
+      print('check blend result', calc_f1(df.iloc[:, idx:idx + num_attrs].values, predicts))
+    print(f'adjusted f1_prob:[{adjusted_f1_prob}]')
+    print(f'adjusted f1:[{adjusted_f1}]')
+    print(f'loss:[{loss}]')
+
+    print('out:', ofile)
+    if not DEBUG:
+      df.to_csv(ofile, index=False, encoding="utf_8_sig")
+
+    print('---------------results', results.shape)
+    df['score'] = [x for x in results] 
+
+    if not DEBUG:
+      ofile = os.path.join(idir, 'ensemble.infer.debug.csv')
+    else:
+      ofile = os.path.join(idir, 'ensemble.valid.csv')
+    print('out debug:', ofile)
+    df.to_csv(ofile, index=False, encoding="utf_8_sig")
 
 
 if __name__ == '__main__':

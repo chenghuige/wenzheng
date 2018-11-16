@@ -32,6 +32,9 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_bool('use_soft_label', False, '')
+flags.DEFINE_bool('use_len', False, 'wether add length as a feature')
+
 flags.DEFINE_string('pretrain_encoder', 'bilm', 'bilm or bert')
 flags.DEFINE_bool('transformer_add_rnn', False, '')
 

@@ -124,6 +124,9 @@ class ModelBase(melt.Model):
       else:
         self.dense = None
 
+      if FLAGS.use_len:
+        self.len_embedding = wenzheng.Embedding(3000, 32)
+
       self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 1
       if FLAGS.loss_type == 'regression':
         self.num_classes = 1
@@ -203,6 +206,7 @@ class RNet(ModelBase):
     c_mask = tf.cast(x, tf.bool)
     batch_size = melt.get_shape(x, 0)
     c_len, max_c_len = melt.length2(x)
+    ori_c_len = c_len
 
     if FLAGS.rnn_no_padding:
       logging.info('------------------no padding! train or eval')
@@ -234,6 +238,10 @@ class RNet(ModelBase):
        x = self.match_encode(x, c_len, training=training) 
 
     x = self.pooling(x, c_len, calc_word_scores=self.debug)
+
+    if FLAGS.use_len:
+      len_emb = self.len_embedding(ori_c_len)
+      x = tf.concat([x, len_emb], -1)
 
     # not help much
     if self.dense is not None:
@@ -578,6 +586,8 @@ class Transformer(ModelBase):
     
     if FLAGS.encoder_output_method != 'last':
       x = self.pooling(x, c_len)
+      x2 = model.get_pooled_output()
+      x = tf.concat([x, x2], -1)
     x = self.logits(x)
     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, NUM_CLASSES])
     return x

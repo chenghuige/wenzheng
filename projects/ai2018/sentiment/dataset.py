@@ -29,7 +29,7 @@ import melt
 logging = melt.logging
 from wenzheng.utils import vocabulary
 
-from algos.config import NUM_ATTRIBUTES
+from algos.config import NUM_ATTRIBUTES, NUM_CLASSES
 import prepare.config
 
 class Dataset(melt.tfrecords.Dataset):
@@ -64,9 +64,14 @@ class Dataset(melt.tfrecords.Dataset):
       'pos': tf.VarLenFeature(tf.int64),
       'ner': tf.VarLenFeature(tf.int64),
       'wlen': tf.VarLenFeature(tf.int64),
-      'label': tf.FixedLenFeature([NUM_ATTRIBUTES], tf.int64),
+      #'label': tf.FixedLenFeature([NUM_ATTRIBUTES], tf.int64),
       'source':  tf.FixedLenFeature([], tf.string),
       }
+
+    if FLAGS.use_soft_label:
+      features_dict['label'] =  tf.FixedLenFeature([NUM_ATTRIBUTES * NUM_CLASSES], tf.float32)
+    else:
+      features_dict['label'] =  tf.FixedLenFeature([NUM_ATTRIBUTES], tf.int64)
 
     #if FLAGS.use_char:
     #features_dict['chars'] = tf.VarLenFeature(tf.int64)
@@ -75,16 +80,22 @@ class Dataset(melt.tfrecords.Dataset):
 
     content = features['content']
     content = melt.sparse_tensor_to_dense(content)
+    # Actually not use below, for bert now use nbert tfrecords which is [first_n and last_m] so do not need content_limt 512 here
     if FLAGS.content_limit:
+      # TODO now only condider bert.. whey content[0] or content[:0] content[-1] not work ? FIXME..
+      start_id = vocabulary.start_id() if not FLAGS.model == 'Transformer' else 101
+      end_id = vocabulary.end_id() if not FLAGS.model == 'Transformer' else 102
+      # TODO now has problem ... one additional end or start...
       if not FLAGS.cut_front:
-        content = content[:FLAGS.content_limit]
+        content = tf.concat([content[:FLAGS.content_limit - 1], tf.constant([end_id], dtype=tf.int64)], 0)
       else:
-        content = content[-FLAGS.content_limit:]
+        content = tf.concat([tf.constant([start_id], dtype=tf.int64), content[-FLAGS.content_limit + 1:]], 0)
     # if FLAGS.add_start_end:
     #   content = tf.concat([tf.constant([vocabulary.start_id()], dtype=tf.int64), content, tf.constant([vocabulary.end_id()], dtype=tf.int64)], 0)
     # NOTICE! not work in dataset... so put to later step like in call but should do the same thing again for pytorch..
+    ## TODO can use below to do unk aug so not to have different code for tf and pytorch later
     # if FLAGS.vocab_min_count:
-    #   content = melt.greater_then_set(content, FLAGS.vocab_min_count, UNK_ID)
+    # #   content = melt.greater_then_set(content, FLAGS.vocab_min_count, UNK_ID)
 
     features['content'] = content
     label = features['label']
@@ -113,9 +124,12 @@ class Dataset(melt.tfrecords.Dataset):
     features['wlen'] = wlen
 
     x = features
-    y = label + 2
-    if FLAGS.binary_class_index is not None:
-      y = tf.to_int64(tf.equal(y, FLAGS.binary_class_index))
+    if not FLAGS.use_soft_label:
+      y = label + 2
+      if FLAGS.binary_class_index is not None:
+        y = tf.to_int64(tf.equal(y, FLAGS.binary_class_index))
+    else:
+      y = label
 
     return x, y
 

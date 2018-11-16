@@ -87,11 +87,12 @@ def init():
   global valid_infos, test_infos
   global wnames
   load_class_weights()
-
+  
   with open(FLAGS.info_path, 'rb') as f:
     valid_infos = pickle.load(f)
-  with open(FLAGS.info_path.replace('.pkl', '.test.pkl'), 'rb') as f:
-    test_infos = pickle.load(f)
+  if FLAGS.test_input:
+    with open(FLAGS.info_path.replace('.pkl', '.test.pkl'), 'rb') as f:
+      test_infos = pickle.load(f)
 
   ids2text.init()
 
@@ -348,8 +349,11 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
       df[ATTRIBUTES[i]] = predicts[:,i]
     else:
       df[ATTRIBUTES[i]] = np.argmax(predicts[:,i], 1) - 2
+
   if is_infer:
-    df.to_csv(ofile, index=False, encoding="utf_8_sig")
+    df2 = df.sort_values('id') 
+    df2.to_csv(ofile, index=False, encoding="utf_8_sig")
+  
   num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 1
   if FLAGS.loss_type == 'regression':
     num_classes = 1
@@ -366,9 +370,11 @@ def write(ids, labels, predicts, ofile, ofile2=None, is_infer=False):
     #df['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
     df.to_csv(ofile, index=False, encoding="utf_8_sig")
   if is_infer:
-    df2 = df
+    ## write debug
+    #df2 = df
     #df2['seg'] = [ids2text.ids2text(infos[str(id)]['content'], sep='|') for id in ids]
-    df2.to_csv(ofile2, index=False, encoding="utf_8_sig")
+    #df2.to_csv(ofile2, index=False, encoding="utf_8_sig")
+    df.to_csv(ofile2, index=False, encoding="utf_8_sig")
 
 def valid_write(ids, labels, predicts, ofile):
   return write(ids, labels, predicts, ofile)
@@ -408,7 +414,36 @@ def evaluate_file(file):
   for name, val in zip(names, vals):
     if 'mean' in name:
       print(name, val)
-    
+
+  lens = [len(x) for x in df['content'].values]
+  predicts1 = []
+  predicts2 = []
+
+  labels1 = []
+  labels2 = []
+
+  for len_, label, predict in zip(lens, labels, predicts):
+    if len_ > 512:
+      predicts2.append(predict)
+      labels2.append(label)
+    else:
+      predicts1.append(predict)
+      labels1.append(label)
+  predicts1 = np.array(predicts1)
+  labels1 = np.array(labels1)
+  print('num docs len <= 512', len(predicts1))
+  vals1, names1 = evaluate(labels1, predicts1)
+  for name, val in zip(names1, vals1):
+    if 'mean' in name:
+      print(name, val) 
+  predicts2 = np.array(predicts2)
+  labels2 = np.array(labels2) 
+  print('num docs len > 512', len(predicts2))
+  vals2, names2 = evaluate(labels2, predicts2)
+  for name, val in zip(names2, vals2):
+    if 'mean' in name:
+      print(name, val) 
+
   return vals, names
 
 if __name__ == '__main__':

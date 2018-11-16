@@ -33,25 +33,28 @@ def adjust_lrs(x, ratio=None, name='learning_rate_weights'):
 
 
 def load(model, path):
-  checkpoint = torch.load(path)
-  state = checkpoint['state_dict']   
-  
-  new_state = {}
-  for key, val in state.items():
-    if key in model.state_dict():
-      new_state[key] = val
+  try:
+    checkpoint = torch.load(path)
+    state = checkpoint['state_dict']   
+    
+    new_state = {}
+    for key, val in state.items():
+      if key in model.state_dict():
+        new_state[key] = val
 
-  logging.info('Updated %d keys from checkpoint %s, eopoch:%d, step:%d' % (len(new_state), path, checkpoint['epoch'], checkpoint['step']))
-  #print([key for key in model.state_dict()])
-  # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
-  new_params = model.state_dict()
-  new_params.update(new_state)
-  model.load_state_dict(new_params)
-  model.eval()
+    logging.info('Updated %d keys from checkpoint %s, eopoch:%d, step:%d' % (len(new_state), path, checkpoint['epoch'], checkpoint['step']))
+    #print([key for key in model.state_dict()])
+    # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
+    new_params = model.state_dict()
+    new_params.update(new_state)
+    model.load_state_dict(new_params)
+    model.eval()
 
-  updated_params = []
-  for name, param in model.named_parameters():
-    if name in new_state:
-      updated_params.append(param)
+    updated_params = []
+    for name, param in model.named_parameters():
+      if name in new_state:
+        updated_params.append(param)
 
-  return checkpoint, updated_params
+    return checkpoint, updated_params 
+  except Exception:
+    return None, []

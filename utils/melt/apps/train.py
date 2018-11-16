@@ -266,6 +266,15 @@ def init():
       FLAGS.batch_sizes = ','.join(l)
     #FLAGS.model_dir = os.path.join(os.path.dirname(FLAGS.model_dir.rstrip('/')) + '/double', os.path.basename(FLAGS.model_dir.rstrip('/')))
 
+  if 'DOUBLE_LEN' in os.environ:
+    if FLAGS.buckets:
+      l = [str(int(x) * 2) for x in FLAGS.buckets.split(',')]
+      FLAGS.buckets = ','.join(l)
+    try:
+      FLAGS.content_limit *= 2
+    except Exception:
+      pass
+
   if 'FOLD' in os.environ:
     try:
       FLAGS.fold = int(os.environ['FOLD'])

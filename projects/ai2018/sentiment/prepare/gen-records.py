@@ -25,7 +25,7 @@ flags.DEFINE_string('vocab_', './mount/temp/ai2018/sentiment/tfrecord/vocab.txt'
 #flags.DEFINE_string('seg_method', 'basic', '') 
 flags.DEFINE_bool('binary', False, '')
 flags.DEFINE_integer('threads', None, '')
-flags.DEFINE_integer('num_records_', 7, '10 or 5?')
+flags.DEFINE_integer('num_records_', None, '10 or 5?')
 flags.DEFINE_integer('start_index', 0, 'set it to 1 if you have valid file which you want to put in train as fold 0')
 flags.DEFINE_bool('use_fold', True, '')
 flags.DEFINE_bool('augument', False, '')
@@ -38,6 +38,9 @@ flags.DEFINE_bool('fixed_vocab', False, '')
 flags.DEFINE_string('start_mark', '<S>', '')
 flags.DEFINE_string('end_mark', '</S>', '')
 flags.DEFINE_string('unk_word', '<UNK>', '')
+flags.DEFINE_bool('word_only', False, '')
+flags.DEFINE_bool('use_soft_label_', False, '')
+flags.DEFINE_bool('is_soft_label', False, '')
 
 import six
 import traceback
@@ -96,6 +99,8 @@ def get_mode(path):
     mode = 'canyin'
   elif 'dianping' in path:
     mode = 'dianping'
+  elif 'ensemble.infer.debug.csv' in path:
+    mode = 'test'
   if FLAGS.augument:
     mode = 'aug.' + mode
   if FLAGS.mode:
@@ -114,8 +119,14 @@ def build_features(index):
 
   total = len(df)
   num_records = FLAGS.num_records_ 
-  if mode.split('.')[-1] in ['valid', 'test', 'dev', 'pm'] or 'valid' in FLAGS.input:
-    num_records = 1
+  ## TODO FIXME whty here still None ? FLAGS.num_records has bee modified before in main as 7 ...
+  #print('---------', num_records, FLAGS.num_records_)
+  if not num_records:
+    if mode.split('.')[-1] in ['valid', 'test', 'dev', 'pm'] or 'valid' in FLAGS.input:
+      num_records = 1
+    else:
+      num_records = 7
+  #print('------------------', num_records, FLAGS.num_records_)
   start, end = gezi.get_fold(total, num_records, index)
 
   print('total', total, 'infile', FLAGS.input, 'out_file', out_file)
@@ -134,6 +145,12 @@ def build_features(index):
             print('id %s ot found in seg_result' % id)
             continue
           words = seg_result[id]
+
+          if FLAGS.content_limit_:
+            # NOW only for bert!
+            if len(words) + 2 > FLAGS.content_limit_:
+              words = words[:FLAGS.content_limit_ - 3 - 50] + ['[MASK]'] + words[-50:]
+              #print(words)
           if FLAGS.add_start_end_:
             words = gezi.add_start_end(words, FLAGS.start_mark, FLAGS.end_mark)
         if pos_result:
@@ -152,10 +169,24 @@ def build_features(index):
         content_ori = content
         content = filter.filter(content)
 
-        label = list(row[2:])
-        
-        #label = [x + 2 for x in label]
-        #num_labels = len(label)
+        if not FLAGS.use_soft_label_:
+          if 'test' in mode:
+            label = [-2] * 20
+          else:
+            label = list(row[2:])
+          
+          #label = [x + 2 for x in label]
+          #num_labels = len(label)
+        else:
+          label = [0.] * 80
+          if not FLAGS.is_soft_label:
+            for idx, val in enumerate(row[2:]):
+              label[idx * 4 + val] = 1.
+          else:
+            logits = np.array(gezi.str2scores(row['score']))
+            logits = np.reshape(logits, [20, 4])
+            probs = gezi.softmax(logits)
+            label = list(np.reshape(probs, [-1]))
 
         if not seg_result:
           content_ids, words = text2ids_(content, preprocess=False, return_words=True)
@@ -225,7 +256,6 @@ def build_features(index):
 
         feature = {
                     'id': melt.bytes_feature(id),
-                    'label': melt.int64_feature(label),
                     'content':  melt.int64_feature(content_ids),
                     'content_str': melt.bytes_feature(content_ori), 
                     'char': melt.int64_feature(char_ids),
@@ -234,6 +264,7 @@ def build_features(index):
                     'wlen': melt.int64_feature(wlen),
                     'source': melt.bytes_feature(mode), 
                   }
+        feature['label'] = melt.int64_feature(label) if not FLAGS.use_soft_label_ else melt.float_feature(label)
 
         # TODO currenlty not get exact info wether show 1 image or 3 ...
         record = tf.train.Example(features=tf.train.Features(feature=feature))
@@ -297,8 +328,8 @@ def main(_):
       segs = segs.split('\x09')
       if FLAGS.ignore_start_end:
         segs = segs[1:-1]
-      if '|' in segs[0]:
-        l = [x.split('|') for x in segs]
+      if '|' in segs[0] and not FLAGS.word_only:
+        l = [x.rsplit('|', 1) for x in segs]
         segs, pos = list(zip(*l))
         pos_result[id] = pos
       seg_result[id] = segs
@@ -314,7 +345,7 @@ def main(_):
       if FLAGS.ignore_start_end:
         segs = segs[1:-1]
       if '|' in segs[0]:
-        l = [x.split('|') for x in segs]
+        l = [x.rsplit('|', 1) for x in segs]
         segs, ner = list(zip(*l))
       if not seg_done:      
         seg_result[id] = segs
@@ -332,8 +363,11 @@ def main(_):
   
   pool = multiprocessing.Pool()
 
-  if mode.split('.')[-1] in ['valid', 'test', 'dev', 'pm'] or 'valid' in FLAGS.input:
-    FLAGS.num_records_ = 1
+  if not FLAGS.num_records_:
+    if mode.split('.')[-1] in ['valid', 'test', 'dev', 'pm'] or 'valid' in FLAGS.input:
+      FLAGS.num_records_ = 1
+    else:
+      FLAGS.num_records_ = 7
 
   print('num records file to gen', FLAGS.num_records_)
 

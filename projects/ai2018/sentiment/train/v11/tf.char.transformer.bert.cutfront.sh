@@ -26,14 +26,14 @@ cp $dir/vocab* $model_dir/epoch
 exe=./train.py 
 if [ "$INFER" = "1"  ]; 
   then echo "INFER MODE" 
-  exe=./infer.py 
+  exe=./$exe 
   model_dir=$1
   fold=0
 fi
 
 if [ "$INFER" = "2"  ]; 
   then echo "VALID MODE" 
-  exe=./infer.py 
+  exe=./$exe 
   model_dir=$1
   fold=0
 fi
@@ -66,9 +66,9 @@ python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=bert \
-        --learning_rate=3e-5 \
-        --min_learning_rate=5e-6 \
-        --num_decay_epochs=5 \
+        --learning_rate=5e-5 \
+        --min_learning_rate=5e-7 \
+        --num_decay_epochs=10 \
         --warmup_steps=2000 \
         --num_epochs=$num_epochs \
 

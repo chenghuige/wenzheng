@@ -30,6 +30,9 @@ flags.DEFINE_integer('vocab_size', 0, '')
 flags.DEFINE_bool('vocab_append', False, '')
 flags.DEFINE_integer('vocab_max_words', None, '')
 flags.DEFINE_integer('vocab_min_count', None, '')
+flags.DEFINE_string('vocab_unk', '<UNK>', '[UNK] for bert')
+flags.DEFINE_string('vocab_start', '<S>', '[CLS] for bert')
+flags.DEFINE_string('vocab_end', '</S>', '[SEP] for bert')
 
 import gezi
 logging = gezi.logging

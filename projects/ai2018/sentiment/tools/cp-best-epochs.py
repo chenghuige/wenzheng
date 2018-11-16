@@ -20,7 +20,7 @@ import gezi
 
 model_dir = '../' if not len(sys.argv) > 1 else sys.argv[1]
 
-thre = 0.71 if not len(sys.argv) > 2 else float(sys.argv[2])
+thre = 0.714 if not len(sys.argv) > 2 else float(sys.argv[2])
 
 key = 'adjusted_f1/mean' if not len(sys.argv) > 3 else sys.argv[3]
 #key = 'loss/mean' if not len(sys.argv) > 3 else sys.argv[3]
