@@ -24,7 +24,8 @@ ensembel_dir = '/home/gezi/temp/ai2018/sentiment/p40/model.csv/v11/submit.testa/
 #model_dir = '/home/gezi/data3/v11/nbert/' 
 #model_dir = '/home/gezi/data3/v11/lstm-or-sp20w/3/submit/' 
 #model_dir = '/home/gezi/data3/v11/nbert2/' 
-model_dir = '/home/gezi/data3/v11/bert3/' 
+#model_dir = '/home/gezi/data3/v11/bert3/' 
+model_dir = '/home/gezi/data3/v11/submit.1115.2.2.2/slim/'
 ensembel_dir = model_dir
 
 valid_files = glob.glob('%s/*.valid.csv' % ensembel_dir)
