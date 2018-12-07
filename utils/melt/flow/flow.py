@@ -145,9 +145,9 @@ def tf_train_flow(train_once_fn,
   if sess is None:
     #TODO melt.get_session is global session but may cause non close at last
     sess = melt.get_session()
-  logging.info('tf_train_flow start')
-  logging.info('max_models_keep:', max_models_keep)
-  logging.info('save_interval_seconds:', save_interval_seconds)
+  #logging.info('tf_train_flow start')
+  #logging.info('max_models_keep:', max_models_keep)
+  #logging.info('save_interval_seconds:', save_interval_seconds)
 
   if model:
     checkpoint = tf.train.Checkpoint(model=model)
@@ -279,8 +279,8 @@ def tf_train_flow(train_once_fn,
     latest_checkpoint = None
     try:
       latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
-      logging.info('Try start from eager trained mode, latest checkpoint:', latest_checkpoint)
       if latest_checkpoint:
+        logging.info('Try start from eager trained mode, latest checkpoint:', latest_checkpoint)
         checkpoint.restore(latest_checkpoint).run_restore_ops(session=sess)
 
         pre_epoch = int(latest_checkpoint.split('-')[-1])

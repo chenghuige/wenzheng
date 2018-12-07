@@ -522,7 +522,7 @@ def split_batch(batch_datas, batch_size, num_shards, training=True):
       batch_datas = list(batch_datas[0].values()) + [batch_datas[-1]]
       batch_datas = _split_batch(batch_datas, batch_size, num_shards, training)
       # print(batch_datas)
-      # TODO... why append ok...
+      # TODO... why append ok... x = [{}] * num_shards not ok..
       # x = [{}] * num_shards
       x = []
       for j in range(num_shards):

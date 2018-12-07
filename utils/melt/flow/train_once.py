@@ -100,7 +100,7 @@ def train_once(sess,
     # deal with summary
     if log_dir:
       if not hasattr(train_once, 'summary_op'):
-        melt.print_summary_ops()
+        #melt.print_summary_ops()
         if summary_excls is None:
           train_once.summary_op = tf.summary.merge_all()
         else:
