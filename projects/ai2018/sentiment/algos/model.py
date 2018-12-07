@@ -164,6 +164,7 @@ class ModelBase(melt.Model):
     #return tf.cond(tf.train.get_global_step() < tf.constant(FLAGS.unk_aug_start_step), lambda: x, lambda: aug(x, x_mask))
     return tf.cond(tf.train.get_or_create_global_step() < tf.constant(FLAGS.unk_aug_start_step, dtype=tf.int64), lambda: x, lambda: aug(x, x_mask))
 
+
 class BiLanguageModel(ModelBase):
   def __init__(self, embedding=None, lm_model=True):
     super(BiLanguageModel, self).__init__(embedding, lm_model=True)
@@ -266,7 +267,7 @@ class RNet(ModelBase):
       
     return x
 
-# same as Model but for math attention using SeqAttn
+# same as Model but for match attention using SeqAttn
 class RNetV2(RNet):
   def __init__(self, embedding=None, lm_model=False):
     super(RNetV2, self).__init__(embedding, lm_model=lm_model)
@@ -563,10 +564,12 @@ class Transformer(ModelBase):
     x = input['content']
     x = self.unk_aug(x, training=training)
     batch_size = melt.get_shape(x, 0) 
+    # TODO move to __init__
     model = modeling.BertModel(
       config=self.bert_config,
       is_training=training,
-      input_ids=x)
+      input_ids=x,
+      use_one_hot_embeddings=FLAGS.use_tpu)
 
     if self.step == 0 and self.init_checkpoint:
       self.restore()
@@ -578,7 +581,8 @@ class Transformer(ModelBase):
     else:
       x = model.get_sequence_output()
 
-    x = x * 0.1 + tf.stop_gradient(x) * 0.9
+    logging.info('---------------bert_lr_ratio', FLAGS.bert_lr_ratio)
+    x = x * FLAGS.bert_lr_ratio + tf.stop_gradient(x) * (1 - FLAGS.bert_lr_ratio)
     
     if FLAGS.transformer_add_rnn:
       assert FLAGS.encoder_output_method != 'last'
@@ -591,3 +595,15 @@ class Transformer(ModelBase):
     x = self.logits(x)
     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, NUM_CLASSES])
     return x
+
+
+# class Model(ModelBase):
+#   def call(self, input, training=False):
+#     x = input['content'] 
+#     batch_size = melt.get_shape(x, 0)
+#     c_len = melt.length(x)
+#     x = self.encode(input, c_len, training=training)
+#     x = self.pooling(x, c_len)
+#     x = self.logits(x)
+#     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, self.num_classes])
+#     return x

@@ -21,10 +21,9 @@ from __future__ import print_function
 import re
 import tensorflow as tf
 
-
-def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
+def create_optimizer(global_step, init_lr, num_train_steps, num_warmup_steps, min_learning_rate=0., use_tpu=False):
   """Creates an optimizer training op."""
-  global_step = tf.train.get_or_create_global_step()
+  #global_step = tf.train.get_or_create_global_step()
 
   learning_rate = tf.constant(value=init_lr, shape=[], dtype=tf.float32)
 
@@ -33,9 +32,12 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
       learning_rate,
       global_step,
       num_train_steps,
-      end_learning_rate=0.0,
+      end_learning_rate=min_learning_rate,
       power=1.0,
       cycle=False)
+
+  min_learning_rate = tf.convert_to_tensor(min_learning_rate, dtype=tf.float32)
+  learning_rate = tf.cond(learning_rate > min_learning_rate, lambda: learning_rate, lambda: min_learning_rate)
 
   # Implements linear warmup. I.e., if global_step < num_warmup_steps, the
   # learning rate will be `global_step/num_warmup_steps * init_lr`.
@@ -52,7 +54,7 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
     is_warmup = tf.cast(global_steps_int < warmup_steps_int, tf.float32)
     learning_rate = (
         (1.0 - is_warmup) * learning_rate + is_warmup * warmup_learning_rate)
-
+  
   # It is recommended that you use this optimizer for fine tuning, since this
   # is how the model was trained (note that the Adam m/v variables are NOT
   # loaded from init_checkpoint.)
@@ -67,18 +69,7 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
   if use_tpu:
     optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
-  tvars = tf.trainable_variables()
-  grads = tf.gradients(loss, tvars)
-
-  # This is how the model was pre-trained.
-  (grads, _) = tf.clip_by_global_norm(grads, clip_norm=1.0)
-
-  train_op = optimizer.apply_gradients(
-      zip(grads, tvars), global_step=global_step)
-
-  new_global_step = global_step + 1
-  train_op = tf.group(train_op, [global_step.assign(new_global_step)])
-  return train_op
+  return optimizer, learning_rate
 
 
 class AdamWeightDecayOptimizer(tf.train.Optimizer):
@@ -151,6 +142,10 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
           [param.assign(next_param),
            m.assign(next_m),
            v.assign(next_v)])
+
+      if global_step:
+        new_global_step = global_step + 1
+        assignments.extend([global_step.assign(new_global_step)])
     return tf.group(*assignments, name=name)
 
   def _do_use_weight_decay(self, param_name):

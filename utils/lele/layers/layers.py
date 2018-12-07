@@ -600,6 +600,8 @@ class SelfAttnMatch(nn.Module):
         # Normalize with softmax
         alpha = F.softmax(scores, dim=2)
 
+        #print(scores.shape, ','.join([str(x) for x in alpha.view(-1).detach().cpu().numpy()]), sep='\t')
+
         # Take weighted average
         matched_seq = alpha.bmm(x)
         return matched_seq

@@ -126,6 +126,25 @@ class ModelBase(nn.Module):
     x = (x * mask + rmask) * x_mask
     return x
 
+  def unk_aug(self, x, x_mask=None):
+    """
+    randomly make some words as unk
+    """
+    if not self.training or not FLAGS.unk_aug or melt.epoch() < FLAGS.unk_aug_start_epoch:
+      return x 
+
+    if x_mask is None:
+      x_mask = x > 0
+    x_mask = x_mask.long()
+
+    ratio = np.random.uniform(0, FLAGS.unk_aug_max_ratio)
+    mask = torch.cuda.FloatTensor(x.size(0), x.size(1)).uniform_() > ratio
+    mask = mask.long()
+    rmask = FLAGS.unk_id * (1 - mask)
+
+    x = (x * mask + rmask) * x_mask
+    return x
+
 class BiLanguageModel(ModelBase):
   def __init__(self, embedding=None):
     super(BiLanguageModel, self).__init__(embedding, lm_model=True)
@@ -272,6 +291,7 @@ class MReader(ModelBase):
 
   def forward(self, input, training=False):
     #print('------------', input['source'])
+    #print(input['id'])
     x = input['content'] 
     #print(x.shape)
     x_mask = x.eq(0)
@@ -355,3 +375,14 @@ class Fastai(ModelBase):
     return x
 
   
+# class Model(ModelBase):
+#   def forward(self, input, training=False):
+#     x = input['content'] 
+#     x_mask = x.eq(0)
+#     batch_size = x.size(0)
+#     x = self.encode(input, x_mask, training=training)
+#     x = self.pooling(x, x_mask)
+#     x = self.logits(x)  
+#     x = x.view([-1, NUM_ATTRIBUTES, self.num_classes])
+#     return x
+

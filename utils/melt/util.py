@@ -477,36 +477,72 @@ def tower(loss_function, num_gpus=1, training=True, name=''):
 tower_losses = tower
 
 # from cifar10_estimator example code
+# TODO can it be used with out input of batch_size so as can be used for buckets length ? different batch size how to ?
+def _split_batch(batch_datas, batch_size, num_shards, training=True):
+  #with tf.device('/cpu:0'):
+  batch_datas = [tf.unstack(batch_data, num=batch_size, axis=0) for batch_data in batch_datas]
+
+  new_batch_datas = []
+  for i in range(len(batch_datas)):
+    new_batch_datas.append([[] for i in range(num_shards)])
+
+  batch_size_per_gpu = batch_size // num_shards
+  assert batch_size == batch_size_per_gpu * num_shards
+
+  for i in range(batch_size):
+    idx = i % num_shards if training else i // batch_size_per_gpu
+    for j in range(len(batch_datas)):
+      new_batch_datas[j][idx].append(batch_datas[j][i])
+
+  def stack(x):
+    try:
+      return tf.parallel_stack(x)
+    except Exception:
+      return tf.stack(x)
+
+  for i in range(len(batch_datas)):
+    #new_batch_datas[i] = [tf.parallel_stack(x) for x in new_batch_datas[i] if x]
+    new_batch_datas[i] = [stack(x) for x in new_batch_datas[i] if x]
+
+  return tuple(new_batch_datas)
+
 def split_batch(batch_datas, batch_size, num_shards, training=True):
   with tf.device('/cpu:0'):
     if num_shards <= 1:
       # No GPU available or only 1 GPU.
       return tuple([x] for x in batch_datas)
 
-    batch_datas = [tf.unstack(batch_data, num=batch_size, axis=0) for batch_data in batch_datas]
+    if not isinstance(batch_datas[0], dict):
+      return _split_batch(batch_datas, batch_size, num_shards, training)
+    else:
+      # x, y (x is dict, y not)
+      assert len(batch_datas) == 2 
+      keys = batch_datas[0].keys()
+      #batch_datas = [batch_datas[0][key] for key in keys] + [batch_datas[-1]]
+      batch_datas = list(batch_datas[0].values()) + [batch_datas[-1]]
+      batch_datas = _split_batch(batch_datas, batch_size, num_shards, training)
+      # print(batch_datas)
+      # TODO... why append ok...
+      # x = [{}] * num_shards
+      x = []
+      for j in range(num_shards):
+        m = {}
+        for i, key in enumerate(keys):
+          #x[j][key] = batch_datas[i][j]
+          m[key] = batch_datas[i][j]
+        x.append(m)
 
-    #.. below not work
-    # # make sure each shards with equal batch_size
-    # for i in range(len(batch_datas)):
-    #   if len(batch_datas[i]) < batch_size:
-    #     batch_datas[i] += [batch_datas[i][-1]] * (batch_size - len(batch_datas[i]))
+      y = batch_datas[-1]  
+      return x, y
 
-    new_batch_datas = []
-    for i in range(len(batch_datas)):
-      new_batch_datas.append([[] for i in range(num_shards)])
-
-    batch_size_per_gpu = batch_size // num_shards
-    assert batch_size == batch_size_per_gpu * num_shards
-
-    for i in range(batch_size):
-      idx = i % num_shards if training else i // batch_size_per_gpu
-      for j in range(len(batch_datas)):
-        new_batch_datas[j][idx].append(batch_datas[j][i])
-
-    for i in range(len(batch_datas)):
-      new_batch_datas[i] = [tf.parallel_stack(x) for x in new_batch_datas[i] if x]
-      
-    return tuple(new_batch_datas)
+      # for i, key in enumerate(keys):
+      #   for j in range(num_shards):
+      #     x[j][key] = batch_datas[i][j]
+      # y = batch_datas[-1]
+      # print('-----------x', x)
+      # print('-----------y', y)
+      # return x, y
+      #return batch_datas
 
 
 def get_num_gpus():
@@ -607,7 +643,6 @@ def create_rnn_cell(num_units, is_training=True, initializer=None, forget_bias=1
     #--now cell share graph by default so below is wrong.. will share cell for each layer
     ##cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True) 
     return cell
-
 
 def unpack_cell(cell):
   """Unpack the cells because the stack_bidirectional_dynamic_rnn

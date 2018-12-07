@@ -627,7 +627,10 @@ def use_matplotlib(backend='Agg'):
 
 def decode(bytes_list):
   if not six.PY2:
-    return np.array([x.decode() for x in bytes_list])
+    try:
+      return np.array([x.decode() for x in bytes_list])
+    except Exception:
+      return bytes_list
   else:
     return bytes_list
 

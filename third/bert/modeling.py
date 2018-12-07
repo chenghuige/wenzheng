@@ -447,6 +447,9 @@ def embedding_lookup(input_ids,
   except Exception:
     pass
     
+  print('-------------------------use one hot embeddings', use_one_hot_embeddings)
+  # for gpu if use one hot embeddings batches/s:[2.64] insts/s:[84.57]  1epoch:[0.34h]
+  # if not use batch_size:[32] batches/s:[2.79] insts/s:[89.39]  1epoch:[0.33h] a bit faster..
   if use_one_hot_embeddings:
     flat_input_ids = tf.reshape(input_ids, [-1])
     one_hot_input_ids = tf.one_hot(flat_input_ids, depth=vocab_size)

@@ -253,9 +253,14 @@ flags.DEFINE_boolean('test_aug', False, '')
 
 flags.DEFINE_integer('batch_size_dim', 0, '')
 
+flags.DEFINE_boolean('use_tpu', False, '')
+
 inited = None 
 
 def init():
+  if 'TPU' in os.environ and int(os.environ['TPU']) == 1:
+    FLAGS.use_tpu = True
+
   if 'MODEL_DIR' in os.environ:
     FLAGS.model_dir = os.environ['MODEL_DIR']
 
@@ -331,7 +336,7 @@ def init():
     else:
       tf.enable_eager_execution()
 
-  if 'BIG' in os.environ and int(os.environ['BIG']) == True:
+  if 'BIG' in os.environ and int(os.environ['BIG']) == 1:
     if FLAGS.big_batch_size is not None:
       FLAGS.batch_size = FLAGS.big_batch_size
     if FLAGS.big_buckets is not None:
@@ -464,6 +469,12 @@ def init():
 
   if not FLAGS.use_tower_loss:
     FLAGS.num_gpus = 0
+
+  if 'FIXED_BATCH_SIZE' in os.environ and os.environ['FIXED_BATCH_SIZE'] == '1':
+    FLAGS.batch_size_per_gpu = False
+  if 'BATCH_SIZE_PER_GPU' in os.environ and os.environ['BATCH_SIZE_PER_GPU'] == '0':
+    FLAGS.batch_size_per_gpu = False
+
   if not FLAGS.batch_size_per_gpu and FLAGS.num_gpus > 1:
     print('batch size is shrink by %d for each gpu to make total insts per step still %d'%(FLAGS.num_gpus, FLAGS.batch_size), file=sys.stderr)
     FLAGS.batch_size = int(FLAGS.batch_size / FLAGS.num_gpus)
@@ -681,21 +692,21 @@ def train_flow(ops,
   #notice '' only works in tf >= 0.11, for 0.10 will always add OptimeizeLoss scope
   #the diff is 0.10 use variable_op_scope and 0.11 use variable_scope
   optimize_scope = None if FLAGS.optimize_has_scope else ''
-  # NOTICE! initialzer value is step get from model check point if exits otherwise 0
-  #will not get step value from checkpoint since you might change batch size it is safe to set step by epoch num and batch size
-  #this is controlled by melt.apps.flow where global_step var is removed from restore var list 
-  #if set num_steps_per_decay then inital step actually the same as readding from check point global step not modify for batch size change
-  #be realy golbal step(not fixed global step)
-  # TODO FIXME not flexible... since if you want to use global step in classifier graph.. can not tf.train.get_or_create_global_step()
-  initial_step = melt.get_global_step(model_dir, num_steps_per_epoch, fix_step=(not FLAGS.num_steps_per_decay)) if FLAGS.global_step is None else FLAGS.global_step
-  logging.info('global_step init with initial_step from model_dir as %d' % initial_step)
-  # TODO right now has global_scope above global_step might need to remove using function creator show_and_tell/global_step (DT_INT64) []
-  # global_step = tf.get_variable(tf.GraphKeys.GLOBAL_STEP, shape=[], dtype=tf.int64, 
-  #                               initializer=tf.constant_initializer(initial_step))  
-  # or can use get_variable(.. collections=['global_step']) but notice her is later then you build graph... 
-  # tf.add_to_collection('global_step', global_step)
+  # # NOTICE! initialzer value is step get from model check point if exits otherwise 0
+  # #will not get step value from checkpoint since you might change batch size it is safe to set step by epoch num and batch size
+  # #this is controlled by melt.apps.flow where global_step var is removed from restore var list 
+  # #if set num_steps_per_decay then inital step actually the same as readding from check point global step not modify for batch size change
+  # #be realy golbal step(not fixed global step)
+  # # TODO FIXME not flexible... since if you want to use global step in classifier graph.. can not tf.train.get_or_create_global_step()
+  # initial_step = melt.get_global_step(model_dir, num_steps_per_epoch, fix_step=(not FLAGS.num_steps_per_decay)) if FLAGS.global_step is None else FLAGS.global_step
+  # logging.info('global_step init with initial_step from model_dir as %d' % initial_step)
+  # # TODO right now has global_scope above global_step might need to remove using function creator show_and_tell/global_step (DT_INT64) []
+  # # global_step = tf.get_variable(tf.GraphKeys.GLOBAL_STEP, shape=[], dtype=tf.int64, 
+  # #                               initializer=tf.constant_initializer(initial_step))  
+  # # or can use get_variable(.. collections=['global_step']) but notice her is later then you build graph... 
+  # # tf.add_to_collection('global_step', global_step)
   global_step = tf.train.get_or_create_global_step()
-  sess.run(tf.assign(global_step, tf.constant(initial_step, dtype=tf.int64)))
+  #sess.run(tf.assign(global_step, tf.constant(initial_step, dtype=tf.int64)))
 
   if FLAGS.use_finetune_step:
     # NOTICE unlike global step this one will be save to checkpoint and read out without any change 
@@ -732,26 +743,17 @@ def train_flow(ops,
     from tensor2tensor.utils import yellowfin
     optimizer = yellowfin.YellowFinOptimizer
   elif FLAGS.optimizer == 'bert':
-    optimizer = lambda lr: melt.training.bert.AdamWeightDecayOptimizer(
-      learning_rate=lr,
-      weight_decay_rate=0.01,
-      beta_1=0.9,
-      beta_2=0.999,
-      epsilon=1e-6,
-      exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
+    num_train_steps = int(
+      num_train_examples / FLAGS.batch_size * (FLAGS.num_decay_epochs or num_epochs))
+    num_warmup_steps = FLAGS.warmup_steps or int(num_train_steps * FLAGS.warmup_proportion) 
+    logging.info('num_train_steps', num_train_steps, 'num_warmup_steps', num_warmup_steps, 'warmup_proportion', FLAGS.warmup_proportion)
+    optimizer, learning_rate = melt.training.bert.optimization.create_optimizer(
+        global_step, FLAGS.learning_rate, num_train_steps, num_warmup_steps, FLAGS.min_learning_rate, FLAGS.use_tpu)
   else:
     optimizer = melt.util.get_optimizer(optimizer)
   logging.info('optimizer:{} {}'.format(FLAGS.optimizer, optimizer))
   
   if not isinstance(ops[0], (list,tuple)):  
-    # train_op = tf.contrib.layers.optimize_loss(
-    #     loss=ops[0],
-    #     global_step=global_step,
-    #     learning_rate=learning_rate,
-    #     optimizer=optimizer,
-    #     clip_gradients=FLAGS.clip_gradients,
-    #     learning_rate_decay_fn=learning_rate_decay_fn,
-    #     name=optimize_scope)  
     train_op = melt.layers.optimize_loss(
       losses=[ops[0]],
       global_step=global_step,
@@ -766,24 +768,11 @@ def train_flow(ops,
     #https://github.com/tensorflow/tensorflow/issues/4881
     #I've noticed same thing on cirrascale GPU machines - putting parameters on gpu:0 and using gpu->gpu transfer was a bit faster. I suppose this depends on particular details of hardware -- if you don't have p2p connectivity between your video cards then keeping parameters on CPU:0 gives faster training.
     #err but for my pc no p2p, with PHB connection nvidia-smi topo -m, still hurt by set cpu.. may be should not put cpu here
-    # TODO...
     update_ops = ops[0][1]
     ops[0] = ops[0][0]
 
-    if FLAGS.optimizer != 'bert':
-      if FLAGS.variable_strategy == 'cpu' and FLAGS.num_gpus and FLAGS.num_gpus > 1:
-        with tf.device('/cpu:0'):
-          train_op = melt.layers.optimize_loss(
-              losses=ops[0],
-              num_gpus=num_gpus,
-              global_step=global_step,
-              learning_rate=learning_rate,
-              optimizer=optimizer,
-              clip_gradients=FLAGS.clip_gradients,
-              learning_rate_decay_fn=learning_rate_decay_fn,
-              update_ops=update_ops,
-              name=optimize_scope)
-      else:
+    if FLAGS.variable_strategy == 'cpu' and FLAGS.num_gpus and FLAGS.num_gpus > 1:
+      with tf.device('/cpu:0'):
         train_op = melt.layers.optimize_loss(
             losses=ops[0],
             num_gpus=num_gpus,
@@ -795,16 +784,17 @@ def train_flow(ops,
             update_ops=update_ops,
             name=optimize_scope)
     else:
-      from third.bert import optimization
-      num_train_steps = int(
-        num_train_examples / FLAGS.batch_size * (FLAGS.num_decay_epochs or num_epochs))
-      num_warmup_steps = FLAGS.warmup_steps or int(num_train_steps * FLAGS.warmup_proportion) 
-      use_tpu = False
-      train_op = optimization.create_optimizer(
-          ops[0], FLAGS.learning_rate, num_train_steps, num_warmup_steps, FLAGS.min_learning_rate, use_tpu)
+      train_op = melt.layers.optimize_loss(
+          losses=ops[0],
+          num_gpus=num_gpus,
+          global_step=global_step,
+          learning_rate=learning_rate,
+          optimizer=optimizer,
+          clip_gradients=FLAGS.clip_gradients,
+          learning_rate_decay_fn=learning_rate_decay_fn,
+          update_ops=update_ops,
+          name=optimize_scope)
 
-      learning_rate = tf.get_collection('bert_learning_rate')[-1]
-      
     #set the last tower loss as loss in ops
     # TODO FIXME how to check if ops[0] here should be scalar ?
     ops[0] = ops[0][-1]
@@ -818,7 +808,6 @@ def train_flow(ops,
   ops.insert(1, learning_rate)
 
   tf.add_to_collection('learning_rate', learning_rate)
-
   logging.info('learning_rate', learning_rate)
   
   try:
@@ -1110,9 +1099,15 @@ def train(Dataset,
           valid_suffix='.valid',
           infer_suffix='.infer',
           write_streaming=False,
+          dataset=None,
+          valid_dataset=None,
+          test_dataset=None,
           sep=','):
+  if Dataset is None:
+    assert dataset
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
+  assert inputs, input_
   inputs.sort()
 
   all_inputs = inputs
@@ -1122,7 +1117,7 @@ def train(Dataset,
   batch_size_per_gpu = FLAGS.batch_size
 
   if num_gpus > 1:
-    assert not FLAGS.batch_sizes, 'Not support batch sizes for num gpus > 1'
+    assert not FLAGS.batch_sizes, 'Not support batch sizes for num gpus > 1, TODO'
 
   # NOTICE if FLAGS.batch_sizes then num_gpus 1
 
@@ -1136,7 +1131,7 @@ def train(Dataset,
 
   num_folds = FLAGS.num_folds or len(inputs) + 1
 
-  dataset = Dataset('train')
+  dataset = dataset or Dataset('train')
   iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
   num_examples = dataset.num_examples_per_epoch('train') 
   num_all_examples = num_examples
@@ -1159,9 +1154,8 @@ def train(Dataset,
       else:
         valid_inputs = [x for x in all_inputs if 'aug' in x and x not in inputs]
 
-
   if valid_inputs:
-    valid_dataset = Dataset('valid')
+    valid_dataset = valid_dataset or Dataset('valid')
     valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
     valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
   else:
@@ -1190,7 +1184,7 @@ def train(Dataset,
   
   num_test_examples = None
   if test_inputs:
-    test_dataset = Dataset('test')
+    test_dataset = test_dataset or Dataset('test')
     test_iter = test_dataset.make_batch(batch_size_, test_inputs)
     num_test_examples = test_dataset.num_examples_per_epoch('test')
     num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
@@ -1203,6 +1197,7 @@ def train(Dataset,
   #iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
   batch = iter.get_next()
   x, y = melt.split_batch(batch, batch_size, num_gpus)
+  #x, y = melt.split_batch(batch, num_gpus)
 
   #loss = loss_fn(model, x, y, training=True)
   loss = melt.tower(lambda i: loss_fn(model, x[i], y[i], training=True), num_gpus)
@@ -1213,6 +1208,7 @@ def train(Dataset,
     #valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
     valid_batch2 = valid_iter2.get_next()
     valid_x2, valid_y2 = melt.split_batch(valid_batch2, batch_size_, num_gpus, training=False)
+    #valid_x2, valid_y2 = melt.split_batch(valid_batch2, num_gpus, training=False)
     valid_loss = melt.tower(lambda i: loss_fn(model, valid_x2[i], valid_y2[i], training=False), num_gpus, training=False)
     valid_loss = tf.reduce_mean(valid_loss)
     eval_ops = [valid_loss]
@@ -1220,6 +1216,7 @@ def train(Dataset,
     #valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
     valid_batch = valid_iter.get_next()
     valid_x, valid_y = melt.split_batch(valid_batch, batch_size_, num_gpus, training=False)
+    #valid_x, valid_y = melt.split_batch(valid_batch, num_gpus, training=False)
 
     if not valid_names and infer_names:
       valid_names = [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
@@ -1316,3 +1313,6 @@ def get_train():
   if FLAGS.torch and not tf.executing_eagerly():
     train = melt.torch.train
   return train
+
+def get_fit():
+  return get_train()

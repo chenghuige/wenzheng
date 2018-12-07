@@ -194,14 +194,13 @@ def tf_train_flow(train_once_fn,
 
   ##finally remove global_step since melt.apps.train will handle it!
   global_step = tf.train.get_or_create_global_step()
-  global_step_val = sess.run(global_step)
-  variables_to_restore = [v for v in variables_to_restore if not tf.GraphKeys.GLOBAL_STEP in v.name]
+  
+  #variables_to_restore = [v for v in variables_to_restore if not tf.GraphKeys.GLOBAL_STEP in v.name]
   #variables_to_restore = [v for v in variables_to_restore if not 'learning_rate' in v.name]
 
   # TODO fixme if step, step2.. and in checkpoint step then here will be step2...
   #print('------------', [v for v in variables_to_restore if 'step' in v.name])
   loader = tf.train.Saver(var_list=variables_to_restore) 
-
 
   logging.info('max models to keep {}, keep every {} hours'.format(max_models_keep, save_interval_seconds / 3600.0))
   saver = tf.train.Saver(
@@ -265,15 +264,17 @@ def tf_train_flow(train_once_fn,
     #model.save()
     #model.save_weights('./weights')
     timer.print()
-    pre_step = melt.get_model_step(model_path) - 1 if FLAGS.global_step is None else FLAGS.global_step -1
+    #pre_step = melt.get_model_step(model_path) - 1 if FLAGS.global_step is None else FLAGS.global_step -1
+    # TODO check ..
+    pre_step = sess.run(tf.train.get_global_step()) - 1
     pre_epoch = melt.get_model_epoch(model_path) if FLAGS.global_epoch is None else FLAGS.global_epoch
     fixed_pre_step = pre_step
-    if pre_epoch is not None:
-      #like using batch size 32, then reload train using batch size 64
-      if abs(pre_step / num_steps_per_epoch - pre_epoch) > 0.1:
-        fixed_pre_step = int(pre_epoch * num_steps_per_epoch)
-        logging.info('Warning, epoch is diff with pre_step / num_steps_per_epoch:{}, pre_epoch:{},maybe you change batch size and we will adjust to set pre_step as {}'\
-          .format(pre_step / num_steps_per_epoch, pre_epoch, fixed_pre_step))
+    # if pre_epoch is not None:
+    #   #like using batch size 32, then reload train using batch size 64
+    #   if abs(pre_step / num_steps_per_epoch - pre_epoch) > 0.1:
+    #     fixed_pre_step = int(pre_epoch * num_steps_per_epoch)
+    #     logging.info('Warning, epoch is diff with pre_step / num_steps_per_epoch:{}, pre_epoch:{},maybe you change batch size and we will adjust to set pre_step as {}'\
+    #       .format(pre_step / num_steps_per_epoch, pre_epoch, fixed_pre_step))
   else:
     latest_checkpoint = None
     try:
@@ -283,9 +284,9 @@ def tf_train_flow(train_once_fn,
         checkpoint.restore(latest_checkpoint).run_restore_ops(session=sess)
 
         pre_epoch = int(latest_checkpoint.split('-')[-1])
-        pre_step = pre_epoch * num_steps_per_epoch - 1
-        # TODO should write global step.. to graph
-        #pre_step = sess.run(tf.train.get_global_step()) 
+        #pre_step = pre_epoch * num_steps_per_epoch - 1
+        # TODO check
+        pre_step = sess.run(tf.train.get_global_step()) - 1
         fixed_pre_step = pre_step
         logging.info('Start step is:', pre_step)
     except Exception:
@@ -312,7 +313,7 @@ def tf_train_flow(train_once_fn,
     print(list(zip(l[1], l[0])))
     exit(0)
 
-  sess.run(tf.assign(global_step, tf.constant(global_step_val, dtype=tf.int64)))
+  #sess.run(tf.assign(global_step, tf.constant(global_step_val, dtype=tf.int64)))
   try:
     learning_rate = tf.get_collection('learning_rate')[-1]
     learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
@@ -408,64 +409,13 @@ def tf_train_flow(train_once_fn,
             print(command, file=sys.stderr)
             os.system(command)
           timer.print_elapsed()
-        #if save_interval_epochs and num_steps_per_epoch and step % (num_steps_per_epoch * save_interval_epochs) == 0:
-        #if save_interval_epochs and num_steps_per_epoch and step % num_steps_per_epoch == 0:
-        # if save_interval_epochs and num_steps_per_epoch and fixed_step % num_steps_per_epoch == 0:
-        #   #epoch = step // num_steps_per_epoch
-        #   epoch = fixed_step / num_steps_per_epoch
-        #   eval_loss = melt.eval_loss()
-        #   if eval_loss:
-        #     #['eval_loss:3.2','eal_accuracy:4.3']
-        #     eval_loss = float(eval_loss.strip('[]').split(',')[0].strip("'").split(':')[-1])
-        #     if os.path.exists(os.path.join(epoch_dir, 'best_eval_loss.txt')):
-        #       try:
-        #         with open(os.path.join(epoch_dir, 'best_eval_loss.txt')) as f:
-        #           best_epoch_eval_loss = float(f.readline().split()[-1].strip())
-        #       except Exception:
-        #         pass
-        #     if eval_loss < best_epoch_eval_loss:
-        #       best_epoch_eval_loss = eval_loss
-        #       logging.info('Now best eval loss is epoch %.2f eval_loss:%f' % (epoch, eval_loss))
-        #       with open(os.path.join(epoch_dir, 'best_eval_loss.txt'), 'w') as f:
-        #         f.write('%.2f %d %f\n'%(epoch, step, best_epoch_eval_loss))
-        #       model_path_ = os.path.join(epoch_dir,'model.ckpt-best')
-        #       best_epoch_saver.save(sess, model_path_)
-        #       if freeze_graph:
-        #         melt.freeze_graph(sess, model_path_, None, output_collection_names, output_node_names)
-
-        #     # with open(os.path.join(epoch_dir, 'eval_loss.txt'), 'a') as f:
-        #     #    f.write('%d %d %f\n'%(epoch, step, eval_loss))
-        #     if eval_loss >= pre_epoch_eval_loss:
-        #       num_bad_epochs += 1
-        #       if num_bad_epochs > num_allowed_bad_epochs:
-        #         #logging.warning('Evaluate loss not decrease for last %d epochs'% (num_allowed_bad_epochs + 1))
-        #         if not os.path.exists(os.path.join(epoch_dir,'model.ckpt-noimprove')):
-        #           model_path_ = os.path.join(epoch_dir,'model.ckpt-noimprove')
-        #           best_epoch_saver.save(sess, model_path_)
-        #           if freeze_graph:
-        #             melt.freeze_graph(sess, model_path_, None, output_collection_names, output_node_names)
-        #         ##-------well remove it since 
-        #         #if early_stop:
-        #         #  stop = True 
-        #     else:
-        #       num_bad_epochs = 0
-        #     pre_epoch_eval_loss = eval_loss
-
-        # if write_during_train:
-        #   # TODO FIXME metric_eval_fn per epoch should also keep... so should be called in train_once, just call with model_path is fine.. which mark as per epoch eval
-        #   #print(fixed_step, int(num_steps_per_epoch * valid_interval_epochs), fixed_step % int(num_steps_per_epoch * valid_interval_epochs))
-        #   if metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0:
-        #     # will write epoch eval info to files
-        #     if 'model_path' in inspect.getargspec(metric_eval_fn).args:
-        #       try:
-        #         metric_eval_fn(model_path=model_step_path)     
-        #       except Exception:
-        #         logging.info(traceback.format_exc())
-        
+  
         if save_interval_steps and num_steps_per_epoch and fixed_step % int(num_steps_per_epoch * save_interval_epochs) == 0:
+          # TODO only epoch in name not sep ?
           model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
           model_step_path = model_path_ + '-' + str(step)
           epoch_saver.save(sess, model_path_, global_step=step)
+          #epoch_saver.save(sess, model_path_)
           
           if model:
             #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))

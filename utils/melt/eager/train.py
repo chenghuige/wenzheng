@@ -249,7 +249,12 @@ def train(Dataset,
           optimizer=None,
           param_groups=None,
           init_fn=None,
+          dataset=None,
+          valid_dataset=None,
+          test_dataset=None,
           sep=','):
+  if Dataset is None:
+    assert dataset
   if FLAGS.torch:
     #torch.cuda.set_device(0)  # set the device back to 0
     if torch.cuda.is_available():
@@ -277,7 +282,7 @@ def train(Dataset,
   logging.info('inputs', len(inputs), inputs[:100])
   num_folds = FLAGS.num_folds or len(inputs) + 1
 
-  train_dataset_ = Dataset('train')
+  train_dataset_ = dataset or Dataset('train')
   train_dataset = train_dataset_.make_batch(batch_size, inputs)
   num_examples = train_dataset_.num_examples_per_epoch('train') 
   num_all_examples = num_examples
@@ -296,7 +301,7 @@ def train(Dataset,
   logging.info('valid_inputs', valid_inputs)
 
   if valid_inputs:
-    valid_dataset_ = Dataset('valid')
+    valid_dataset_ = valid_dataset or Dataset('valid')
     valid_dataset = valid_dataset_.make_batch(batch_size_, valid_inputs)
     valid_dataset2 = valid_dataset_.make_batch(batch_size_, valid_inputs, repeat=True)
   else:
@@ -333,7 +338,7 @@ def train(Dataset,
   
   num_test_examples = None
   if test_inputs:
-    test_dataset_ = Dataset('test')
+    test_dataset_ = test_dataset or Dataset('test')
     test_dataset = test_dataset_.make_batch(batch_size_, test_inputs) 
     num_test_examples = test_dataset_.num_examples_per_epoch('test')
     num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
@@ -459,6 +464,8 @@ def train(Dataset,
     # else:
     start_epoch = 0  
     latest_path = latest_checkpoint + '.pyt' if latest_checkpoint else os.path.join(FLAGS.model_dir, 'latest.pyt')
+    if not os.path.exists(latest_path):
+      latest_path = os.path.join(FLAGS.model_dir, 'latest.pyt')
     if os.path.exists(latest_path):
       logging.info('loading torch model from', latest_path)
       checkpoint = torch.load(latest_path)
@@ -685,7 +692,7 @@ def train(Dataset,
           if FLAGS.torch:
             model.train()
 
-          logging.info('epoch:%.3f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
+          logging.info2('epoch:%.3f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
                       'elapsed:[%.3f]' % elapsed,
                       'batch_size:[%d]' % batch_size_,
@@ -701,7 +708,7 @@ def train(Dataset,
               summary.scalar('loss/eval', epoch_valid_loss_avg.result().numpy())
               writer_valid.flush()
         else:
-          logging.info('epoch:%.3f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
+          logging.info2('epoch:%.3f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                       'step:%d' % global_step.numpy(), 
                       'elapsed:[%.3f]' % elapsed,
                       'batch_size:[%d]' % batch_size_,
@@ -823,7 +830,7 @@ def train(Dataset,
         if 'SHOW' in os.environ:
           exit(0)
 
-    logging.info('epoch:%d/%d' % (epoch + 1, num_epochs), 
+    logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
                  'step:%d' % global_step.numpy(), 
                  'batch_size:[%d]' % batch_size,
                  'lr:[%.8f]' % learning_rate.numpy(),

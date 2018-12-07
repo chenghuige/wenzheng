@@ -27,6 +27,7 @@ flags.DEFINE_string('i', '.', '')
 
 flags.DEFINE_string('metric_name', 'adjusted_f1/mean', '')
 flags.DEFINE_float('min_thre', 0., '0.705')
+flags.DEFINE_integer('len_thre', 256, '')
 flags.DEFINE_float('max_thre', 1000., '')
 flags.DEFINE_bool('adjust', True, '')
 flags.DEFINE_bool('more_adjust', True, '')
@@ -136,7 +137,6 @@ def init():
 #       result[i] = np.argmax(prob[1:]) - 1
 
 #   return result
-
 
 def regression_to_class(predict):
   if predict > 7:
@@ -421,9 +421,8 @@ def evaluate_file(file):
 
   labels1 = []
   labels2 = []
-
   for len_, label, predict in zip(lens, labels, predicts):
-    if len_ > 512:
+    if len_ >= FLAGS.len_thre:
       predicts2.append(predict)
       labels2.append(label)
     else:
@@ -431,14 +430,14 @@ def evaluate_file(file):
       labels1.append(label)
   predicts1 = np.array(predicts1)
   labels1 = np.array(labels1)
-  print('num docs len <= 512', len(predicts1))
+  print('num docs len < ', FLAGS.len_thre, len(predicts1))
   vals1, names1 = evaluate(labels1, predicts1)
   for name, val in zip(names1, vals1):
     if 'mean' in name:
       print(name, val) 
   predicts2 = np.array(predicts2)
   labels2 = np.array(labels2) 
-  print('num docs len > 512', len(predicts2))
+  print('num docs len >= ', FLAGS.len_thre, len(predicts2))
   vals2, names2 = evaluate(labels2, predicts2)
   for name, val in zip(names2, vals2):
     if 'mean' in name:

@@ -1,0 +1,6 @@
+.DS_Store
+__pycache__/
+*.log
+.ipynb_checkpoints
+images/
+*.h5

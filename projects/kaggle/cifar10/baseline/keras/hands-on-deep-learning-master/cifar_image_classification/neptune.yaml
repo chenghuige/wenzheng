@@ -1,0 +1,11 @@
+project-key: CIF
+
+name: CIFAR10 with DL
+description: From blog post "Starting deep learning hands-on - image classification" by deepsense.ai.
+tags: [cifar10]
+
+environment: keras-2.0-gpu-py3
+worker: gcp-gpu-medium
+
+exclude:
+  - aux

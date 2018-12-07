@@ -64,7 +64,7 @@ def train_once(sess,
                ):
 
   #is_start = False # force not to evaluate at first step
-
+  #print('-----------------global_step', sess.run(tf.train.get_or_create_global_step()))
   timer = gezi.Timer()
   if print_time:
     if not hasattr(train_once, 'timer'):
@@ -171,7 +171,7 @@ def train_once(sess,
    metric_evaluate = True
 
   #if (is_start or step == 0) and (not 'EVFIRST' in os.environ):
-  if ((step == 0) and (not 'EVFIRST' in os.environ)) or ('QUICK' in os.environ):
+  if ((step == 0) and (not 'EVFIRST' in os.environ)) or ('QUICK' in os.environ) or ('EVFIRST' in os.environ and os.environ['EVFIRST'] == '0'):
     metric_evaluate = False
 
   if metric_evaluate:

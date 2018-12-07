@@ -1,0 +1,16 @@
+python ./train.py \
+    --model_dir=./mount/temp/cifar10/model/resnet.momentum.decay \
+    --variable_strategy=cpu \
+    --batch_size=128 \
+    --batch_size_per_gpu=0 \
+    --save_interval_epochs=5 \
+    --metric_eval_interval_steps=0 \
+    --valid_interval_epochs=1 \
+    --inference_interval_epochs=5 \
+    --optimizer=momentum \
+    --momentum=0.9 \
+    --learning_rate=0.1 \
+    --learning_rate_decay_factor=0.99 \
+    --num_epochs_per_decay=1. \
+    --num_epochs=510 \
+    --save_interval_steps 10000

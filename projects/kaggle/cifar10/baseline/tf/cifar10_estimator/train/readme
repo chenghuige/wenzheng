@@ -1,0 +1,5 @@
+use ./train-melt-momentum2-batch128.sh this is the same as tensorflow tuorial which set learning rate 0.1 0.01 ... 500 epoch will get   
+valid_loss 0.4307 valid_acc 0.9294 test_acc 0.93010
+use ./train-melt-momentum-decay.sh this is the same as above but set learning rate decay 0.99 per epoch 500 epoch will get
+valid_loss 0.3297 valid_acc 0.9359 test_acc 0.9367  
+./train-melt-momentum-decay-2gpu.sh  is 2gpu version   

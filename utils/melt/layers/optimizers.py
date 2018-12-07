@@ -129,7 +129,7 @@ def optimize_loss(losses,
                   update_ops=None,
                   variables=None,
                   name=None,
-                  summaries=None,
+                  summaries=["global_gradient_norm"],
                   colocate_gradients_with_ops=False,
                   increment_global_step=True):
   """Given loss and parameters for optimizer, returns a training op.
@@ -174,41 +174,6 @@ def optimize_loss(losses,
     # Update ops take UPDATE_OPS collection if not provided.
     if update_ops is None:
       update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
-    # # Make sure update ops are ran before computing loss.
-    # if update_ops:
-    #   loss = control_flow_ops.with_dependencies(list(update_ops), loss)
-      #raise ValueError('update ops not supported yet for multi gpu')
-
-    # Learning rate variable, with possible decay.
-    # if (isinstance(learning_rate, ops.Tensor) and learning_rate.get_shape().ndims == 0):
-    #   lr = learning_rate
-    # elif isinstance(learning_rate, float):
-    #   lr = vs.get_variable("learning_rate", [], trainable=False,
-    #       initializer=init_ops.constant_initializer(learning_rate))
-    # else:
-    #   raise ValueError("Learning rate should be 0d Tensor or float. "
-    #                    "Got %s of type %s" % (str(learning_rate), str(type(learning_rate))))
-    # if summaries is None:
-    #   summaries = ["loss", "learning_rate"]
-    # if learning_rate_decay_fn is not None:
-    #   lr = learning_rate_decay_fn(lr, global_step)
-    #   if "learning_rate" in summaries:
-    #     summary.scalar("learning_rate", lr)
-
-    # # Create optimizer, given specified parameters.
-    # if isinstance(optimizer, six.string_types):
-    #   if optimizer not in OPTIMIZER_CLS_NAMES:
-    #     raise ValueError("Optimizer name should be one of [%s], you provided %s." % (", ".join(OPTIMIZER_CLS_NAMES), optimizer))
-    #   opt = OPTIMIZER_CLS_NAMES[optimizer](learning_rate=lr)
-    # elif isinstance(optimizer, type) and issubclass(optimizer,
-    #                                                 optimizer_.Optimizer):
-    #   opt = optimizer(learning_rate=lr)
-    # elif isinstance(optimizer, optimizer_.Optimizer):
-    #   opt = optimizer
-    # else:
-    #   raise ValueError("Unrecognized optimizer: should be string, "
-    #                    "subclass of Optimizer or instance of "
-    #                    "subclass of Optimizer. Got %s." % str(optimizer))
 
     #--from https://github.com/tensorflow/tensorflow/blob/28c3c5dd38e3b397c2cf0acdaa6388dcbf0349f7/tensorflow/contrib/layers/python/layers/optimizers.py
     # Learning rate variable, with possible decay.
@@ -216,6 +181,7 @@ def optimize_loss(losses,
     if learning_rate is not None:
       if (isinstance(learning_rate, ops.Tensor) or isinstance(learning_rate, tf.Variable) and
           learning_rate.get_shape().ndims == 0):
+        #print('------------------optimize_loss learning rate do nothhing', learning_rate)
         lr = learning_rate
       elif isinstance(learning_rate, float):
         if learning_rate < 0.0:
@@ -228,19 +194,11 @@ def optimize_loss(losses,
         raise ValueError("Learning rate should be 0d Tensor or float. "
                          "Got %s of type %s" % (str(learning_rate),
                                                 str(type(learning_rate))))
-    if summaries is None:
-      summaries = ["loss", "learning_rate", "global_gradient_norm"]
-    else:
-      for summ in summaries:
-        if summ not in OPTIMIZER_SUMMARIES:
-          raise ValueError("Summaries should be one of [%s], you provided %s." %
-                           (", ".join(OPTIMIZER_SUMMARIES), summ))
+
     if learning_rate is not None and learning_rate_decay_fn is not None:
       if global_step is None:
         raise ValueError("global_step is required for learning_rate_decay_fn.")
       lr = learning_rate_decay_fn(lr, global_step)
-      if "learning_rate" in summaries:
-        summary.scalar("learning_rate", lr)
         
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):
@@ -259,6 +217,7 @@ def optimize_loss(losses,
                          "optimizer is class (%s)." % optimizer)
       opt = optimizer(learning_rate=lr)
     elif isinstance(optimizer, optimizer_.Optimizer):
+      #print('------------------optimize_loss optimizer do nothing', optimizer)
       opt = optimizer
     elif callable(optimizer):
       if learning_rate is not None:
@@ -323,29 +282,6 @@ def optimize_loss(losses,
             #print('-------gradients', gradients)
             tower_grads.append(gradients)
                     
-      # # Add scalar summary for loss.
-      # if "loss" in summaries:
-      #   summary.scalar("loss", loss)
-
-      #@TODO chg now just remove below  TODO FIXME add gradient monitor
-      ## Add histograms for variables, gradients and gradient norms.
-      #for gradient, variable in gradients:
-      #  if isinstance(gradient, ops.IndexedSlices):
-      #    grad_values = gradient.values
-      #  else:
-      #    grad_values = gradient
-
-      #  if grad_values is not None:
-      #    if "gradients" in summaries:
-      #      logging_ops.histogram_summary(variable.name + "/gradients",
-      #                                    grad_values)
-      #    if "gradient_norm" in summaries:
-      #      logging_ops.histogram_summary(variable.name + "/gradient_norm",
-      #                                    clip_ops.global_norm([grad_values]))
-
-      #if FLAGS.monitor_level > 1 and FLAGS.num_gpus == 0:
-      #  melt.monitor_gradients_from_loss(loss)
-
       gradients = average_gradients(tower_grads)
       if "global_gradient_norm" in summaries or "gradient_norm" in summaries:
         summary.scalar("global_norm/gradient_norm",
