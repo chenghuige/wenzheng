@@ -86,12 +86,12 @@ class ModelBase(melt.Model):
     if use_text_encoder:
       if FLAGS.pretrain_encoder == 'bilm':
         self.encode = wenzheng.TextEncoder(config, 
-                                          embedding,
-                                          use_char=FLAGS.use_char,
-                                          use_char_emb=FLAGS.use_char_emb,
-                                          use_pos=FLAGS.use_pos,
-                                          use_ner=FLAGS.use_ner,
-                                          lm_model=lm_model)
+                                           embedding,
+                                           use_char=FLAGS.use_char,
+                                           use_char_emb=FLAGS.use_char_emb,
+                                           use_pos=FLAGS.use_pos,
+                                           use_ner=FLAGS.use_ner,
+                                           lm_model=lm_model)
       else:
         self.encode = wenzheng.BertEncoder(embedding)
 
@@ -538,6 +538,11 @@ class Transformer(ModelBase):
       }
       bert_config = modeling.BertConfig.from_dict(bert_config)
 
+    bert_config.attention_probs_dropout_prob = FLAGS.bert_dropout
+    bert_config.hidden_dropout_prob = FLAGS.bert_dropout
+    bert_config.num_hidden_layers = FLAGS.bert_num_layers 
+    bert_config.num_attention_heads = FLAGS.bert_num_heads
+    logging.info('bert_config\n', bert_config.to_json_string())
     self.bert_config = bert_config
 
     if FLAGS.transformer_add_rnn:
@@ -600,10 +605,9 @@ class Transformer(ModelBase):
 # class Model(ModelBase):
 #   def call(self, input, training=False):
 #     x = input['content'] 
-#     batch_size = melt.get_shape(x, 0)
 #     c_len = melt.length(x)
 #     x = self.encode(input, c_len, training=training)
 #     x = self.pooling(x, c_len)
 #     x = self.logits(x)
-#     x = tf.reshape(x, [batch_size, NUM_ATTRIBUTES, self.num_classes])
+#     x = tf.reshape(x, [-1, NUM_ATTRIBUTES, NUM_CLASSES])
 #     return x

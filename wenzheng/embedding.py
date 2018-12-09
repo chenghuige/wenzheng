@@ -74,10 +74,13 @@ layers = tf.keras.layers
 class Embedding(layers.Layer):
   """An Embedding layer."""
   
-  def __init__(self, vocab_size, embedding_dim=None, embedding=None, trainable=True, freeze_size=None, **kwargs):
+  def __init__(self, vocab_size, embedding_dim=None, embedding=None, 
+               trainable=True, freeze_size=None, finetune_size=None, **kwargs):
     super(Embedding, self).__init__(**kwargs)
     self.vocab_size = vocab_size
     self.freeze_size = freeze_size
+    if finetune_size:
+      self.freeze_size = vocab_size - finetune_size
     self.embedding_dim = embedding_dim if embedding_dim else FLAGS.emb_dim
     self.trainable = trainable
 

@@ -12,6 +12,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
 from tensorflow.python import pywrap_tensorflow
 import tensorflow.contrib.slim as slim
 
@@ -334,12 +336,23 @@ global or inside function global sess will cause this but not big problem for co
     else:
       config=tf.ConfigProto(allow_soft_placement=allow_soft_placement, 
                             log_device_placement=log_device_placement,
-                            device_count=device_count)      
+                            device_count=device_count)    
+    if FLAGS.use_horovod:
+      config.gpu_options.allow_growth = True
+      import horovod.keras as hvd
+      config.gpu_options.visible_device_list = str(hvd.local_rank())  
     #config.operation_timeout_in_ms=600000
     #NOTICE https://github.com/tensorflow/tensorflow/issues/2130 but 5000 will cause init problem!
     #config.operation_timeout_in_ms=50000   # terminate on long hangs
     #https://github.com/tensorflow/tensorflow/issues/2292 allow_soft_placement=True
-    get_session.sess = tf.Session(config=config)
+    if not FLAGS.use_tpu:
+      get_session.sess = tf.Session(config=config)
+    else:
+      tpu_cluster_resolver = None
+      if FLAGS.use_tpu and FLAGS.tpu_name:
+        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+          FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
+      get_session.sess = tf.Session(tpu_cluster_resolver)
     if debug:
       from tensorflow.python import debug as tf_debug
       get_session.sess = tf_debug.LocalCLIDebugWrapperSession(get_session.sess)
@@ -1123,14 +1136,14 @@ def print_varaiables(key, sope=None):
   for item in tf.get_collection(key):
     print(item)
 
-def get_global_int(key):
+def get_global_int(key, val=0):
   if key not in os.environ:
-    os.environ[key] = '0'
+    return val
   return int(os.environ[key])
 
-def get_global_float(key):
+def get_global_float(key, val=0.):
   if key not in os.environ:
-    os.environ[key] = '0'
+    return val
   return float(os.environ[key])
 
 def get_global_str(key):
@@ -1139,16 +1152,16 @@ def get_global_str(key):
   return os.environ[key]
 
 def step():
-  return get_global_int('step')
+  return get_global_int('step', 0.)
 
 def epoch():
-  return get_global_float('epoch')
+  return get_global_float('epoch', 0.)
 
 def batch_size():
   return get_global_int('batch_size')
 
 def num_gpus():
-  return get_global_int('num_gpus')
+  return get_global_int('num_gpus', 1)
 
 def loss():
   loss_ = get_global_str('eval_loss')

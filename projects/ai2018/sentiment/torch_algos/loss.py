@@ -56,12 +56,12 @@ class Criterion(object):
     y_ = model(x)
 
     if FLAGS.use_soft_label:
-      return self.calc_soft_label_loss(y_, y, model.num_classes)
+      return self.calc_soft_label_loss(y_, y, NUM_CLASSES)
     
     #print(y.shape, y_.shape)
     # without view Expected target size (32, 4), got torch.Size([32, 20])
     if training and FLAGS.num_learning_rate_weights == NUM_ATTRIBUTES:
-      loss = self.loss_fn2(y_.view(-1, model.num_classes), y.view(-1)).view(-1, NUM_ATTRIBUTES)
+      loss = self.loss_fn2(y_.view(-1, NUM_CLASSES), y.view(-1)).view(-1, NUM_ATTRIBUTES)
       # stop some gradients due to learning_rate weights
       loss = lele.adjust_lrs(loss)
       loss = loss.mean()
@@ -72,7 +72,7 @@ class Criterion(object):
     #     losses.append(loss)
     #   loss = torch.mean(torch.stack(losses))
     else:
-      loss = self.loss_fn(y_.view(-1, model.num_classes), y.view(-1))  
+      loss = self.loss_fn(y_.view(-1, NUM_CLASSES), y.view(-1))  
     
     # depreciated add neu binary not help final ensemble
     if FLAGS.loss_type == 'add_neu_binary':

@@ -16,7 +16,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/tf.char.transformer.nbert.finetune.4gpu.3epoch/
+model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/tf.char.transformer.nbert.finetune.4gpu.3epoch.drop03/
 num_epochs=3
 
 mkdir -p $model_dir/epoch 
@@ -41,6 +41,7 @@ fi
 # use 4 gpu to run if gtx1080ti FIXME now can only batc_size 2 * 4 .. why?
 CUDA_VISIBLE_DEVICES=0,1,2,3 python $exe \
         --bert_lr_ratio=1. \
+        --bert_dropout=0.3 \
         --bert_dir=$base/data/my-embedding/bert-char/ckpt/500000 \
         --num_finetune_words=3000 \
         --num_finetune_chars=3000 \

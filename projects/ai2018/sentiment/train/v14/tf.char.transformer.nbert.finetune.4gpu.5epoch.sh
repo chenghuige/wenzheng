@@ -40,7 +40,7 @@ fi
 
 # use 4 gpu to run if gtx1080ti FIXME now can only batc_size 2 * 4 .. why?
 CUDA_VISIBLE_DEVICES=0,1,2,3 python $exe \
-        --bert_lr_ratio=0.1 \
+        --bert_lr_ratio=1. \
         --bert_dir=$base/data/my-embedding/bert-char/ckpt/500000 \
         --num_finetune_words=3000 \
         --num_finetune_chars=3000 \
@@ -64,7 +64,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=bert \
-        --learning_rate=5e-5 \
+        --learning_rate=8e-5 \
         --min_learning_rate=1e-7 \
         --num_epochs=$num_epochs \
 

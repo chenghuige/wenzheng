@@ -16,7 +16,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/tf.char.transformer.nbert.finetune.4gpu.3epoch/
+model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/tf.char.transformer.nbert.finetune.4gpu.3epoch.all_finetune/
 num_epochs=3
 
 mkdir -p $model_dir/epoch 
@@ -42,8 +42,6 @@ fi
 CUDA_VISIBLE_DEVICES=0,1,2,3 python $exe \
         --bert_lr_ratio=1. \
         --bert_dir=$base/data/my-embedding/bert-char/ckpt/500000 \
-        --num_finetune_words=3000 \
-        --num_finetune_chars=3000 \
         --model=Transformer \
         --fold=$fold \
         --vocab $dir/vocab.txt \
@@ -54,7 +52,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python $exe \
         --finetune_word_embedding=1 \
         --batch_size=24 \
         --batch_size_per_gpu=0 \
-        --length_key content \
         --encoder_output_method=last \
         --eval_interval_steps 1000 \
         --metric_eval_interval_steps 1000 \

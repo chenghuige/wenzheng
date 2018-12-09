@@ -292,7 +292,8 @@ class MReader(ModelBase):
   def forward(self, input, training=False):
     #print('------------', input['source'])
     #print(input['id'])
-    x = input['content'] 
+    x = input['content']
+    #print(x) 
     #print(x.shape)
     x_mask = x.eq(0)
     batch_size = x.size(0)

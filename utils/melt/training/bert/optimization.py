@@ -21,7 +21,7 @@ from __future__ import print_function
 import re
 import tensorflow as tf
 
-def create_optimizer(global_step, init_lr, num_train_steps, num_warmup_steps, min_learning_rate=0., use_tpu=False):
+def create_optimizer(global_step, init_lr, num_train_steps, num_warmup_steps, min_learning_rate=0.):
   """Creates an optimizer training op."""
   #global_step = tf.train.get_or_create_global_step()
 
@@ -65,9 +65,6 @@ def create_optimizer(global_step, init_lr, num_train_steps, num_warmup_steps, mi
       beta_2=0.999,
       epsilon=1e-6,
       exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
-
-  if use_tpu:
-    optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
   return optimizer, learning_rate
 

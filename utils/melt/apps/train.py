@@ -164,7 +164,7 @@ flags.DEFINE_boolean('use_tower_loss', True, '')
 ##multi gpu so they use single gpu training
 flags.DEFINE_integer('num_gpus', 0, """How many GPUs to use. set 0 to disable multi gpu mode""")
 flags.DEFINE_boolean('log_device_placement', False, """Whether to log device placement.""")
-flags.DEFINE_boolean('batch_size_per_gpu', True, '''  per gpu batch size should be dived by gpu num ?
+flags.DEFINE_boolean('batch_size_per_gpu', False, ''' per gpu batch size should be dived by gpu num ?
                                                       True means, if num_gpus = 2, batch_size set 128, then each gpu with batch size 128, which means batch_size is actually batch_size_per_gpu
                                                       means 256 insts per step actually, if num_gpus == 0, will try to read env info if you set like 
                                                       CUDA_VISIABLE_DIVICES=0,1 then actually will use 2 GPUS, and 256 insts per step also 
@@ -253,13 +253,52 @@ flags.DEFINE_boolean('test_aug', False, '')
 
 flags.DEFINE_integer('batch_size_dim', 0, '')
 
+# from bert run_classifier.py
 flags.DEFINE_boolean('use_tpu', False, '')
+tf.flags.DEFINE_string(
+    "tpu_name", None,
+    "The Cloud TPU to use for training. This should be either the name "
+    "used when creating the Cloud TPU, or a grpc://ip.address.of.tpu:8470 "
+    "url.")
+tf.flags.DEFINE_string(
+    "tpu_zone", None,
+    "[Optional] GCE zone where the Cloud TPU is located in. If not "
+    "specified, we will attempt to automatically detect the GCE project from "
+    "metadata.")
+tf.flags.DEFINE_string(
+    "gcp_project", None,
+    "[Optional] Project name for the Cloud TPU-enabled project. If not "
+    "specified, we will attempt to automatically detect the GCE project from "
+    "metadata.")
+#tf.flags.DEFINE_string("master", None, "[Optional] TensorFlow master URL.")
+flags.DEFINE_integer(
+    "num_tpu_cores", 8,
+    "Only used if `use_tpu` is True. Total number of TPU cores to use.")
+
+# use horovod to do multiple gpu / server 
+flags.DEFINE_boolean('use_horovod', False, '')
+
 
 inited = None 
 
 def init():
+  if FLAGS.buckets:
+    assert FLAGS.length_key, 'must set length key if using buckets'
+
+  if FLAGS.use_horovod:
+    import horovod.tensorflow as hvd
+    hvd.init()
+    if FLAGS.torch:
+      import torch
+      torch.cuda.set_device(hvd.local_rank())
+
   if 'TPU' in os.environ and int(os.environ['TPU']) == 1:
     FLAGS.use_tpu = True
+
+  if FLAGS.use_tpu:
+    from tensorflow.contrib.tpu.python.tpu import tpu_function
+    # Add this somewhere at the top
+    tpu_function.get_tpu_context().set_number_of_shards(FLAGS.num_tpu_cores)
 
   if 'MODEL_DIR' in os.environ:
     FLAGS.model_dir = os.environ['MODEL_DIR']
@@ -472,9 +511,12 @@ def init():
 
   if 'FIXED_BATCH_SIZE' in os.environ and os.environ['FIXED_BATCH_SIZE'] == '1':
     FLAGS.batch_size_per_gpu = False
-  if 'BATCH_SIZE_PER_GPU' in os.environ and os.environ['BATCH_SIZE_PER_GPU'] == '0':
-    FLAGS.batch_size_per_gpu = False
-
+  if 'BATCH_SIZE_PER_GPU' in os.environ:
+    if os.environ['BATCH_SIZE_PER_GPU'] == '0':
+      FLAGS.batch_size_per_gpu = False
+    elif os.environ['BATCH_SIZE_PER_GPU'] == '1':
+      FLAGS.batch_size_per_gpu = True 
+  
   if not FLAGS.batch_size_per_gpu and FLAGS.num_gpus > 1:
     print('batch size is shrink by %d for each gpu to make total insts per step still %d'%(FLAGS.num_gpus, FLAGS.batch_size), file=sys.stderr)
     FLAGS.batch_size = int(FLAGS.batch_size / FLAGS.num_gpus)
@@ -487,6 +529,7 @@ def init():
 
   melt.set_global('batch_size', FLAGS.batch_size * melt.num_gpus())
 
+  # notice melt.batch_size() is actual batch size, FLAGS.batch_size is actually batch size per gpu!
   logging.info('batch_size:', melt.batch_size(), 'batch_size_per_gpu:', FLAGS.batch_size, 'num_gpus:', melt.num_gpus())
 
   # #HACK
@@ -744,11 +787,11 @@ def train_flow(ops,
     optimizer = yellowfin.YellowFinOptimizer
   elif FLAGS.optimizer == 'bert':
     num_train_steps = int(
-      num_train_examples / FLAGS.batch_size * (FLAGS.num_decay_epochs or num_epochs))
+      num_train_examples / melt.batch_size() * (FLAGS.num_decay_epochs or num_epochs))
     num_warmup_steps = FLAGS.warmup_steps or int(num_train_steps * FLAGS.warmup_proportion) 
     logging.info('num_train_steps', num_train_steps, 'num_warmup_steps', num_warmup_steps, 'warmup_proportion', FLAGS.warmup_proportion)
     optimizer, learning_rate = melt.training.bert.optimization.create_optimizer(
-        global_step, FLAGS.learning_rate, num_train_steps, num_warmup_steps, FLAGS.min_learning_rate, FLAGS.use_tpu)
+        global_step, FLAGS.learning_rate, num_train_steps, num_warmup_steps, FLAGS.min_learning_rate)
   else:
     optimizer = melt.util.get_optimizer(optimizer)
   logging.info('optimizer:{} {}'.format(FLAGS.optimizer, optimizer))
@@ -782,7 +825,8 @@ def train_flow(ops,
             clip_gradients=FLAGS.clip_gradients,
             learning_rate_decay_fn=learning_rate_decay_fn,
             update_ops=update_ops,
-            name=optimize_scope)
+            name=optimize_scope,
+            use_tpu=FLAGS.use_tpu)
     else:
       train_op = melt.layers.optimize_loss(
           losses=ops[0],
@@ -793,7 +837,8 @@ def train_flow(ops,
           clip_gradients=FLAGS.clip_gradients,
           learning_rate_decay_fn=learning_rate_decay_fn,
           update_ops=update_ops,
-          name=optimize_scope)
+          name=optimize_scope,
+          use_tpu=FLAGS.use_tpu)
 
     #set the last tower loss as loss in ops
     # TODO FIXME how to check if ops[0] here should be scalar ?
@@ -1120,7 +1165,6 @@ def train(Dataset,
     assert not FLAGS.batch_sizes, 'Not support batch sizes for num gpus > 1, TODO'
 
   # NOTICE if FLAGS.batch_sizes then num_gpus 1
-
   batch_size_ = batch_size if not FLAGS.batch_sizes else int(FLAGS.batch_sizes.split(',')[-1])
 
   if FLAGS.fold is not None:

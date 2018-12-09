@@ -298,11 +298,11 @@ def train_once(sess,
         #info.write('train_avg_metrics:{} '.format(melt.value_name_list_str(train_average_loss, names)))
         names_ = melt.adjust_names(train_average_loss, names)
         #info.write('train_avg_metric:{} '.format(melt.parse_results(train_average_loss, names_)))
-        info.write('train_metrics:{} '.format(melt.parse_results(train_average_loss, names_)))
+        info.write(' train:{} '.format(melt.parse_results(train_average_loss, names_)))
         #info.write('train_avg_loss: {} '.format(train_average_loss))
       
       #print(gezi.now_time(), epoch_str, 'train_step:%d'%step, info.getvalue(), end=' ') 
-      logging.info2('{} {} {}'.format(epoch_str, 'train_step:%d'%step, info.getvalue()))
+      logging.info2('{} {} {}'.format(epoch_str, 'step:%d'%step, info.getvalue()))
       
       if deal_results_fn is not None:
         stop = deal_results_fn(results)

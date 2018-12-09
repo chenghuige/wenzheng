@@ -37,6 +37,11 @@ from tensorflow.python.training import training as train
 
 import tensorflow as tf
 
+try:
+  import horovod.keras as hvd
+except Exception:
+  pass
+
 """
 copy from tensorflow.contrib.layers.python.layers.optimerzers.py version 0.10
 """
@@ -131,7 +136,9 @@ def optimize_loss(losses,
                   name=None,
                   summaries=["global_gradient_norm"],
                   colocate_gradients_with_ops=False,
-                  increment_global_step=True):
+                  increment_global_step=True,
+                  use_tpu=False,
+                  use_horovod=False):
   """Given loss and parameters for optimizer, returns a training op.
   Args:
     loss: Tensor, 0 dimensional.
@@ -234,6 +241,12 @@ def optimize_loss(losses,
                        "subclass of Optimizer, instance of "
                        "subclass of Optimizer or function with one argument. "
                        "Got %s." % str(optimizer))
+
+    if use_tpu:
+      opt = tf.contrib.tpu.CrossShardOptimizer(opt)
+    assert not (use_tpu and use_horovod)
+    if use_horovod:
+      opt = hvd.DistributedOptimizer(opt)
 
     if num_gpus > 1:
       # Calculate the gradients for each model tower.

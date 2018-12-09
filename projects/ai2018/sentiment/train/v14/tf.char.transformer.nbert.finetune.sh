@@ -40,7 +40,7 @@ fi
 
 # from 72k epoch 16.45 change min lr from 5e-7 1e-7
 python $exe \
-        --bert_lr_ratio=1. \
+        --bert_lr_ratio=0.1 \
         --bert_dir=$base/data/my-embedding/bert-char/ckpt/500000 \
         --num_finetune_words=3000 \
         --num_finetune_chars=3000 \

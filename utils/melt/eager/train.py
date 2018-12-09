@@ -13,7 +13,8 @@ from __future__ import division
 from __future__ import print_function
 
 try:
-  import torch
+  import torch 
+  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 except Exception:
   pass
 
@@ -44,11 +45,11 @@ def torch_(x):
   x = x.numpy()
   if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
     x = torch.from_numpy(x)
-    if torch.cuda.is_available():
-      x = x.cuda()
+    #if torch.cuda.is_available():
+      #x = x.cuda()
+    x = x.to(device)
 
   return x
-
 
 def to_torch(x, y=None):
   if y is not None:
@@ -217,16 +218,19 @@ def load_torch_model(model, path):
   state = checkpoint['state_dict']   
   
   new_state = {}
+  model_ = model.module if hasattr(model, 'module') else model
+
   for key, val in state.items():
-    if key in model.state_dict():
+    if key in model_.state_dict():
       new_state[key] = val
 
-  logging.info('num updated keys from checkpoint', len(new_state))
+  logging.info('num updated keys from checkpoint', len(new_state), 'epoch:', checkpoint['epoch'], 'step:', checkpoint['step'])
 
   # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
-  new_params = model.state_dict()
+  new_params = model_.state_dict()
   new_params.update(new_state)
-  model.load_state_dict(new_params)
+  model_.load_state_dict(new_params)
+
   model.eval()
 
   return checkpoint
@@ -256,21 +260,23 @@ def train(Dataset,
   if Dataset is None:
     assert dataset
   if FLAGS.torch:
-    #torch.cuda.set_device(0)  # set the device back to 0
-    if torch.cuda.is_available():
-      model.cuda()
-  
+    # https://pytorch.org/tutorials/beginner/blitz/data_parallel_tutorial.html
+    if torch.cuda.device_count() > 1:
+      model = torch.nn.DataParallel(model)
+    model.to(device)
+    
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
   inputs.sort()
 
   all_inputs = inputs
 
-  batch_size = FLAGS.batch_size
+  #batch_size = FLAGS.batch_size
+  batch_size = melt.batch_size()
 
   num_gpus = melt.num_gpus()
-  if num_gpus > 1:
-    assert False, 'Eager mode train currently not support for num gpus > 1'
+  #if num_gpus > 1:
+  #  assert False, 'Eager mode train currently not support for num gpus > 1'
 
   #batch_size_ = batch_size if not FLAGS.batch_sizes else int(FLAGS.batch_sizes.split(',')[-1])
   batch_size_ = batch_size
@@ -387,8 +393,11 @@ def train(Dataset,
   
   if os.path.exists(FLAGS.model_dir + '.index'):
     latest_checkpoint = FLAGS.model_dir  
+
   if 'test' in FLAGS.work_mode or 'valid' in FLAGS.work_mode:
+    assert not os.path.isdir(FLAGS.model_dir)
     latest_checkpoint = FLAGS.model_dir
+    #assert os.path.exists(latest_checkpoint) and os.path.isfile(latest_checkpoint)
 
   checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
   checkpoint_prefix2 = os.path.join(ckpt_dir2, 'ckpt')
@@ -429,39 +438,19 @@ def train(Dataset,
       if FLAGS.optimizer == 'noam':
         optimizer = lele.training.optimizers.NoamOpt(128, 2, 4000, torch.optim.Adamax(model.parameters(), lr=0))
       elif FLAGS.optimizer == 'bert':
+        num_train_steps = int(num_steps_per_epoch * (FLAGS.num_decay_epochs or FLAGS.num_epochs))
+        num_warmup_steps = FLAGS.warmup_steps or int(num_train_steps * FLAGS.warmup_proportion) 
+        logging.info('num_train_steps', num_train_steps, 'num_warmup_steps', num_warmup_steps, 'warmup_proportion', FLAGS.warmup_proportion)
         optimizer = lele.training.optimizers.BertOpt(
                             FLAGS.learning_rate, 
                             FLAGS.min_learning_rate,
-                            num_steps_per_epoch * (FLAGS.num_decay_epochs or FLAGS.num_epochs),
-                            FLAGS.warmup_steps or num_steps_per_epoch * FLAGS.num_epochs * FLAGS.warmup_proportion,
+                            num_train_steps,
+                            num_warmup_steps,
                             torch.optim.Adamax(model.parameters(), lr=0))
       else:
         is_dynamic_opt = False
         optimizer = torch.optim.Adamax(param_groups if param_groups else model.parameters(), lr=FLAGS.learning_rate)
 
-
-    # if latest_checkpoint:
-    #   latest_path = latest_checkpoint + '.pyt'
-    #   logging.info('loading torch model from', latest_path)
-    #   checkpoint = torch.load(latest_path)
-    #   start_epoch = checkpoint['epoch']
-    #   step = checkpoint['step']
-    #   global_step.assign(step + 1)
-
-    #   # model.load_state_dict(checkpoint['state_dict'])
-    #   # # # TODO verify I think is ok , not ok.. optimizer..
-    #   # # state = checkpoint['state_dict']        
-    #   # # new_params = model.state_dict()
-    #   # # new_params.update(state)
-    #   # # model.load_state_dict(new_params)
-    #   # if FLAGS.torch_load_optimizer:
-    #   #   optimizer.load_state_dict(checkpoint['optimizer'])
-    #   # model.eval()
-
-    #   load_torch_model(model, latest_path)
-    #   if FLAGS.torch_load_optimizer:
-    #     optimizer.load_state_dict(checkpoint['optimizer'])
-    # else:
     start_epoch = 0  
     latest_path = latest_checkpoint + '.pyt' if latest_checkpoint else os.path.join(FLAGS.model_dir, 'latest.pyt')
     if not os.path.exists(latest_path):
@@ -476,14 +465,6 @@ def train(Dataset,
       load_torch_model(model, latest_path)
       if FLAGS.torch_load_optimizer:
         optimizer.load_state_dict(checkpoint['optimizer'])
-      # checkpoint = torch.load(latest_path)
-      # # TODO
-      # state = checkpoint['state_dict']   
-      # # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
-      # new_params = model.state_dict()
-      # new_params.update(state)
-      # model.load_state_dict(new_params)
-      # model.eval()
 
     # TODO by this way restart can not change learning rate..
     if learning_rate_weights is None:
@@ -509,7 +490,7 @@ def train(Dataset,
     
   #model.load_weights(os.path.join(ckpt_dir, 'ckpt-1'))
   #model.save('./weight3.hd5')
-  logging.info('optimizer:\n', optimizer)
+  logging.info('optimizer:', optimizer)
 
   if FLAGS.torch_lr:
     learning_rate.assign(optimizer.rate(1))
@@ -634,13 +615,12 @@ def train(Dataset,
 
     #for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
     for i, (x, y) in enumerate(train_dataset):
-      # print(x, y)
-      # continue
-      if FLAGS.torch and is_dynamic_opt:
-        learning_rate.assign(optimizer.rate())
-
       if FLAGS.torch:
         x, y = to_torch(x, y)
+        if is_dynamic_opt:
+          learning_rate.assign(optimizer.rate())
+
+      #print(x, y)
 
       if not FLAGS.torch:
         loss, grads = melt.eager.grad(model, x, y, loss_fn)
@@ -656,6 +636,8 @@ def train(Dataset,
         torch.nn.utils.clip_grad_norm_(model.parameters(),
                                        FLAGS.clip_gradients)
         optimizer.step()
+
+      global_step.assign_add(1)
       
       epoch_loss_avg(loss)  # add current batch loss
 
@@ -696,6 +678,7 @@ def train(Dataset,
                       'step:%d' % global_step.numpy(), 
                       'elapsed:[%.3f]' % elapsed,
                       'batch_size:[%d]' % batch_size_,
+                      'gpus:[%d]' % num_gpus, 
                       'batches/s:[%.2f]' % steps_per_second,
                       'insts/s:[%d]' % instances_per_second,
                       '%s' % epoch_time_info,
@@ -712,6 +695,7 @@ def train(Dataset,
                       'step:%d' % global_step.numpy(), 
                       'elapsed:[%.3f]' % elapsed,
                       'batch_size:[%d]' % batch_size_,
+                      'gpus:[%d]' % num_gpus, 
                       'batches/s:[%.2f]' % steps_per_second,
                       'insts/s:[%d]' % instances_per_second,
                       '%s' % epoch_time_info,
@@ -775,24 +759,15 @@ def train(Dataset,
       #   checkpoint.save(checkpoint_prefix)
       #   exit(0)
 
-
-      global_step.assign_add(1)
-
       if global_step.numpy() % FLAGS.save_interval_steps == 0:
         if FLAGS.torch:
-          # TODO why p40 has many latest.pyt.... generated..
-          #if not gezi.env_has('CLUSTER'):
           state = {
                   'epoch': epoch,
                   'step': global_step.numpy(),
-                  'state_dict': model.state_dict(),
+                  'state_dict': model.state_dict() if not hasattr(model, 'module') else model.module.state_dict(),
                   'optimizer' : optimizer.state_dict(),
                 }
-          if torch.cuda.is_available():
-            model.cpu()
-          torch.save(state, os.path.join(FLAGS.model_dir, 'latest.pyt'))
-          if torch.cuda.is_available():
-            model.cuda()       
+          torch.save(state, os.path.join(FLAGS.model_dir, 'latest.pyt'))     
 
       # TODO fixme why if both checpoint2 and chekpoint used... not ok..
       if FLAGS.save_interval_epochs and FLAGS.save_interval_epochs < 1 and global_step.numpy() % int(num_steps_per_epoch * FLAGS.save_interval_epochs) == 0:
@@ -802,14 +777,10 @@ def train(Dataset,
           state = {
                   'epoch': epoch,
                   'step': global_step.numpy(),
-                  'state_dict': model.state_dict(),
+                  'state_dict': model.state_dict() if not hasattr(model, 'module') else model.module.state_dict(),
                   'optimizer' : optimizer.state_dict(),
                 }
-          if torch.cuda.is_available():
-            model.cpu()
           torch.save(state, tf.train.latest_checkpoint(ckpt_dir2) + '.pyt')
-          if torch.cuda.is_available():
-            model.cuda()    
 
       if FLAGS.learning_rate_decay_factor > 0:
         if global_step.numpy() >= decay_start_step and global_step.numpy() % decay_steps == 0:
@@ -831,11 +802,12 @@ def train(Dataset,
           exit(0)
 
     logging.info2('epoch:%d/%d' % (epoch + 1, num_epochs), 
-                 'step:%d' % global_step.numpy(), 
-                 'batch_size:[%d]' % batch_size,
-                 'lr:[%.8f]' % learning_rate.numpy(),
-                 'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
-                 'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
+                  'step:%d' % global_step.numpy(), 
+                  'batch_size:[%d]' % batch_size,
+                  'gpus:[%d]' % num_gpus, 
+                  'lr:[%.8f]' % learning_rate.numpy(),
+                  'train_loss:[%.4f]' % epoch_loss_avg.result().numpy(),
+                  'valid_loss::[%.4f]' % epoch_valid_loss_avg.result().numpy())
 
 
     timer = gezi.Timer(f'save model to {checkpoint_prefix}-{checkpoint.save_counter.numpy() + 1}', False)
@@ -844,14 +816,11 @@ def train(Dataset,
       state = {
                 'epoch': epoch + 1,
                 'step': global_step.numpy(),
-                'state_dict': model.state_dict(),
+                'state_dict': model.state_dict() if not hasattr(model, 'module') else model.module.state_dict(),
                 'optimizer' : optimizer.state_dict(),
               }
-      if torch.cuda.is_available():
-       model.cpu()
       torch.save(state, tf.train.latest_checkpoint(ckpt_dir) + '.pyt')
-      if torch.cuda.is_available():
-       model.cuda()
+
     timer.print_elapsed()
     
     if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:

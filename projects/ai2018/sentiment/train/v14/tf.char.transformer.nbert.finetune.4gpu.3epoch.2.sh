@@ -17,7 +17,7 @@ if [ $FOLD ];
 fi 
 
 model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/tf.char.transformer.nbert.finetune.4gpu.3epoch/
-num_epochs=3
+num_epochs=4
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
@@ -64,7 +64,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python $exe \
         --inference_interval_epochs=1 \
         --freeze_graph=1 \
         --optimizer=bert \
-        --learning_rate=8e-5 \
+        --learning_rate=3e-5 \
+        --warmup_proportion=0. \
         --min_learning_rate=1e-7 \
         --num_epochs=$num_epochs \
 

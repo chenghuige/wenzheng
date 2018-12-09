@@ -422,12 +422,14 @@ def embedding_lookup(input_ids,
     embedding_table = tf.get_variable(
         name=word_embedding_name,
         shape=[vocab_size, embedding_size],
-        initializer=initializer)
+        initializer=initializer,
+        trainable=FLAGS.finetune_word_embedding)
   except Exception:
     embedding_table = tf.get_variable(
         name=word_embedding_name,
         shape=[vocab_size, embedding_size],
-        initializer=create_initializer(initializer_range))
+        initializer=create_initializer(initializer_range),
+        trainable=FLAGS.finetune_word_embedding)
 
   # num_freeze_words = 0
   # if num_finetune_words:
@@ -442,7 +444,9 @@ def embedding_lookup(input_ids,
     # chg add
     if FLAGS.num_finetune_words:
       print('split embedding by finetune words num', FLAGS.num_finetune_words)
-      embedding, embedding2 = tf.split(embedding_table, [vocab_size - FLAGS.num_finetune_words, FLAGS.num_finetune_words], 0)
+      # well during sentiment contest, here make a mistake so as to finetune actually top 1.7w words, similar as finetune all words
+      #embedding, embedding2 = tf.split(embedding_table, [vocab_size - FLAGS.num_finetune_words, FLAGS.num_finetune_words], 0)
+      embedding, embedding2 = tf.split(embedding_table, [FLAGS.num_finetune_words, vocab_size - FLAGS.num_finetune_words], 0)
       embedding_table = tf.concat([embedding, tf.stop_gradient(embedding2)], 0)
   except Exception:
     pass

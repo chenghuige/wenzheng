@@ -16,8 +16,8 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/tf.char.transformer.nbert.finetune.4gpu.3epoch/
-num_epochs=3
+model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/tf.char.transformer.nbert.finetune.4gpu.5epoch.all_finetune/
+num_epochs=5
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
@@ -42,8 +42,6 @@ fi
 CUDA_VISIBLE_DEVICES=0,1,2,3 python $exe \
         --bert_lr_ratio=1. \
         --bert_dir=$base/data/my-embedding/bert-char/ckpt/500000 \
-        --num_finetune_words=3000 \
-        --num_finetune_chars=3000 \
         --model=Transformer \
         --fold=$fold \
         --vocab $dir/vocab.txt \

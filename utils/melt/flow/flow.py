@@ -16,9 +16,11 @@ flags = tf.app.flags
 #import gflags as flags
 FLAGS = flags.FLAGS
 
-import os, sys, traceback
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+from tensorflow.contrib import tpu
+
+import os, sys, traceback
 import melt 
 import gezi
 from melt.utils import logging
@@ -145,6 +147,9 @@ def tf_train_flow(train_once_fn,
   if sess is None:
     #TODO melt.get_session is global session but may cause non close at last
     sess = melt.get_session()
+
+  if FLAGS.use_tpu:
+    sess.run(tpu.initialize_system())
   #logging.info('tf_train_flow start')
   #logging.info('max_models_keep:', max_models_keep)
   #logging.info('save_interval_seconds:', save_interval_seconds)
@@ -486,6 +491,8 @@ def tf_train_flow(train_once_fn,
   #FIMXE due to use melt.get_session(global not handle del well)
   #Done training for 3090020 steps.
   #Exception TypeError: "'NoneType' object is not callable" in <bound method Session.__del__ of <tensorflow.python.client.session.Session object at 0x7f6cf33cd450>> ignored
+  if FLAGS.use_tpu:
+    sess.run(tpu.shutdown_system())
   sess.close()
 
 #@TODO not tested yet

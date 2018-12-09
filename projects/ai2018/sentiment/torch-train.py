@@ -70,6 +70,7 @@ def main(_):
   if FLAGS.lm_path:
     #both BiLanguageModel or RNet or MReader.. use self.ecode so ok update encode.embedding.weight... encode.char_embedding.weight..
     _, updated_params = lele.load(model, FLAGS.lm_path)
+    assert updated_params, lm_path
     if FLAGS.lm_lr_factor != 1:
       ignored_params = list(map(id, updated_params))
       base_params = filter(lambda p: id(p) not in ignored_params,

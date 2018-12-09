@@ -17,6 +17,8 @@ import os
 
 import torch
 
+import traceback
+
 import gezi 
 logging = gezi.logging
 
@@ -37,24 +39,25 @@ def load(model, path):
     checkpoint = torch.load(path)
     state = checkpoint['state_dict']   
     
+    model_ = model.module if hasattr(model, 'module') else model
     new_state = {}
     for key, val in state.items():
-      if key in model.state_dict():
+      if key in model_.state_dict():
         new_state[key] = val
 
     logging.info('Updated %d keys from checkpoint %s, eopoch:%d, step:%d' % (len(new_state), path, checkpoint['epoch'], checkpoint['step']))
-    #print([key for key in model.state_dict()])
-    # this is for model state has more params then loaded so just partial update mode state with key,vals from loaded     
-    new_params = model.state_dict()
+    new_params = model_.state_dict()
     new_params.update(new_state)
-    model.load_state_dict(new_params)
+    model_.load_state_dict(new_params)
+    
     model.eval()
 
     updated_params = []
-    for name, param in model.named_parameters():
+    for name, param in model_.named_parameters():
       if name in new_state:
         updated_params.append(param)
 
     return checkpoint, updated_params 
   except Exception:
+    logging.info(traceback.print_exc())
     return None, []
