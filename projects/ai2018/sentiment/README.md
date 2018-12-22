@@ -2,7 +2,8 @@
 1. 整体部分参考答辩ppt https://mp.weixin.qq.com/s/W0PhbE8149nD3Venmy33tw
 2. 这次比赛客观成绩好的主要原因我觉得是因为我采用了1kw的外部点评数据，这使得我可以采用大词表策略14.4w，19.8w（频次》20）  
    但是开始比赛大部分时间成绩不如do somethig团队，后期取得明显领先优势在于简化版的elmo基于大规模数据的预训练再配合self match attention  
-  （这个部分参考rnet是其他选手大部分没有使用的，其实在kaggle toxic我也尝试了但是效果不明显这次比赛它和elmo配合效果非常好）带来单模型效果显著提升。   
+  （self match attention参考rnet是其他选手大部分没有使用的，其实在kaggle toxic我也尝试了但是效果不明显这次比赛它和elmo配合效果非常好）带来单模型效果显著提升。
+  fast elmo部分可以参考 torch-lm-train.py tf版本对应 lm-train.py 但是基本相同的实现和完全相同的训练数据 tf版本可能训练过程中经常出现NAN 待修复pytorch版本训练稳定。     
   另外我的机器资源相对充分这使得我可以并行跑比如多种分词这种简单但是带来较大模型差异性的模型增强集成效果，这使得我可以使用较少单模型集成取得更好效果。   
 3. 其他答辩团队的方案更加新颖细致一些，do something和nevermore团队都采用了attention层独占不共享的策略，这个区别我猜测是我这里前期模型效果不如do something团队的主要原因，待验证。
 
