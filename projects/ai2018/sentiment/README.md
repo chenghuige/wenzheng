@@ -1,4 +1,4 @@
-# aichallenger 2018 细粒度用户情感分类第一名解决方案
+# ai challenger 2018 细粒度用户评论情感分类第一名解决方案
 1. 整体部分参考答辩ppt https://mp.weixin.qq.com/s/W0PhbE8149nD3Venmy33tw
 2. 这次比赛客观成绩好的主要原因我觉得是因为我采用了1kw的外部点评数据，这使得我可以采用大词表策略14.4w，19.8w（频次》20）  
    但是开始比赛大部分时间成绩不如do somethig团队，后期取得明显领先优势在于简化版的elmo基于大规模数据的预训练再配合self match attention  
