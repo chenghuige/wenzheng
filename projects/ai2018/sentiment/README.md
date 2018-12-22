@@ -13,7 +13,8 @@
 3. 需要设置python path export PYTHONPATH=$root/utils:$root 这样可以找到wenzheng/utils/gezi等等lib 
 4. 训练的时候 CUDA_VISIBLE_DEVICES=0 或者 CUDA_VISIBLE_DEVICES=0,1(使用两个gpu tower loss) 类似这样 注意pytorch支持多gpu（包括使用buckets length），tensorflow支持多gpu（但是如果采用buckets length，graph模式 不支持多gpu）
    tensorflow理论上支持eager模式 tf的代码我都是基本按照tf.keras接口写的支持eager但是目前tf eager还不完善。  
-5. 当前最好的单模型torch版本（torch比tensorflow占用显存更大）如果使用1080ti 11g显存 需要2个gpu跑，p40可以单卡跑。 当然你也可以调小batch size 或者调整 buckets以及batch sizes  
+5. 当前最好的单模型torch版本（torch比tensorflow占用显存更大）如果使用1080ti 11g显存 需要2个gpu跑，p40可以单卡跑。 当然你也可以调小batch size 或者调整 buckets以及batch sizes   
+6. 模型集成只需要参考 ensemble/ensemble-cv.py 我这里利用了valid数据做交叉验证，没有使用全部数据多fold的方式（那样模型训练代价比较高）   
 
 # generate tfrecord  
 go to prepare, sh run.sh gen valid/test/train   
