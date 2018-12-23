@@ -16,6 +16,11 @@
 5. 当前最好的单模型torch版本（torch比tensorflow占用显存更大）如果使用1080ti 11g显存 需要2个gpu跑，p40可以单卡跑。 当然你也可以调小batch size 或者调整 buckets以及batch sizes   
 6. 模型集成只需要参考 ensemble/ensemble-cv.py 我这里利用了valid数据做交叉验证，没有使用全部数据多fold的方式（那样模型训练代价比较高）   
 
+# 生成好的tfrecords
+为了方便训练这里提供了预先处理好的tfrecords可以在百度云盘下载  
+[https://pan.baidu.com/s/12oNAvO7IUUSufBztYH1JvQ]  
+包括最佳单模型对应tfrecords word.jieba.ft 对应elmo模型 model/lm/.../latest.pyt  
+
 # generate tfrecord  
 go to prepare, sh run.sh gen valid/test/train   
 # dump infos.pkl  
