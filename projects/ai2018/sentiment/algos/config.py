@@ -32,6 +32,9 @@ ATTRIBUTES_MAP = dict(zip(ATTRIBUTES, range(NUM_ATTRIBUTES)))
 # -2,-1,0,1 -> 0,1,2,3
 NUM_CLASSES = 4
 
+flags.DEFINE_bool('share_pooling', True, 'wether to share pooling params for each attribute')
+flags.DEFINE_bool('share_fc', True, 'wether to share fc layer notice if share pooling actually must not share fc also no matter what you set share_fc')
+
 flags.DEFINE_integer('bert_num_heads', 12, '')
 flags.DEFINE_integer('bert_num_layers', 12, '')
 flags.DEFINE_float('bert_dropout', 0.1, '')
@@ -163,14 +166,8 @@ flags.DEFINE_integer('decay_patience', 4, '')
 flags.DEFINE_float('decay_factor', 0.5, '')
 flags.DEFINE_float('decay_start_epoch_', 1., '')
 
-flags.DEFINE_bool('optimize_auc', False, '')
-flags.DEFINE_float('auc_ratio', 0., '')
-flags.DEFINE_bool('balance_pos_neg', False, '')
-
 flags.DEFINE_bool('dynamic_weights', False, '')
 
 flags.DEFINE_bool('use_gate', False, '')
-
-flags.DEFINE_bool('hate_corpus', False, '')
 
 flags.DEFINE_bool('use_position_encoding', False, '')

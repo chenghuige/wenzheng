@@ -764,6 +764,35 @@ class LinearSeqAttnPooling(nn.Module):
         alpha = F.softmax(scores, dim=-1)
         return alpha.unsqueeze(1).bmm(x).squeeze(1)
 
+class LinearSeqAttnPoolings(nn.Module):
+    """Self attention over a sequence:
+
+    * o_i = softmax(Wx_i) for x_i in X.
+    """
+
+    def __init__(self, input_size, num_poolings):
+        super(LinearSeqAttnPoolings, self).__init__()
+        self.num_poolings = num_poolings
+        self.linear = nn.Linear(input_size, num_poolings)
+
+    def forward(self, x, x_mask):
+        """
+        Args:
+            x: batch * len * hdim
+            x_mask: batch * len (1 for padding, 0 for true)
+        Output:
+            alpha: batch * len
+        """
+        # TODO why need contiguous
+        x_mask = lele.tile(x_mask.unsqueeze(-1), -1, self.num_poolings)
+        x = x.contiguous() 
+        x_flat = x.view(-1, x.size(-1))
+        scores = self.linear(x_flat).view(x.size(0), x.size(1), self.num_poolings)
+        scores = scores.transpose(-2, -1)
+        scores.data.masked_fill_(x_mask.data, -float('inf'))
+        alpha = F.softmax(scores, dim=-1)
+        return alpha.bmm(x)
+
 class NonLinearSeqAttnPooling(nn.Module):
     """Self attention over a sequence:
 
@@ -771,7 +800,7 @@ class NonLinearSeqAttnPooling(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size=128):
-        super(NonLinearSeqAttnPooling, self).__init__()
+        super(NonLinearSeqAttnPoolings, self).__init__()
         self.FFN = FeedForwardNetwork(input_size, hidden_size, 1)
 
     def forward(self, x, x_mask):
@@ -786,6 +815,32 @@ class NonLinearSeqAttnPooling(nn.Module):
         scores.data.masked_fill_(x_mask.data, -float('inf'))
         alpha = F.softmax(scores, dim=-1)
         return alpha.unsqueeze(1).bmm(x).squeeze(1)
+
+class NonLinearSeqAttnPoolings(nn.Module):
+    """Self attention over a sequence:
+
+    * o_i = softmax(function(Wx_i)) for x_i in X.
+    """
+
+    def __init__(self, input_size, num_poolings, hidden_size=128):
+        super(NonLinearSeqAttnPoolings, self).__init__()
+        self.num_poolings = num_poolings
+        self.FFN = FeedForwardNetwork(input_size, hidden_size, num_poolings)
+
+    def forward(self, x, x_mask):
+        """
+        Args:
+            x: batch * len * dim
+            x_mask: batch * len (1 for padding, 0 for true)
+        Output:
+            alpha: batch * len
+        """
+        scores = self.FFN(x)
+        x_mask = lele.tile(x_mask.unsqueeze(-1), -1, self.num_poolings)
+        scores.data.masked_fill_(x_mask.data, -float('inf'))
+        scores = scores.transpose(-2, -1)
+        alpha = F.softmax(scores, dim=-1)
+        return alpha.bmm(x)
 
 class Pooling(nn.Module):
   def __init__(self,  
@@ -837,6 +892,87 @@ class Pooling(nn.Module):
         self.word_scores.append(melt.get_words_importance(outputs, sequence_length, top_k=self.top_k, method=self.names[i]))
     
     return torch.cat(results, -1)
+
+class Poolings(nn.Module):
+  def __init__(self,  
+               name,
+               input_size=0,
+               num_poolings=1,
+               top_k=2,
+               att_activation=F.relu,
+               **kwargs):
+    super(Poolings, self).__init__(**kwargs)
+
+    self.top_k = top_k
+    self.num_poolings = num_poolings
+
+    self.poolings = nn.ModuleList()
+    self.is_poolings_list = []
+    def get_pooling(name):
+      if name == 'max':
+        # TODO actually only support attention based..
+        return MaxPooling(), False
+      elif name == 'mean':
+        return MeanPooling(), False
+      elif name == 'attention' or name == 'att':
+        return NonLinearSeqAttnPoolings(input_size, num_poolings), True
+      elif name == 'linear_attention' or name == 'linear_att' or name == 'latt':
+        return LinearSeqAttnPoolings(input_size, num_poolings), True
+      elif name == 'topk' or name == 'top_k':
+        return TopKPooling(top_k=top_k), False
+      elif name =='first':
+        return FirstPooling(), False
+      elif name == 'last':
+        return LastPooling(), False
+      else:
+        raise f'Unsupport pooling now:{name}'
+
+    self.output_size = 0
+    self.names = name.split(',')
+    for name in self.names:
+      pooling, is_poolings = get_pooling(name)
+      self.poolings.append(pooling) 
+      self.is_poolings_list.append(is_poolings)
+      if name == 'topk' or name == 'top_k':
+        self.output_size += input_size * top_k
+      else:
+        self.output_size += input_size
+
+    #logging.info('poolings:', self.poolings)
+  
+  def forward(self, x, mask=None, calc_word_scores=False):
+    results = []
+    self.word_scores = []
+    for i, pooling in enumerate(self.poolings):
+      result = pooling(x, mask)
+      if not self.is_poolings_list[i]:
+          result = lele.tile(result.unsqueeze(1), 1, self.num_poolings)
+      results.append(result)
+      if calc_word_scores:
+        self.word_scores.append(melt.get_words_importance(outputs, sequence_length, top_k=self.top_k, method=self.names[i]))
+    
+    return torch.cat(results, -1)
+
+# TODO can we do multiple exclusive linear simultaneously ?
+class Linears(nn.Module):
+  def __init__(self,  
+               input_size,
+               output_size,
+               num,
+               **kwargs):
+    super(Linears, self).__init__(**kwargs)
+    self.num = num
+    self.linears = lele.clones(nn.Linear(input_size, output_size), num)
+
+  def forward(self, x):
+    inputs = x.split(1, 1)
+    results = []
+    for linear, x in zip(self.linears, inputs):
+      result = linear(x)
+      results.append(result)
+    result = torch.cat(results, 1)
+    return result
+    
 
 # ------------------------------------------------------------------------------
 # Functional Units

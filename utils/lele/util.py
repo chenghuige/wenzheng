@@ -16,7 +16,8 @@ import sys
 import os
 
 import torch
-
+from torch import nn
+import copy
 import traceback
 
 import gezi 
@@ -61,3 +62,7 @@ def load(model, path):
   except Exception:
     logging.info(traceback.print_exc())
     return None, []
+
+def clones(module, N):
+    "Produce N identical layers."
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])

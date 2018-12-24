@@ -89,46 +89,45 @@ class ModelBase(nn.Module):
 
     if not self.lm_model:
       doc_hidden_size = self.encode.output_size
-      self.pooling = lele.layers.Pooling(
-                    FLAGS.encoder_output_method, 
-                    input_size=doc_hidden_size,
-                    top_k=FLAGS.top_k, 
-                    att_activation=getattr(F, FLAGS.att_activation))
+      if FLAGS.share_pooling:
+        self.pooling = lele.layers.Pooling(
+                        FLAGS.encoder_output_method, 
+                        input_size=doc_hidden_size,
+                        top_k=FLAGS.top_k, 
+                        att_activation=getattr(F, FLAGS.att_activation)) 
+      else:
+        self.pooling = lele.layers.Poolings(
+                        FLAGS.encoder_output_method, 
+                        input_size=doc_hidden_size,
+                        num_poolings=NUM_ATTRIBUTES,
+                        top_k=FLAGS.top_k, 
+                        att_activation=getattr(F, FLAGS.att_activation))         
 
       # input dim not as convinient as tf..
       pre_logits_dim = self.pooling.output_size
 
+      # not work well can ignore
       if FLAGS.use_len:
         len_embedding_dim = 32
         self.len_embedding = nn.Embedding(3000, len_embedding_dim, padding_idx=0)
         pre_logits_dim += len_embedding_dim
       
       self.num_classes = NUM_CLASSES if FLAGS.binary_class_index is None else 2
-      self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)
+      if FLAGS.share_pooling:
+        # if share pooling then must share fc
+        self.logits = nn.Linear(pre_logits_dim, NUM_ATTRIBUTES * self.num_classes)  
+      else:
+        if FLAGS.share_fc:
+          # share fc
+          self.logits = nn.Linear(pre_logits_dim, self.num_classes)
+        else:
+          # exclusive fc
+          self.logits = lele.layers.Linears(pre_logits_dim, self.num_classes, NUM_ATTRIBUTES)
 
   def unk_aug(self, x, x_mask=None):
     """
     randomly make 10% words as unk
     TODO this works, but should this be rmoved and put it to Dataset so can share for both pyt and tf
-    """
-    if not self.training or not FLAGS.unk_aug or melt.epoch() < FLAGS.unk_aug_start_epoch:
-      return x 
-
-    if x_mask is None:
-      x_mask = x > 0
-    x_mask = x_mask.long()
-
-    ratio = np.random.uniform(0, FLAGS.unk_aug_max_ratio)
-    mask = torch.cuda.FloatTensor(x.size(0), x.size(1)).uniform_() > ratio
-    mask = mask.long()
-    rmask = FLAGS.unk_id * (1 - mask)
-
-    x = (x * mask + rmask) * x_mask
-    return x
-
-  def unk_aug(self, x, x_mask=None):
-    """
-    randomly make some words as unk
     """
     if not self.training or not FLAGS.unk_aug or melt.epoch() < FLAGS.unk_aug_start_epoch:
       return x 
@@ -336,6 +335,7 @@ class MReader(ModelBase):
 
     x = self.pooling(x, x_mask)
 
+    # not work well can ignore
     if FLAGS.use_len:
       x_len = torch.sum(input['content'] > 0, 1)
       len_emb = self.len_embedding(x_len)
