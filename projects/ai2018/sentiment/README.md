@@ -26,7 +26,7 @@
 
 # 生成好的tfrecords
 为了方便训练这里提供了预先处理好的tfrecords可以在百度云盘下载  
-[https://pan.baidu.com/s/174x78qs0CyxHZnpUSAajVg]  636j  
+链接: https://pan.baidu.com/s/1Ehixs1gbS4nv4a1ivI6TwA 提取码: rzd1   
 包括最佳单模型对应tfrecords word.jieba.ft 对应elmo模型 model/lm/.../latest.pyt  
 
 # generate tfrecord  
