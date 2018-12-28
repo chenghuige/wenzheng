@@ -1,0 +1,13 @@
+sh ./run-char-ft.sh  
+sh ./run-char-glove.sh  
+sh ./run-word-jieba-ft.sh 
+sh ./run-word-jieba-glove.sh
+sh ./run-word-bseg-ft.sh 
+sh ./run-word-bseg-glove.sh
+sh ./run-word-bseg-ner-ft.sh
+sh ./run-word-bseg-ner-glove.sh 
+sh ./run-word-sp10w-ft.sh
+sh ./run-word-sp10w-glove.sh 
+sh ./run-word-sp1w-ft.sh
+sh ./run-word-sp1w-glove.sh 
+sh ./run-mix-jieba-ft.sh 

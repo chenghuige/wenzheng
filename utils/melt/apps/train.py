@@ -332,10 +332,10 @@ def init():
     if 'log_dir' in os.environ and os.environ['log_dir']:
       FLAGS.log_dir = os.environ['log_dir']
   if not FLAGS.log_dir:
-    #if not os.path.isdir(FLAGS.model_dir):
-    #  FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
-    #else:
-    FLAGS.log_dir = FLAGS.model_dir
+    if not os.path.isdir(FLAGS.model_dir):
+     FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
+    else:
+      FLAGS.log_dir = FLAGS.model_dir
 
   if FLAGS.model_dir:
     if os.path.isfile(FLAGS.model_dir + '.index'):

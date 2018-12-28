@@ -21,7 +21,9 @@ flags.DEFINE_integer('batch_size_', 512, '')
 flags.DEFINE_string('type', 'debug', '')
 flags.DEFINE_string('base', './mount/temp/ai2018/sentiment/tfrecord/', '')
 #flags.DEFINE_integer('unk_id', 1, '')
-#flags.DEFINE_integer('fold', None, '')
+#flags.DEFINE_integer('fold', None, '') 
+flags.DEFINE_bool('dump_valid', True, '')
+flags.DEFINE_bool('dump_test', True, '')
 
 import tensorflow as tf
 tf.enable_eager_execution()
@@ -105,37 +107,39 @@ def main(_):
     valid_infos = {}
     test_infos = {}
     # TODO notice train and valid also share ids.. so valid only save 0 is ok...
-    # 120000 doc but first 15000 train duplicate id with valid so only save valid result for those ids currently
-    inputs = gezi.list_files(f'{base}/train/*record')
-    dataset = Dataset('valid')
-    dataset = dataset.make_batch(1, inputs)
-    deal(dataset, valid_infos)
-    print('after valid', len(valid_infos))
+    # 120000 doc but first 15000 train duplicate id with valid so only save valid result for those ids currently 
+    if FLAGS.dump_valid:
+      inputs = gezi.list_files(f'{base}/train/*record')
+      dataset = Dataset('valid')
+      dataset = dataset.make_batch(1, inputs)
+      deal(dataset, valid_infos)
+      print('after valid', len(valid_infos))
 
-    for key in valid_infos:
-      print(valid_infos[key])
-      print(ids2text.ids2text(valid_infos[key]['content']))
-      break
+      for key in valid_infos:
+        print(valid_infos[key])
+        print(ids2text.ids2text(valid_infos[key]['content']))
+        break
 
-    ofile = f'{base}/info.pkl'
-    with open(ofile, 'wb') as out:
-      pickle.dump(valid_infos, out)  
+      ofile = f'{base}/info.pkl'
+      with open(ofile, 'wb') as out:
+        pickle.dump(valid_infos, out)  
 
-    del valid_infos
+      del valid_infos
 
-    inputs = gezi.list_files(f'{base}/test/*record')
-    dataset = Dataset('test')
-    dataset = dataset.make_batch(1, inputs)
-    deal(dataset, test_infos)
-    print('after test', len(test_infos))
+    if FLAGS.dump_test:
+      inputs = gezi.list_files(f'{base}/test/*record')
+      dataset = Dataset('test')
+      dataset = dataset.make_batch(1, inputs)
+      deal(dataset, test_infos)
+      print('after test', len(test_infos))
 
-    ofile = ofile.replace('.pkl', '.test.pkl')  
-    with open(ofile, 'wb') as out:
-      pickle.dump(test_infos, out)
-    for key in test_infos:
-      print(test_infos[key])
-      print(ids2text.ids2text(test_infos[key]['content']))
-      break
+      ofile = ofile.replace('.pkl', '.test.pkl')  
+      with open(ofile, 'wb') as out:
+        pickle.dump(test_infos, out)
+      for key in test_infos:
+        print(test_infos[key])
+        print(ids2text.ids2text(test_infos[key]['content']))
+        break
   elif FLAGS.type == 'show_info':
     valid_infos = pickle.load(open(f'{base}/info.pkl', 'rb'))
     lens = [len(valid_infos[key]['content']) for key in valid_infos]

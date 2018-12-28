@@ -395,7 +395,7 @@ def train(Dataset,
     latest_checkpoint = FLAGS.model_dir  
 
   if 'test' in FLAGS.work_mode or 'valid' in FLAGS.work_mode:
-    assert not os.path.isdir(FLAGS.model_dir)
+    #assert not os.path.isdir(FLAGS.model_dir), FLAGS.model_dir
     latest_checkpoint = FLAGS.model_dir
     #assert os.path.exists(latest_checkpoint) and os.path.isfile(latest_checkpoint)
 
