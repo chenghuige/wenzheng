@@ -800,7 +800,7 @@ class NonLinearSeqAttnPooling(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size=128):
-        super(NonLinearSeqAttnPoolings, self).__init__()
+        super(NonLinearSeqAttnPooling, self).__init__()
         self.FFN = FeedForwardNetwork(input_size, hidden_size, 1)
 
     def forward(self, x, x_mask):
