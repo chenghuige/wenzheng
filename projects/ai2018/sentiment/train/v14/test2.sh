@@ -23,8 +23,8 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/test/
-num_epochs=8
+model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/test2/
+num_epochs=2
 
 mkdir -p $model_dir/epoch 
 cp $dir/vocab* $model_dir
@@ -46,13 +46,7 @@ if [ "$INFER" = "2"  ];
 fi
 
 python $exe \
-        --share_fc=0 \
-        --share_pooling=0 \
-        --lm_path=$base/temp/ai2018/sentiment/model/lm/$SRC.long/torch.word.lm.nopad.$CELL.hidden400/latest.pyt \
-        --unk_aug=1 \
-        --unk_aug_start_epoch=2 \
-        --unk_aug_max_ratio=0.02 \
-        --dynamic_finetune=0 \
+        --dynamic_finetune=1 \
         --num_finetune_words=6000 \
         --num_finetune_chars=3000 \
         --use_char=1 \
@@ -67,7 +61,7 @@ python $exe \
         --label_emb_height=20 \
         --fold=$fold \
         --use_label_att=0 \
-        --use_self_match=1 \
+        --use_self_match=0 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
         --train_input=$dir/train/'*,' \
@@ -75,20 +69,21 @@ python $exe \
         --emb_dim 300 \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
-        --batch_size 24 \
+        --batch_size=32 \
+        --batch_size_per_gpu=0 \
         --buckets=500,1000 \
-        --batch_sizes 24,12,6 \
+        --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \
         --cell=$CELL \
         --keep_prob=0.7 \
-        --num_layers=2 \
-        --rnn_hidden_size=400 \
-        --encoder_output_method=att \
-        --eval_interval_steps 1000 \
-        --metric_eval_interval_steps=0 \
-        --save_interval_steps 1000 \
-        --save_interval_epochs=100 \
+        --num_layers=1 \
+        --rnn_hidden_size=100 \
+        --encoder_output_method=topk,att \
+        --eval_interval_steps=1000 \
+        --metric_eval_interval_steps=1000 \
+        --save_interval_steps=1000 \
+        --save_interval_epochs=1 \
         --valid_interval_epochs=1 \
         --inference_interval_epochs=1 \
         --optimizer=bert \

@@ -275,9 +275,8 @@ def train(Dataset,
   batch_size = melt.batch_size()
 
   num_gpus = melt.num_gpus()
-  #if num_gpus > 1:
-  #  assert False, 'Eager mode train currently not support for num gpus > 1'
 
+  #batch_size = max(batch_size, 1)
   #batch_size_ = batch_size if not FLAGS.batch_sizes else int(FLAGS.batch_sizes.split(',')[-1])
   batch_size_ = batch_size
 

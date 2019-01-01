@@ -23,7 +23,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/test/
+model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/test3/
 num_epochs=8
 
 mkdir -p $model_dir/epoch 
@@ -70,14 +70,14 @@ python $exe \
         --use_self_match=1 \
         --vocab $dir/vocab.txt \
         --model_dir=$model_dir \
-        --train_input=$dir/train/'*,' \
+        --train_input=$dir/train/'0.record,' \
         --info_path=$dir/info.pkl \
         --emb_dim 300 \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
-        --batch_size 24 \
+        --batch_size 32 \
         --buckets=500,1000 \
-        --batch_sizes 24,12,6 \
+        --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \
         --cell=$CELL \

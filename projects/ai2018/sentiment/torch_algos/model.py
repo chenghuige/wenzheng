@@ -223,6 +223,8 @@ class RNet(ModelBase):
        x = self.match_encode(x, x_mask) 
 
     x = self.pooling(x, x_mask)
+
+    self.feature = x
     
     x = self.logits(x)  
 
@@ -334,6 +336,8 @@ class MReader(ModelBase):
     x = c_check
 
     x = self.pooling(x, x_mask)
+
+    self.feature = x
 
     # not work well can ignore
     if FLAGS.use_len:

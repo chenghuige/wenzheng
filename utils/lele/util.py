@@ -66,3 +66,35 @@ def load(model, path):
 def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
+try:
+  import torch 
+  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+except Exception:
+  pass
+import numpy as np 
+
+def torch_(x):
+  for dim in x.shape:
+    if dim == 0:
+      return x
+
+  #x = x.numpy()
+  if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
+    x = torch.from_numpy(x)
+    #if torch.cuda.is_available():
+      #x = x.cuda()
+    x = x.to(device)
+
+  return x
+
+def to_torch(x, y=None):
+  if y is not None:
+    y = torch_(y)
+
+  for key in x:
+    x[key] = torch_(x[key])
+  if y is None:
+    return x
+  else:
+    return x, y

@@ -23,7 +23,7 @@ if [ $FOLD ];
   then fold=$FOLD
 fi 
 
-model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/test/
+model_dir=$base/temp/ai2018/sentiment/model/v14/$fold/$SRC/torch.self_attention.unkaug.elmo.finetune_6k.exclusive_pooling.exclusive_fc.onlyatt.pad/
 num_epochs=8
 
 mkdir -p $model_dir/epoch 
@@ -75,9 +75,9 @@ python $exe \
         --emb_dim 300 \
         --word_embedding_file=$dir/emb.npy \
         --finetune_word_embedding=1 \
-        --batch_size 24 \
+        --batch_size 32 \
         --buckets=500,1000 \
-        --batch_sizes 24,12,6 \
+        --batch_sizes 32,16,8 \
         --length_key content \
         --encoder_type=rnn \
         --cell=$CELL \
@@ -88,7 +88,7 @@ python $exe \
         --eval_interval_steps 1000 \
         --metric_eval_interval_steps=0 \
         --save_interval_steps 1000 \
-        --save_interval_epochs=100 \
+        --save_interval_epochs=1 \
         --valid_interval_epochs=1 \
         --inference_interval_epochs=1 \
         --optimizer=bert \

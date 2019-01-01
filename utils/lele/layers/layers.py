@@ -249,7 +249,9 @@ class StackedBRNN(nn.Module):
         #chg I think do not need padded if you not want to use last state, last output
         """
         # Compute sorted sequence lengths
-        lengths = x_mask.data.eq(0).long().sum(1).squeeze()
+        #lengths = x_mask.data.eq(0).long().sum(1).squeeze()
+        # TODO seems not need squeeze wich might cause error when batch_size is 1
+        lengths = x_mask.data.eq(0).long().sum(1)
         _, idx_sort = torch.sort(lengths, dim=0, descending=True)
         _, idx_unsort = torch.sort(idx_sort, dim=0)
 
@@ -314,6 +316,7 @@ class StackedBRNN(nn.Module):
                                p=self.dropout_rate,
                                training=self.training)
         return output
+
 
 
 class FeedForwardNetwork(nn.Module):
@@ -762,6 +765,7 @@ class LinearSeqAttnPooling(nn.Module):
         scores = self.linear(x_flat).view(x.size(0), x.size(1))
         scores.data.masked_fill_(x_mask.data, -float('inf'))
         alpha = F.softmax(scores, dim=-1)
+        self.alpha = alpha
         return alpha.unsqueeze(1).bmm(x).squeeze(1)
 
 class LinearSeqAttnPoolings(nn.Module):
@@ -791,6 +795,7 @@ class LinearSeqAttnPoolings(nn.Module):
         scores = scores.transpose(-2, -1)
         scores.data.masked_fill_(x_mask.data, -float('inf'))
         alpha = F.softmax(scores, dim=-1)
+        self.alpha = alpha
         return alpha.bmm(x)
 
 class NonLinearSeqAttnPooling(nn.Module):
@@ -814,6 +819,7 @@ class NonLinearSeqAttnPooling(nn.Module):
         scores = self.FFN(x).squeeze(2)
         scores.data.masked_fill_(x_mask.data, -float('inf'))
         alpha = F.softmax(scores, dim=-1)
+        self.alpha = alpha
         return alpha.unsqueeze(1).bmm(x).squeeze(1)
 
 class NonLinearSeqAttnPoolings(nn.Module):
@@ -840,6 +846,7 @@ class NonLinearSeqAttnPoolings(nn.Module):
         scores.data.masked_fill_(x_mask.data, -float('inf'))
         scores = scores.transpose(-2, -1)
         alpha = F.softmax(scores, dim=-1)
+        self.alpha = alpha
         return alpha.bmm(x)
 
 class Pooling(nn.Module):
@@ -950,8 +957,10 @@ class Poolings(nn.Module):
       results.append(result)
       if calc_word_scores:
         self.word_scores.append(melt.get_words_importance(outputs, sequence_length, top_k=self.top_k, method=self.names[i]))
-    
-    return torch.cat(results, -1)
+
+    result = torch.cat(results, -1)
+    self.encode = result
+    return result
 
 # TODO can we do multiple exclusive linear simultaneously ?
 class Linears(nn.Module):
