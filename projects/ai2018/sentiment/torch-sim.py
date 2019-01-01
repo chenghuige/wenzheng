@@ -47,7 +47,7 @@ model = None
 def convert(content):
   content = filter(content)
   words = [word for word in jieba.cut(content)]
-  #words = gezi.add_start_end(words, '<S>', '</S>')
+  words = gezi.add_start_end(words, '<S>', '</S>')
 
   wids =  [vocab.id(word) for word in words]
   chars = [list(word) for word in words]
@@ -167,6 +167,24 @@ def main(_):
   sim('牛肉赞', '羊肉好吃')
   sim('羊肉赞', '羊肉好吃')
 
+  sim('适合闺蜜聚会', '适合朋友聚会')
+  sim('适合闺蜜聚会', '适合孕妇的餐厅')
+  sim('适合闺蜜聚会', '适合拍照的餐厅')
+  sim('适合闺蜜聚会', '和闺蜜一起来的')
+
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了')
+  sim('店非常的简约小清新', '在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了')
+  sim('店非常的简约小清新', '环境小清新')
+  sim('店非常的简约小清新', '文艺清新')
+  sim('环境小清新', '文艺清新')
+  sim('环境小清新', '高大上')
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '高大上')
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '文艺清新')
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '高大上')
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '文艺清新')
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '适合拍照')
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '复古')
+  sim('古色古香的院子', '复古')
 
   # # print words importance scores
   # word_scores_list = model.pooling.word_scores

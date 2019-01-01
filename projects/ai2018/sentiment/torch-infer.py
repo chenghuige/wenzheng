@@ -86,19 +86,19 @@ def predict(content):
     for word, score in zip(words, scores):
       print(word, score * len(words))
 
-def encode(content):
+def encode(content, aspect=-2):
   x, _ = convert(content)
   _ = model(x)
   feature = model.pooling.encode[0]
   feature = feature.detach().cpu().numpy()
-  feature = feature[-2]
+  feature = feature[aspect]
   return feature
 
-def sim(content1, content2):
-  f1 = encode(content1)
-  f2 = encode(content2)
+def sim(content1, content2, aspect=-2):
+  f1 = encode(content1, aspect)
+  f2 = encode(content2, aspect)
   score = gezi.cosine(f1, f2)
-  print(content1, content2, score)
+  print(content1, content2, ATTRIBUTES[aspect], score)
 
 def main(_):
   FLAGS.torch = True
@@ -158,7 +158,27 @@ def main(_):
               '有嚼劲，很入味宫廷豌豆黄造型可爱',
               '蔬菜中规中矩，解腻不错',
               '女友生日菜有点贵架势不错味道就这样',
-              '相比其他兰州拉面粗旷的装饰风格，这家设计很小清新，座位宽敞，客人不多']
+              '相比其他兰州拉面粗旷的装饰风格，这家设计很小清新，座位宽敞，客人不多',
+              '这家店的菜做的不错，但是服务特别差',
+              '印象中这家店适合拍照',
+              '适合和闺蜜一起去',
+              '''被朋友安利的地方。刺身都很大块，厚厚的一片塞进嘴巴里，爽爆了！甜虾超级大的个头，不过要自己剥皮，自己动手丰衣足食。北极贝，三文鱼，金枪鱼各个都片大肉厚，吃的超满足。鹅肝，牛舌，鳕鱼都很嫩，不过口味稍微有丢丢咸。点的所有的食物除了芥末章鱼芥末味道太重没吃完，别的全都吃的干干
+净净！中午因为大部分是吃定食的，所以给自助的我们安排了包间，打电话过去预订的时候还有特别提醒说有团购，服务不错，而且基本没有漏单。总之是很不错的日式放题，下次还会去。''',
+              '孕妇还有呼吸系统不太好的老人请慎重',
+              '但还是不建议孕妇与小孩来',
+              '感谢对孕妇的满满善意',
+              '对我这个孕妇来说环境很清爽很好',
+              '让孕妇情何以堪',
+              '还有1个孕妇等了从12点多等到2点',
+              '作为孕妇吃的小心翼翼',
+              '适合老人孩子孕妇冬天吃一下',
+              '当来到颐和园，皇家所独有的庄重大气便被融入内核',
+              '在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了',
+              '也就少了点高端的氛围',
+              '店非常的简约小清新',
+              '环境清新',
+              '难得再回学校的时候发现这么小清新的小店',
+              '感觉多放些奶油更加完美']
   
   for content in contents:
     print(content)
@@ -168,10 +188,56 @@ def main(_):
   sim('牛肉赞', '牛肉不好吃')
   sim('牛肉赞', '牛肉一般')
   sim('牛肉赞', '羊肉一般')
-  sim('牛肉赞', '羊肉好吃')
+  sim('牛肉赞', '牛肉赞', aspect=ATTRIBUTES.index('dish_taste'))
+  sim('牛肉赞', '羊肉赞', aspect=ATTRIBUTES.index('dish_taste'))
+  sim('牛肉赞', '牛肉好吃', aspect=ATTRIBUTES.index('dish_taste'))
+  sim('牛肉赞', '羊肉好吃', aspect=ATTRIBUTES.index('dish_taste'))
   sim('羊肉赞', '羊肉好吃')
+  sim('羊肉赞', '羊肉好吃', aspect=ATTRIBUTES.index('dish_taste'))
+
+  #sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了')
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', aspect=ATTRIBUTES.index('environment_decoration'))
 
 
+  #sim('店非常的简约小清新', '在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了')
+  sim('店非常的简约小清新', '在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', aspect=ATTRIBUTES.index('environment_decoration'))
+
+  #sim('店非常的简约小清新', '难得再回学校的时候发现这么小清新的小店')
+  sim('店非常的简约小清新', '难得再回学校的时候发现这么小清新的小店', aspect=ATTRIBUTES.index('environment_decoration'))
+
+  #sim('店非常的简约小清新', '环境高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+  #sim('店非常的简约小清新', '环境文艺清新', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('店非常的简约小清新', '环境小清新', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('店非常的简约小清新', '文艺清新', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('环境小清新', '文艺清新', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('环境小清新', '高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+
+  #sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '环境高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '文艺清新', aspect=ATTRIBUTES.index('environment_decoration'))
+
+  #sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '环境高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '文艺清新', aspect=ATTRIBUTES.index('environment_decoration'))
+
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '高大上', aspect=ATTRIBUTES.index('others_overall_experience'))
+  sim('当来到颐和园，皇家所独有的庄重大气便被融入内核', '文艺清新', aspect=ATTRIBUTES.index('others_overall_experience'))
+
+  #sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '环境高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '高大上', aspect=ATTRIBUTES.index('others_overall_experience'))
+  sim('在我印象应该不仅是豪华酒店了，而是奢华酒店级别的了', '文艺清新', aspect=ATTRIBUTES.index('others_overall_experience'))
+
+  sim('牛肉好吃', '高大上', aspect=ATTRIBUTES.index('environment_decoration'))
+
+  sim('适合闺蜜聚会', '适合朋友聚会')
+  sim('适合闺蜜聚会', '适合孕妇的餐厅')
+  sim('适合闺蜜聚会', '适合拍照的餐厅')
+  sim('适合闺蜜聚会', '和闺蜜一起来的')
+
+  sim('适合闺蜜聚会', '适合朋友聚会', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('适合闺蜜聚会', '适合孕妇的餐厅', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('适合闺蜜聚会', '适合拍照的餐厅', aspect=ATTRIBUTES.index('environment_decoration'))
+  sim('适合闺蜜聚会', '和闺蜜一起来的', aspect=ATTRIBUTES.index('environment_decoration'))
   # # print words importance scores
   # word_scores_list = model.pooling.word_scores
 
