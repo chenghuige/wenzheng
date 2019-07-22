@@ -25,6 +25,7 @@ from gezi.word_counter import WordCounter
 from gezi.ngram import *
 from gezi.hash import *
 
+
 #if using baidu segmentor set encoding='gbk'
 encoding='utf8' 
 #encoding='gbk'
@@ -34,6 +35,8 @@ try:
   matplotlib.use('Agg')
 except Exception:
   pass 
+
+from gezi.summary import SummaryWriter
 
 import traceback
 

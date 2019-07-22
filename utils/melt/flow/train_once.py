@@ -273,7 +273,8 @@ def train_once(sess,
     instances_per_second = None 
     hours_per_epoch = None
     #step += 1
-    if is_start or interval_steps and step % interval_steps == 0:
+    #if is_start or interval_steps and step % interval_steps == 0:
+    if interval_steps and step % interval_steps == 0:
       train_average_loss = train_once.avg_loss.avg_score()
       if print_time:
         duration = timer.elapsed()
@@ -382,7 +383,10 @@ def train_once(sess,
           melt.add_summarys(summary, eval_results, eval_names_, suffix=suffix)
 
         if ops is not None:
-          melt.add_summarys(summary, train_average_loss, names_, suffix='train_avg') 
+          try:
+            melt.add_summarys(summary, train_average_loss, names_, suffix='train_avg') 
+          except Exception:
+            pass
           ##optimizer has done this also
           melt.add_summary(summary, learning_rate, 'learning_rate')
           melt.add_summary(summary, melt.batch_size(), 'batch_size')

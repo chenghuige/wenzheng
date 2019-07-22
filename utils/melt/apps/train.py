@@ -1135,6 +1135,7 @@ def train(Dataset,
           inference_fn=None,
           eval_fn=None,
           init_fn=None,
+          restore_fn=None,
           write_valid=True,
           valid_names=None,
           infer_names=None,
@@ -1147,6 +1148,7 @@ def train(Dataset,
           dataset=None,
           valid_dataset=None,
           test_dataset=None,
+          optimizer=None,
           sep=','):
   if Dataset is None:
     assert dataset
@@ -1347,8 +1349,10 @@ def train(Dataset,
              num_steps_per_epoch=num_steps_per_epoch,
              model=model,
              init_fn=init_fn,
+             restore_fn=restore_fn,
              num_train_examples=num_examples,
              num_epochs=FLAGS.num_epochs,
+             optimizer=optimizer,
              )
 
 def get_train():

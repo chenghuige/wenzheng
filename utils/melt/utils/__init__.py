@@ -18,3 +18,5 @@ import gezi.melt.logging
 from melt.utils.embsim import EmbeddingSim
 
 import melt.utils.weight_decay
+
+import melt.utils.summary

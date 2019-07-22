@@ -426,7 +426,7 @@ def train(Dataset,
             global_step=global_step) 
 
     checkpoint.restore(latest_checkpoint)
-    checkpoint2 = copy.deepcopy(checkpoint)
+    #checkpoint2 = copy.deepcopy(checkpoint)
 
     start_epoch = int(latest_checkpoint.split('-')[-1]) if latest_checkpoint and 'ckpt' in latest_checkpoint else 0
   else:
@@ -480,7 +480,7 @@ def train(Dataset,
 
     try:
       checkpoint.restore(latest_checkpoint)
-      checkpoint2 = copy.deepcopy(checkpoint)
+      #checkpoint2 = copy.deepcopy(checkpoint)
     except Exception:
       pass
 

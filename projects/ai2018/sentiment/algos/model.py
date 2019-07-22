@@ -569,22 +569,26 @@ class Transformer(ModelBase):
     x = input['content']
     x = self.unk_aug(x, training=training)
     batch_size = melt.get_shape(x, 0) 
+    c_mask = tf.cast(x, tf.bool)
     # TODO move to __init__
     model = modeling.BertModel(
       config=self.bert_config,
       is_training=training,
       input_ids=x,
+      input_mask=c_mask,
       use_one_hot_embeddings=FLAGS.use_tpu)
 
     if self.step == 0 and self.init_checkpoint:
       self.restore()
-
     c_len = melt.length(x)
 
     if FLAGS.encoder_output_method == 'last':
       x = model.get_pooled_output()
     else:
       x = model.get_sequence_output()
+
+    if training:
+      x = tf.nn.dropout(x, keep_prob=0.9)
 
     logging.info('---------------bert_lr_ratio', FLAGS.bert_lr_ratio)
     x = x * FLAGS.bert_lr_ratio + tf.stop_gradient(x) * (1 - FLAGS.bert_lr_ratio)
