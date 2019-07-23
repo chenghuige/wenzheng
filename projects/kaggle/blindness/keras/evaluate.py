@@ -73,7 +73,9 @@ class Evaluator(Callback):
                                             verbose=1)
 
       
+      #print(y_pred)
       #print('----------', self.y_val.shape, y_pred.shape)
+      
       y_scores = y_pred
       
       if 'classification' in self.loss_type:
@@ -136,23 +138,23 @@ class Evaluator(Callback):
 
       print('image_dict size', len(image_dict))
 
-      # batch_idx = 0
-      # batch_images, _ = self.valid_generator[batch_idx]
-      # idx = batch_idx * self.valid_generator.batch_size
-      # texts = []
-      # timer = gezi.Timer('image/rand')
-      # indexes = [x + idx for x in range(20)]
-      # for i in range(len(indexes)):
-      #   texts.append('id:{}\nlabel:{}\npred:{}\nscore:{:.3f}\nscores:{}'.format(
-      #                 self.valid_generator.image_filenames.values[indexes[i]], 
-      #                 y_true[indexes[i]], 
-      #                 y_pred[indexes[i]],
-      #                 y_score[indexes[i]],
-      #                 to_str(y_scores[indexes[i]]))) 
-      # images = [cv2.cvtColor(img, cv2.COLOR_BGR2RGB) for img in self.valid_generator.get_images(indexes)]       
+      batch_idx = 0
+      batch_images, _ = self.valid_generator[batch_idx]
+      idx = batch_idx * self.valid_generator.batch_size
+      texts = []
+      timer = gezi.Timer('image/rand')
+      indexes = [x + idx for x in range(20)]
+      for i in range(len(indexes)):
+        texts.append('id:{}\nlabel:{}\npred:{}\nscore:{:.3f}\nscores:{}'.format(
+                      self.valid_generator.image_filenames.values[indexes[i]], 
+                      y_true[indexes[i]], 
+                      y_pred[indexes[i]],
+                      y_score[indexes[i]],
+                      to_str(y_scores[indexes[i]]))) 
+      images = [cv2.cvtColor(img, cv2.COLOR_BGR2RGB) for img in self.valid_generator.get_images(indexes)]       
       
-      # self.logger.image_summary('rand', images, epoch + 1, texts)
-      # timer.print()
+      self.logger.image_summary('rand', images, epoch + 1, texts)
+      timer.print()
 
       # timer = gezi.Timer('image/confidence')
       # #print(y_score.shape, y_true.shape, y_pred.shape)

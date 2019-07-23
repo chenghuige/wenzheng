@@ -1,9 +1,9 @@
 #!/usr/bin/env python 
 # -*- coding: utf-8 -*-
 # ==============================================================================
-#          \file   config.py
+#          \file   check.py
 #        \author   chenghuige  
-#          \date   2019-07-21 22:03:51.198317
+#          \date   2019-07-23 09:51:36.973744
 #   \Description  
 # ==============================================================================
 
@@ -15,15 +15,4 @@ from __future__ import print_function
 import sys 
 import os
 
-WORKERS = 12
-CHANNEL = 3
-
-SIZE = 300
-NUM_CLASSES = 5
-
-epochs = 50; 
-#batch_size = 32
-
-random_state = 2019
-
-num_folds = 5
+  

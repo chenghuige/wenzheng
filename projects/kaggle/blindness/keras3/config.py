@@ -15,15 +15,11 @@ from __future__ import print_function
 import sys 
 import os
 
-WORKERS = 12
+WORKERS = 2
 CHANNEL = 3
 
 SIZE = 300
 NUM_CLASSES = 5
 
-epochs = 50; 
+epochs = 30; 
 #batch_size = 32
-
-random_state = 2019
-
-num_folds = 5

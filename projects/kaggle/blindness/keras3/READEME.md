@@ -1,0 +1,1 @@
+first start with kaggle kernel http://192.168.31.36:8888/notebooks/wenzheng/projects/kaggle/blindness/other/APTOS%202019_%20Keras%20Baseline.ipynb

@@ -1,9 +1,9 @@
 #!/usr/bin/env python 
 # -*- coding: utf-8 -*-
 # ==============================================================================
-#          \file   config.py
+#          \file   folds.py
 #        \author   chenghuige  
-#          \date   2019-07-21 22:03:51.198317
+#          \date   2019-07-23 17:13:22.547651
 #   \Description  
 # ==============================================================================
 
@@ -15,15 +15,10 @@ from __future__ import print_function
 import sys 
 import os
 
-WORKERS = 12
-CHANNEL = 3
+from sklearn.model_selection import StratifiedKFold
 
-SIZE = 300
-NUM_CLASSES = 5
-
-epochs = 50; 
-#batch_size = 32
-
-random_state = 2019
-
-num_folds = 5
+def get_train_valid(x, y, fold=0, num_folds=5, random_state=2019):
+  skf = StratifiedKFold(n_splits=num_folds, random_state=random_state)
+  
+  train_index, valid_index = list(skf.split(x, y))[fold]
+  return x[train_index], x[valid_index], y[train_index], y[valid_index]

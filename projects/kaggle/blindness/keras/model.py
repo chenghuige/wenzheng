@@ -26,7 +26,7 @@ import tensorflow as tf
 
 from config import *
 
-def create_model(input_shape, n_out, loss_type=None):
+def create_model(input_shape, n_out, loss_type=''):
   input_tensor = Input(shape=input_shape)
   base_model = DenseNet121(include_top=False,
                   weights=None,

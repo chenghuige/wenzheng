@@ -32,7 +32,8 @@ class Dataset(Sequence):
  
   def __init__(self, image_filenames, labels,
                 batch_size, is_train=True,
-                mix=False, augment=False):
+                mix=False, augment=False,
+                ):
     self.image_filenames, self.labels = image_filenames, labels
     self.batch_size = batch_size
     self.is_train = is_train
