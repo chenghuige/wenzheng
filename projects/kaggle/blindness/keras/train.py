@@ -194,7 +194,7 @@ def main(_):
   model.fit_generator(
     train_data,
     validation_data=valid_data,
-    epochs=1,
+    epochs=2,
     workers=WORKERS, 
     use_multiprocessing=True,
     verbose=1,
@@ -246,7 +246,7 @@ def main(_):
   model.compile(loss=loss_fn,
                 optimizer=Adam(lr=lr))
 
-  epoch_now = 1
+  epoch_now = 2
   model.fit_generator(
     train_mixup,
     validation_data=valid_data,
