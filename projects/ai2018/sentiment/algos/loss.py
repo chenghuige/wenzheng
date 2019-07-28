@@ -152,8 +152,7 @@ def calc_binaries_only_loss(y, y_, cid, weights):
   loss = tf.reduce_mean(loss)
   return loss
   
-def criterion(model, x, y, training=False):
-  y_ = model(x, training=training)
+def criterion(y, y_):
   weights = get_weights(FLAGS.aspect, FLAGS.attr_index)
 
   # only need this if we have label -1 means to mask 

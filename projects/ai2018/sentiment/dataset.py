@@ -54,7 +54,7 @@ class Dataset(melt.tfrecords.Dataset):
     self.filter_fn = undersampling_filter if FLAGS.other_corpus_factor < 1 else None
     #self.filter_fn = undersampling_filter
     
-  def parser(self, example):
+  def parse(self, example):
     """Parses a single tf.Example into image and label tensors."""
     features_dict = {
       'id':  tf.FixedLenFeature([], tf.string),

@@ -621,16 +621,23 @@ def train(Dataset,
 
       #print(x, y)
 
+      def loss_fn_(model, x, y):
+        if 'training' in inspect.getargspec(model.call).args:
+          y_ = model(x, training=True)
+        else:
+          y_ = model(x)
+        return loss_fn(y, y_)
+      
       if not FLAGS.torch:
-        loss, grads = melt.eager.grad(model, x, y, loss_fn)
+        loss, grads = melt.eager.grad(model, x, y, loss_fn_)
         grads, _ = tf.clip_by_global_norm(grads, FLAGS.clip_gradients)
         optimizer.apply_gradients(zip(grads, model.variables))
       else:
         optimizer.zero_grad()
-        if 'training' in inspect.getargspec(loss_fn).args:
-          loss = loss_fn(model, x, y, training=True)
+        if 'training' in inspect.getargspec(loss_fn_).args:
+          loss = loss_fn_(model, x, y, training=True)
         else:
-          loss = loss_fn(model, x, y)
+          loss = loss_fn_(model, x, y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(),
                                        FLAGS.clip_gradients)
@@ -668,7 +675,7 @@ def train(Dataset,
           if FLAGS.torch:
             x, y = to_torch(x, y)
             model.eval()
-          valid_loss = loss_fn(model, x, y)
+          valid_loss = loss_fn_(model, x, y)
           epoch_valid_loss_avg(valid_loss)
           if FLAGS.torch:
             model.train()
@@ -712,11 +719,11 @@ def train(Dataset,
             summary.scalar('instances_per_second', instances_per_second)
             writer_train.flush()
 
-          if FLAGS.log_dir != FLAGS.model_dir:
-            assert FLAGS.log_dir
-            command = 'rsync -l -r -t %s/* %s' % (FLAGS.log_dir, FLAGS.model_dir) 
-            print(command, file=sys.stderr)
-            os.system(command)
+          #if FLAGS.log_dir != FLAGS.model_dir:
+          #  assert FLAGS.log_dir
+          #  command = 'rsync -l -r -t %s/* %s' % (FLAGS.log_dir, FLAGS.model_dir) 
+          #  print(command, file=sys.stderr)
+          #  os.system(command)
       
       if valid_dataset and FLAGS.metric_eval_interval_steps and global_step.numpy() and global_step.numpy() % FLAGS.metric_eval_interval_steps == 0:
         if FLAGS.torch:

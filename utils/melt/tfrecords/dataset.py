@@ -27,12 +27,15 @@ import melt
 logging = melt.logging
 
 class Dataset(object):
-  def __init__(self, subset='train'):
+  def __init__(self, subset='train', InputDataset=None, use_pyfunc=False):
     self.subset = subset
     self.filter_fn = None
     self.pos_filter_fn = None
     self.neg_filter_fn = None 
     self.count_fn = None
+    self.InputDataset = InputDataset
+    self.use_pyfunc = use_pyfunc
+    self.batch_size = None
 
   def get_filenames(self):
     if self.subset in ['train', 'valid', 'test']:
@@ -57,6 +60,7 @@ class Dataset(object):
     """Read the images and labels from 'filenames'."""
     #with tf.device('/cpu:0'):
     batch_size = batch_size or FLAGS.batch_size
+    self.batch_size = batch_size
     filenames = filenames or self.get_filenames()
     logging.info(self.subset, 'num files', len(filenames))
     assert filenames, self.subset
@@ -85,7 +89,7 @@ class Dataset(object):
     with tf.device('/cpu:0'):
       return melt.dataset_decode.inputs(
         filenames, 
-        decode_fn=self.parser,
+        decode_fn=self.parse,
         batch_size=batch_size,
         num_threads=FLAGS.num_threads,
         shuffle_files=shuffle_files,
@@ -104,19 +108,21 @@ class Dataset(object):
         pos_filter_fn=self.pos_filter_fn if self.subset == 'train' else None,
         neg_filter_fn=self.neg_filter_fn if self.subset == 'train' else None,
         count_fn=self.count_fn if self.subset == 'train' else None,
-        name=self.subset) 
+        name=self.subset,
+        Dataset=self.InputDataset,
+        use_pyfunc=self.use_pyfunc) 
 
   @staticmethod
   def num_examples_per_epoch(subset='train', dir=None):
     default_value = 10000
     if subset == 'train':
-      file = (dir or os.path.dirname(FLAGS.train_input.split(',')[0])) + '/num_records.txt'
+      file = (dir or gezi.dirname(FLAGS.train_input.split(',')[0])) + '/num_records.txt'
       return gezi.read_int_from(file, default_value)
     elif subset == 'valid':
-      file = (dir or os.path.dirname(FLAGS.valid_input)) + '/num_records.txt'
+      file = (dir or gezi.dirname(FLAGS.valid_input)) + '/num_records.txt'
       return gezi.read_int_from(file, default_value)
     elif subset == 'test':
-      file = (dir or os.path.dirname(FLAGS.test_input)) + '/num_records.txt'
+      file = (dir or gezi.dirname(FLAGS.test_input)) + '/num_records.txt'
       return gezi.read_int_from(file, default_value)
     else:
       raise ValueError('Invalid data subset "%s"' % subset)

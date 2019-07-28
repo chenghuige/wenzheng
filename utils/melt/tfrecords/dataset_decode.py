@@ -54,6 +54,8 @@ def inputs(files,
            neg_filter_fn=None,
            count_fn=None,
            return_iterator=False,
+           Dataset=None,
+           use_pyfunc=False,
            name='input'):
   """Reads input data num_epochs times.
   for sparse input here will do:
@@ -118,7 +120,6 @@ def inputs(files,
   #with tf.device('/cpu:0'):
   if isinstance(files, str):
     files = gezi.list_files(files)
-
   assert len(files) > 0
 
   if not num_threads:
@@ -163,17 +164,26 @@ def inputs(files,
     
   with tf.name_scope(name):
     # https://github.com/tensorflow/tensorflow/issues/14857
+    Dataset = Dataset or tf.data.TFRecordDataset
     if not shuffle_files:
-      dataset = tf.data.TFRecordDataset(files)
+      dataset = Dataset(files)
     else:
       num_shards = len(files)
       dataset = tf.data.Dataset.list_files(files).shuffle(num_shards) \
                 .apply(tf.contrib.data.parallel_interleave(
-                  tf.data.TFRecordDataset, 
+                  Dataset, 
                   cycle_length=num_threads))
 
-    dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
-    shapes = dataset._output_shapes 
+    # must batch then map if use pyfunc which you might use py_func
+    if not use_pyfunc:
+      dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
+
+    try:
+      #shapes = dataset._output_shapes 
+      shapes = tf.data.get_output_shapes(dataset)
+    except Exception:
+      shapes = None
+    
     #logging.info('datast decode shapes', shapes)
     
     ## Has bug.. seems as least not work with bucket not sure without bucket ok or not
@@ -297,10 +307,12 @@ def inputs(files,
             example_to_bucket_id, batching_fn, None, window_size_fn)).shuffle((len(boundaries) + 1) * 25)      
     else:
       # no bucket
-      if dynamic_pad:
+      if dynamic_pad and (not use_pyfunc):
         dataset = dataset.padded_batch(batch_size, padded_shapes=(shapes))
       else:
         dataset = dataset.batch(batch_size)
+        if use_pyfunc:
+         dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
 
     if not allow_smaller_final_batch:
       # https://github.com/tensorflow/tensorflow/issues/13745 dataset.apply(tf.contrib.data.batch_and_drop_remainder(10)).

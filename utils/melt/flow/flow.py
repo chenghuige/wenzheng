@@ -408,11 +408,11 @@ def tf_train_flow(train_once_fn,
           saver.save(sess, model_path_, global_step=step)
           if freeze_graph:
             melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
-          if log_dir != model_dir:
-            assert log_dir
-            command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
-            print(command, file=sys.stderr)
-            os.system(command)
+          #if log_dir != model_dir:
+          #  assert log_dir
+          #  command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
+          #  print(command, file=sys.stderr)
+          #  os.system(command)
           timer.print_elapsed()
   
         if save_interval_steps and num_steps_per_epoch and fixed_step % int(num_steps_per_epoch * save_interval_epochs) == 0:
@@ -473,8 +473,8 @@ def tf_train_flow(train_once_fn,
       logging.info('Done one step')
       exit(0)
     
-    if metric_eval_fn is not None:
-      metric_eval_fn(model_path=model_step_path)
+    # if metric_eval_fn is not None:
+    #   metric_eval_fn(model_path=model_step_path)
     
     if (num_epochs and fixed_step / num_steps_per_epoch >= num_epochs) or (num_steps and step == start + num_steps) :
       logging.info('Done training for %.3f epochs, %d steps.' % (fixed_step / num_steps_per_epoch, step))

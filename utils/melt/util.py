@@ -146,7 +146,7 @@ def freeze_graph(sess, model_path, global_step=None, output_collection_names=Non
   frozen_graph_def = convert_variables_to_constants(sess, graph_def, output_node_names)
 
   #print('outfile')
-  with tf.gfile.GFile(outfile, "wb") as f:
+  with  tf.io.gfile.GFile (outfile, "wb") as f:
     f.write(frozen_graph_def.SerializeToString())
 
   model_dir = os.path.dirname(outfile)
@@ -311,6 +311,7 @@ optimizers = {
   #'adamax': tf.contrib.opt.AdaMaxOptimizer, # will got NAN ...
   #'adamax': lambda lr: tf.contrib.opt.AdaMaxOptimizer(lr, epsilon=1e-8),
   'adamax': melt.training.adamax.AdaMaxOptimizer,
+  'ftrl': tf.train.FtrlOptimizer,
   #'adamax': tf.keras.optimizers.Adamax,  # tf can not directly use kears optimzier...
   }
 
@@ -1323,3 +1324,16 @@ def count_records(files):
   pool.join()  
 
   return counter.value
+
+def sparse2dense(features, key=None):
+  def sparse2dense_(features, key):
+    val = features[key]
+    val = melt.sparse_tensor_to_dense(val)
+    features[key] = val   
+  if key:
+    sparse2dense(features, key)
+  else:
+    from tensorflow.python.framework.sparse_tensor import SparseTensor
+    for key, val in features.items():
+      if isinstance(val, SparseTensor):
+        sparse2dense_(features, key)

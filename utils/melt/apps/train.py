@@ -58,7 +58,7 @@ except Exception:
 
 #-------input data
 flags.DEFINE_integer('batch_size', 32, 'Batch size. default as im2text default')
-flags.DEFINE_integer('eval_batch_size', 100, 'Batch size fore eval')
+flags.DEFINE_integer('eval_batch_size', None, 'Batch size fore eval')
 
 #-------flow
 flags.DEFINE_integer('num_epochs', 0, '''Number of epochs to run trainer.
@@ -332,7 +332,7 @@ def init():
     if 'log_dir' in os.environ and os.environ['log_dir']:
       FLAGS.log_dir = os.environ['log_dir']
   if not FLAGS.log_dir:
-    if not os.path.isdir(FLAGS.model_dir):
+    if os.path.isfile(FLAGS.model_dir):
      FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
     else:
       FLAGS.log_dir = FLAGS.model_dir
@@ -1025,27 +1025,30 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
   except tf.errors.OutOfRangeError:
     pass
 
-  ids = np.concatenate(ids_list)[:num_examples]
+  try:
+    ids = np.concatenate(ids_list)[:num_examples]
+  except Exception:
+    ids = ['0'] * num_examples
   predicts = np.concatenate(predictions_list)[:num_examples]
   labels = np.concatenate(labels_list)[:num_examples]
 
   if model_path and write:
     ofile = model_path +  suffix
-    if write_streaming:
-      with open(ofile, 'w') as out:
-        if names:
-          print(*names, sep=sep, file=out)
-        for id, label, predict in zip(ids, labels, predicts):
-          if write_fn is None:
-            if not gezi.iterable(label):
-              label = [label]
-            if not gezi.iterable(predict):
-              predict = [predict] 
-            print(id, *label, *predict, sep=sep, file=out)
-          else:
-            write_fn(id, label, predict, out)
-    else:
-      write_fn(ids, labels, predicts, ofile)
+    with open(ofile, 'w') as out:
+      if write_streaming:
+          if names:
+            print(*names, sep=sep, file=out)
+          for id, label, predict in zip(ids, labels, predicts):
+            if write_fn is None:
+              if not gezi.iterable(label):
+                label = [label]
+              if not gezi.iterable(predict):
+                predict = [predict] 
+              print(id, *label, *predict, sep=sep, file=out)
+            else:
+              write_fn(id, label, predict, out)
+      else:
+        write_fn(ids, labels, predicts, out)
 
   # TODO maybe **kargs better ?
   if len(inspect.getargspec(eval_fn).args) == 4:
@@ -1162,6 +1165,7 @@ def train(Dataset,
   batch_size = melt.batch_size()
   num_gpus = melt.num_gpus()
   batch_size_per_gpu = FLAGS.batch_size
+  print('batch_size', batch_size, 'batch_size_per_gpu', batch_size_per_gpu, 'num_gpus', num_gpus)
 
   if num_gpus > 1:
     assert not FLAGS.batch_sizes, 'Not support batch sizes for num gpus > 1, TODO'
@@ -1202,8 +1206,9 @@ def train(Dataset,
 
   if valid_inputs:
     valid_dataset = valid_dataset or Dataset('valid')
-    valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
-    valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
+    valid_batch_size = FLAGS.eval_batch_size or batch_size
+    valid_iter2 = valid_dataset.make_batch(valid_batch_size, valid_inputs, repeat=True, initializable=False)
+    valid_iter = valid_dataset.make_batch(valid_batch_size, valid_inputs)
   else:
     valid_dataset = None
   
@@ -1211,12 +1216,12 @@ def train(Dataset,
   num_valid_examples = None
   if FLAGS.valid_input:
     num_valid_examples = valid_dataset.num_examples_per_epoch('valid')
-    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None    
+    num_valid_steps_per_epoch = -(-num_valid_examples // valid_batch_size) if num_valid_examples else None    
   else:
     if FLAGS.fold is not None:
       if num_examples:
         num_valid_examples = int(num_all_examples * (1 / num_folds))
-        num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
+        num_valid_steps_per_epoch = -(-num_valid_examples // valid_batch_size)
       else:
         num_valid_steps_per_epoch = None
   logging.info('num_valid_examples:', num_valid_examples)
@@ -1231,9 +1236,10 @@ def train(Dataset,
   num_test_examples = None
   if test_inputs:
     test_dataset = test_dataset or Dataset('test')
-    test_iter = test_dataset.make_batch(batch_size_, test_inputs)
+    test_batch_size = FLAGS.eval_batch_size or batch_size
+    test_iter = test_dataset.make_batch(test_batch_size, test_inputs)
     num_test_examples = test_dataset.num_examples_per_epoch('test')
-    num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
+    num_test_steps_per_epoch = -(-num_test_examples // test_batch_size) if num_test_examples else None
   else:
     test_dataset = None
   logging.info('num_test_examples:', num_test_examples)
@@ -1245,23 +1251,38 @@ def train(Dataset,
   x, y = melt.split_batch(batch, batch_size, num_gpus)
   #x, y = melt.split_batch(batch, num_gpus)
 
-  #loss = loss_fn(model, x, y, training=True)
-  loss = melt.tower(lambda i: loss_fn(model, x[i], y[i], training=True), num_gpus)
+  # loss = loss_fn(model, x, y, training=True)
+  # loss = melt.tower(lambda i: loss_fn(model, x[i], y[i], training=True), num_gpus)
+
+  def train_fn(x, y):
+    if 'training' in inspect.getargspec(model.call).args:
+      y_ = model(x, training=True)
+    else:
+      y_ = model(x)
+    loss = loss_fn(y, y_)
+    return loss
+  loss = melt.tower(lambda i: train_fn(x[i], y[i]), num_gpus)
+
+  def valid_fn(x, y):
+    y_ = model(x)
+    loss = loss_fn(y, y_)
+    return loss
   ops = [loss]
   #scope.reuse_variables()
   
   if valid_dataset:
     #valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
     valid_batch2 = valid_iter2.get_next()
-    valid_x2, valid_y2 = melt.split_batch(valid_batch2, batch_size_, num_gpus, training=False)
+    valid_batch_size = FLAGS.eval_batch_size or batch_size
+    valid_x2, valid_y2 = melt.split_batch(valid_batch2, valid_batch_size, num_gpus, training=False)
     #valid_x2, valid_y2 = melt.split_batch(valid_batch2, num_gpus, training=False)
-    valid_loss = melt.tower(lambda i: loss_fn(model, valid_x2[i], valid_y2[i], training=False), num_gpus, training=False)
+    valid_loss = melt.tower(lambda i: valid_fn(valid_x2[i], valid_y2[i]), num_gpus, training=False)
     valid_loss = tf.reduce_mean(valid_loss)
     eval_ops = [valid_loss]
 
     #valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
     valid_batch = valid_iter.get_next()
-    valid_x, valid_y = melt.split_batch(valid_batch, batch_size_, num_gpus, training=False)
+    valid_x, valid_y = melt.split_batch(valid_batch, valid_batch_size, num_gpus, training=False)
     #valid_x, valid_y = melt.split_batch(valid_batch, num_gpus, training=False)
 
     if not valid_names and infer_names:

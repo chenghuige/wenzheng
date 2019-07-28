@@ -862,8 +862,11 @@ def max_pooling2(outputs, sequence_length, sequence_length2, axis=1, reduce_func
 
 # not to use it directly!
 def top_k_pooling(outputs, top_k, sequence_length=None, axis=1):
-  if sequence_length is None:
-    return reduce_func(outputs, axis)
+  assert sequence_length is not None
+  # if sequence_length is None:
+  #   sequence_length, _ = melt.length2()
+  #   #sequence_length = melt.length(outputs)
+  #   #return reduce_func(outputs, axis)
   weight = -1e18
   sequence_mask = tf.expand_dims(1. - tf.to_float(tf.sequence_mask(sequence_length, tf.shape(outputs)[1])), -1)
   weighted_mask = sequence_mask * weight

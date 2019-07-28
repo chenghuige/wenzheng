@@ -74,6 +74,10 @@ class MaxPooling(Layer):
   def call(self, outputs, sequence_length=None, axis=1, reduce_func=tf.reduce_max):
     return melt.max_pooling(outputs, sequence_length, axis, reduce_func)
 
+class SumPooling(Layer):
+  def call(self, outputs, sequence_length=None, axis=1, reduce_func=tf.reduce_sum):
+    return melt.sum_pooling(outputs, sequence_length, axis)
+
 class MaxPooling2(Layer):
   def call(self, outputs, sequence_length, sequence_length2, axis=1, reduce_func=tf.reduce_max):
     return melt.max_pooling2(outputs, sequence_length, sequence_length2, axis, reduce_func)
@@ -224,6 +228,7 @@ class Pooling(keras.Model):
                top_k=2,
                #att_activation=tf.nn.tanh,
                att_activation=tf.nn.relu,
+               att_hidden=128,
                **kwargs):
     super(Pooling, self).__init__(**kwargs)
 
@@ -233,10 +238,12 @@ class Pooling(keras.Model):
     def get_pooling(name):
       if name == 'max':
         return MaxPooling()
+      if name == 'sum':
+        return SumPooling()
       elif name == 'mean' or name == 'avg':
         return MeanPooling()
       elif name == 'attention' or name == 'att':
-        return AttentionPooling(activation=att_activation)
+        return AttentionPooling(att_hidden, activation=att_activation)
       elif name == 'attention2' or name == 'att2':
         return AttentionPooling(hidden_size=None, activation=att_activation)
       elif name == 'linear_attention' or name == 'linear_att' or name == 'latt':

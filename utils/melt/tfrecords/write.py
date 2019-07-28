@@ -21,6 +21,10 @@ class Writer(object):
     random.seed(12345)
     self.count = 0
     self.buffer_size = buffer_size
+    dir = os.path.dirname(file)
+    if not os.path.exists(dir):
+      print('make new dir: [%s]'%dir, file=sys.stderr)
+      os.makedirs(dir)
     self.writer = tf.python_io.TFRecordWriter(file)
     self.buffer = [] if self.buffer_size else None
 
