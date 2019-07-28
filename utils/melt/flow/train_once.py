@@ -26,6 +26,7 @@ from melt.utils import logging
 #import logging
 
 import tensorflow as tf
+from tensorflow.keras import backend as K
 
 import gezi
 from gezi import Timer, AvgScore 
@@ -228,9 +229,11 @@ def train_once(sess,
     # NOTICE ops[2] should be scalar otherwise wrong!! loss should be scalar
     #print('---------------ops', ops) 
     if eval_ops is not None or not log_dir or not hasattr(train_once, 'summary_op') or train_once.summary_op is None:
+      feed_dict[K.learning_phase()] = 0
       results = sess.run(ops, feed_dict=feed_dict) 
     else:
       #try:
+      feed_dict[K.learning_phase()] = 0
       results = sess.run(ops + [train_once.summary_op], feed_dict=feed_dict)
       summary_str = results[-1]
       results = results[:-1]

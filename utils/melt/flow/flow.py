@@ -139,6 +139,7 @@ def tf_train_flow(train_once_fn,
                   learning_rate_patience=None,
                   learning_rate_decay_factor=None,
                   write_during_train=True,
+                  use_horovod=False,
                   model=None,
                   sess=None):
   """
@@ -384,6 +385,11 @@ def tf_train_flow(train_once_fn,
 
       if step == 0:
         model_step_path = None
+
+      if use_horovod:
+        import horovod.tensorflow.keras as hvd
+        bcast_op = hvd.broadcast_global_variables(0)
+        sess.run(bcast_op)
 
       #print('--------------------step', step)
       stop = train_once_fn(sess, 

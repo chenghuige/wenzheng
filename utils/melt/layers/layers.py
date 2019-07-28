@@ -317,6 +317,28 @@ class Embedding(keras.layers.Layer):
     else:
       return self.embedding
 
+class Mlp(Layer):
+  def __init__(self,  
+               dims,
+               activation=None,
+               drop_rate=None,
+               drop_indexes=None,
+               **kwargs):
+    super(Mlp, self).__init__(**kwargs)
+    self.denses = [None] * len(dims)
+    self.drops = [None] * len(dims)
+
+    for i, dim in enumerate(dims):
+      self.denses[i] = layers.Dense(dim, activation=activation)
+      if drop_rate and (not drop_indexes or i in drop_indexes):
+        self.drops[i] = layers.Dropout(drop_rate)
+  
+  def call(self, x, training=False):
+    for i in range(len(self.denses)):
+      x = self.denses[i](x)
+      if self.drops[i] is not None:
+        x = self.drops[i](x, training=training)
+    return x
 
 class Dropout(keras.layers.Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):

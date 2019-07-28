@@ -1012,3 +1012,13 @@ def get_words_importance(outputs=None, sequence_length=None, top_k=None, method=
     #raise ValueError(f'unsupported method {method}')
     words_scores = []
   return words_scores
+
+#https://stackoverflow.com/questions/43210033/tensorflow-unsorted-segment-sum-dimension
+def unsorted_segment_sum_emb(data, segment_ids, num_segments):
+  num_rows = tf.shape(segment_ids)[0]
+  rows_idx = tf.range(num_rows)
+  rows_idx = tf.cast(rows_idx, segment_ids.dtype)
+  segment_ids_per_row = segment_ids + num_segments * tf.expand_dims(rows_idx, axis=1)
+  seg_sums = tf.unsorted_segment_sum(data, segment_ids_per_row, num_segments * num_rows)
+  result = tf.reshape(seg_sums, [-1, num_segments, tf.shape(data)[-1]])
+  return result

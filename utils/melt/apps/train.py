@@ -56,6 +56,12 @@ try:
 except Exception:
   pass
 
+try:
+  import horovod.tensorflow as hvd
+except Exception:
+  print('---------no horovod support for mutliple gpu')
+  pass
+
 #-------input data
 flags.DEFINE_integer('batch_size', 32, 'Batch size. default as im2text default')
 flags.DEFINE_integer('eval_batch_size', None, 'Batch size fore eval')
@@ -956,7 +962,7 @@ def train_flow(ops,
              num_steps=num_steps,
              save_interval_seconds=save_interval_seconds,
              save_interval_steps=save_interval_steps,
-             save_model=save_model,
+             save_model=save_model if not FLAGS.use_horovod or hvd.rank() == 0 else Fasle,
              save_interval_epochs=FLAGS.save_interval_epochs,
              freeze_graph=FLAGS.freeze_graph,
              #optimizer=optimizer, 
@@ -966,8 +972,8 @@ def train_flow(ops,
              learning_rate_decay_factor=FLAGS.learning_rate_decay_factor,
              num_steps_per_epoch=num_steps_per_epoch,
              max_models_keep=FLAGS.max_models_keep,
-             model_dir=model_dir,
-             log_dir=log_dir,
+             model_dir=model_dir if not FLAGS.use_horovod or hvd.rank() == 0 else None,
+             log_dir=log_dir if not FLAGS.use_horovod or hvd.rank() == 0 else None,
              restore_from_latest=FLAGS.restore_from_latest,
              metric_eval_fn=metric_eval_fn,
              metric_eval_interval_steps=metric_eval_interval_steps,
@@ -986,6 +992,7 @@ def train_flow(ops,
              output_collection_names=output_collection_names,
              output_node_names=output_node_names,
              write_during_train=FLAGS.write_during_train,
+             use_horovod=FLAGS.use_horovod,
              model=model,
              sess=sess)
 

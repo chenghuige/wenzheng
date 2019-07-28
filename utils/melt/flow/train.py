@@ -126,6 +126,7 @@ def train_flow(ops,
                output_collection_names=None, 
                output_node_names=None,
                write_during_train=True,
+               use_horovod=False,
                model=None,
                sess=None):
   """

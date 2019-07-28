@@ -60,8 +60,11 @@ class Deep(keras.Model):
     #     self.emb = keras.layers.Embedding(FLAGS.feature_dict_size + 1, FLAGS.hidden_size)
     # else:
     self.emb = keras.layers.Embedding(FLAGS.feature_dict_size + 1, FLAGS.hidden_size)
+    self.emb_dim = FLAGS.hidden_size
     if FLAGS.field_emb:
       self.field_emb = keras.layers.Embedding(FLAGS.field_dict_size + 1, FLAGS.hidden_size)
+      self.emb_dim += FLAGS.hidden_size
+
     self.mult = keras.layers.Multiply()
     
     self.emb_activation = None
@@ -69,7 +72,14 @@ class Deep(keras.Model):
       self.emb_activation = keras.layers.Activation(FLAGS.emb_activation)
       self.bias = K.variable(value=np.array([0.]))
     
-    self.dense = keras.layers.Dense(1, activation=FLAGS.dense_activation)
+    if not FLAGS.mlp_dims:
+      self.mlp = None
+    else:
+      dims = [int(x) for x in FLAGS.mlp_dims.split(',')]
+      self.mlp = melt.layers.Mlp(dims, activation=FLAGS.dense_activation, drop_rate=FLAGS.mlp_drop)
+
+    act = FLAGS.dense_activation if FLAGS.deep_final_act else None
+    self.dense = keras.layers.Dense(1, activation=act)
 
     if FLAGS.pooling != 'allsum':
       self.pooling = melt.layers.Pooling(FLAGS.pooling)
@@ -91,82 +101,34 @@ class Deep(keras.Model):
       values = K.expand_dims(values, -1)
       x = self.mult([x, values])
 
-    if FLAGS.pooling == 'allsum':
-     x = K.sum(x, 1)
+    if FLAGS.field_concat:
+      num_fields = FLAGS.field_dict_size
+      #x = tf.math.unsorted_segment_sum(x, fields, num_fields)      
+      x = melt.unsorted_segment_sum_emb(x, fields, num_fields)
+      # like [512, 100 * 50]
+      x = K.reshape(x, [-1, num_fields * self.emb_dim])
     else:
-      #TODO add melt.SumPooling.. 
-      assert FLAGS.index_addone, 'can not calc length for like 0,1,2,0,0,0'
-      c_len = melt.length(ids)
-      x = self.pooling(x, c_len)
+      if FLAGS.pooling == 'allsum':
+        x = K.sum(x, 1)
+      else:
+        #TODO add melt.SumPooling.. 
+        assert FLAGS.index_addone, 'can not calc length for like 0,1,2,0,0,0'
+        c_len = melt.length(ids)
+        x = self.pooling(x, c_len)
 
     if self.emb_activation:
       x = self.emb_activation(x + self.bias)
+
+    if self.mlp:
+      x = self.mlp(x, training=training)
+    
     x = self.dense(x)
     x = K.squeeze(x, -1)
     return x
 
-# # Supporting filed embedding combine  TODO not correct
-# class Deep2(keras.Model):
-#   def __init__(self):
-#     super(Deep, self).__init__()
-#     self.emb = keras.layers.Embedding(FLAGS.feature_dict_size, FLAGS.hidden_size)
-#     self.mult = keras.layers.Multiply()
-    
-#     self.emb_activation = None
-#     if FLAGS.emb_activation:
-#       self.emb_activation = keras.layers.Activation(FLAGS.emb_activation)
-#       self.bias = K.variable(value=np.array([0.]))
-    
-#     self.dense = keras.layers.Dense(1, activation=FLAGS.dense_activation)
-   
-#   def call(self, input):
-#     ids = input['index']
-#     values = input['value']
-#     fields = input['field']
-    
-#     batch_size = ids.shape[0]
-#     length = ids.shape[1]
-
-#     m = K.reshape(tf.range(batch_size), [batch_size, 1])
-#     m = K.concat([m] * length, axis=1) * batch_size
-
-#     x = self.emb(ids)
-#     emb_dim = self.emb.shape[-1]
-#     x = K.reshape(x, [-1, emb_dim])
-#     fields = K.reshape(fields, [-1, emb_dim])
-#     fields = fields + m
-
-#     x = K.segment_sum(x, fields)
-#     x = K.reshape(x, [batch_size, -1, emb_dim])
-
-#     if FLAGS.deep_addval:
-#       values = K.expand_dims(values, -1)
-#       x = self.mult([x, values])
-
-#     x = K.sum(x, 1)
-#     if self.emb_activation:
-#       x = self.emb_activation(x + self.bias)
-#     x = self.dense(x)
-#     x = K.squeeze(x, -1)
-#     return x
-
-
-# class WideDeep(keras.Model):   
-#   def __init__(self):
-#     super(WideDeep, self).__init__()
-#     self.wide = Wide()
-#     self.deep = Deep()
-
-#   def call(self, input):
-#     w = self.wide(input)
-#     d = self.deep(input)
-#     #------seems works bad then below WideDeep2
-#     x = w + d
-#     return x
-
 class WideDeep(keras.Model):   
   def __init__(self):
-    super(WideDeep2, self).__init__()
+    super(WideDeep, self).__init__()
     self.wide = Wide()
     self.deep = Deep() 
     self.dense = keras.layers.Dense(1)
@@ -181,5 +143,3 @@ class WideDeep(keras.Model):
     else:
       x = w + d
     return x
-
-WideDeep2 = WideDeep
