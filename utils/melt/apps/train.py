@@ -229,6 +229,7 @@ flags.DEFINE_string('fixed_valid_input', None, 'if empty wil  not eval fixed ima
 flags.DEFINE_string('num_records_file', None, '')
 flags.DEFINE_string('base_dir', '../../../mount', '')
 
+flags.DEFINE_boolean('run_valid_op', True, '')
 flags.DEFINE_boolean('show_eval', True, '')
 flags.DEFINE_boolean('eval_shuffle_files', True, '')
 flags.DEFINE_boolean('eval_fix_random', True, '')
@@ -815,6 +816,7 @@ def train_flow(ops,
       optimizer=optimizer,
       clip_gradients=FLAGS.clip_gradients,
       learning_rate_decay_fn=learning_rate_decay_fn,
+      use_horovod=FLAGS.use_horovod,
       name=optimize_scope)
   else: 
     #---as in cifa10 example, put all but tower loss on cpu, wiki say, that will be faster,
@@ -837,6 +839,7 @@ def train_flow(ops,
             learning_rate_decay_fn=learning_rate_decay_fn,
             update_ops=update_ops,
             name=optimize_scope,
+            use_horovod=FLAGS.use_horovod,
             use_tpu=FLAGS.use_tpu)
     else:
       train_op = melt.layers.optimize_loss(
@@ -849,6 +852,7 @@ def train_flow(ops,
           learning_rate_decay_fn=learning_rate_decay_fn,
           update_ops=update_ops,
           name=optimize_scope,
+          use_horovod=FLAGS.use_horovod,
           use_tpu=FLAGS.use_tpu)
 
     #set the last tower loss as loss in ops
@@ -951,6 +955,7 @@ def train_flow(ops,
 
   restore_include = restore_include or FLAGS.restore_include.split(',') if FLAGS.restore_include else None
   restore_exclude = restore_exclude or FLAGS.restore_exclude.split(',') if FLAGS.restore_exclude else None
+
   return melt.flow.train_flow(
              ops, 
              names=names,
@@ -1287,15 +1292,18 @@ def train(Dataset,
   ops = [loss]
   #scope.reuse_variables()
   
+  eval_ops = None 
+  metric_eval_fn = None
   if valid_dataset:
     #valid_iter2 = valid_dataset.make_batch(batch_size_, valid_inputs, repeat=True, initializable=False)
     valid_batch2 = valid_iter2.get_next()
     valid_batch_size = FLAGS.eval_batch_size or batch_size
-    valid_x2, valid_y2 = melt.split_batch(valid_batch2, valid_batch_size, num_gpus, training=False)
-    #valid_x2, valid_y2 = melt.split_batch(valid_batch2, num_gpus, training=False)
-    valid_loss = melt.tower(lambda i: valid_fn(valid_x2[i], valid_y2[i]), num_gpus, training=False)
-    valid_loss = tf.reduce_mean(valid_loss)
-    eval_ops = [valid_loss]
+    if FLAGS.run_valid_op:
+      valid_x2, valid_y2 = melt.split_batch(valid_batch2, valid_batch_size, num_gpus, training=False)
+      #valid_x2, valid_y2 = melt.split_batch(valid_batch2, num_gpus, training=False)
+      valid_loss = melt.tower(lambda i: valid_fn(valid_x2[i], valid_y2[i]), num_gpus, training=False)
+      valid_loss = tf.reduce_mean(valid_loss)
+      eval_ops = [valid_loss]
 
     #valid_iter = valid_dataset.make_batch(batch_size_, valid_inputs)
     valid_batch = valid_iter.get_next()
@@ -1308,8 +1316,10 @@ def train(Dataset,
       def valid_fn(i):
         valid_predict = model(valid_x[i])
         return valid_x[i], valid_y[i], valid_predict
-      
+
       valid_ops = melt.tower(valid_fn, num_gpus, training=False)
+      if FLAGS.use_horovod:
+        num_valid_steps_per_epoch = num_valid_steps_per_epoch // hvd.size()
       metric_eval_fn = lambda model_path=None: \
                                     evaluate(valid_ops, 
                                             valid_iter,
@@ -1324,11 +1334,7 @@ def train(Dataset,
                                             suffix=valid_suffix,
                                             write_streaming=write_streaming,
                                             sep=sep)
-    else:
-      metric_eval_fn = None
-  else:
-    eval_ops = None 
-    metric_eval_fn = None
+
 
   if test_dataset:
     #test_iter = test_dataset.make_batch(batch_size_, test_inputs)
@@ -1340,6 +1346,9 @@ def train(Dataset,
       return test_x[i], test_predict
 
     test_ops = melt.tower(infer_fn, num_gpus, training=False)
+
+    if FLAGS.use_horovod:
+      num_test_steps_per_epoch = num_test_steps_per_epoch // hvd.size()
 
     inference_fn = lambda model_path=None: \
                                   inference(test_ops, 
@@ -1378,6 +1387,9 @@ def train(Dataset,
   # with melt.get_session() as sess:
   #   status.initialize_or_restore(sess)
   #   checkpoint.save(checkpoint_prefix)
+
+  if FLAGS.use_horovod:
+    num_steps_per_epoch = num_steps_per_epoch // hvd.size()
 
   train_flow(ops, 
              eval_ops=eval_ops,

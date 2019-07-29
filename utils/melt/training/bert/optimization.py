@@ -70,6 +70,7 @@ def create_optimizer(global_step, init_lr, num_train_steps, num_warmup_steps, mi
 
 
 class AdamWeightDecayOptimizer(tf.train.Optimizer):
+#class AdamWeightDecayOptimizer((tf.keras.optimizers.Optimizer)
   """A basic Adam optimizer that includes "correct" L2 weight decay."""
 
   def __init__(self,

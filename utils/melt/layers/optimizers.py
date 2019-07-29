@@ -38,7 +38,7 @@ from tensorflow.python.training import training as train
 import tensorflow as tf
 
 try:
-  import horovod.keras as hvd
+  import horovod.tensorflow as hvd
 except Exception:
   pass
 
@@ -249,12 +249,13 @@ def optimize_loss(losses,
       #https://blog.csdn.net/qq_16234613/article/details/96186398
          # we enable compression only for fp16
       from horovod.tensorflow.compression import Compression
-      if use_fp16:
-          compression = Compression.fp16
-      else:
-          compression = Compression.none
-      opt = hvd.DistributedOptimizer(opt, sparse_as_dense=True,
-                                     compression=compression)
+      # if use_fp16:
+      #     compression = Compression.fp16
+      # else:
+      #     compression = Compression.none
+      # opt = hvd.DistributedOptimizer(opt, sparse_as_dense=True,
+      #                                compression=compression)
+      opt = hvd.DistributedOptimizer(opt)
 
     if num_gpus > 1:
       # Calculate the gradients for each model tower.

@@ -21,10 +21,16 @@ import tensorflow as tf
 import gezi
 from gezi import Timer
 import melt
+import os
 
 from melt.flow.train_once import train_once
 from melt.flow.flow import tf_flow
 from melt.flow.flow import tf_train_flow
+
+try:
+  import horovod.tensorflow as hvd
+except Exception:
+  pass
 
 #from melt.util import print_results
 #@TODO inside melt can not use melt.print_reults must use melt.util.print_results
@@ -150,24 +156,25 @@ def train_flow(ops,
   if not model_dir:
     if log_dir and no_log: 
       log_dir = None
-    return simple_train_flow(ops, 
-                             names, 
-                             gen_feed_dict_fn,
-                             deal_results_fn,
-                             interval_steps,
-                             eval_ops,
-                             eval_names,
-                             gen_eval_feed_dict_fn,
-                             deal_eval_results_fn,
-                             eval_interval_steps,
-                             print_time,
-                             print_avg_loss, 
-                             log_dir,
-                             num_steps,
-                             num_steps_per_epoch=num_steps_per_epoch,
-                             metric_eval_fn=metric_eval_fn,
-                             metric_eval_interval_steps=metric_eval_interval_steps,
-                             sess=sess)
+    if not use_horovod:
+      return simple_train_flow(ops, 
+                              names, 
+                              gen_feed_dict_fn,
+                              deal_results_fn,
+                              interval_steps,
+                              eval_ops,
+                              eval_names,
+                              gen_eval_feed_dict_fn,
+                              deal_eval_results_fn,
+                              eval_interval_steps,
+                              print_time,
+                              print_avg_loss, 
+                              log_dir,
+                              num_steps,
+                              num_steps_per_epoch=num_steps_per_epoch,
+                              metric_eval_fn=metric_eval_fn,
+                              metric_eval_interval_steps=metric_eval_interval_steps,
+                              sess=sess)
   
   #if not set log dir try to use model dir to store log
   #so defaut is write log, if only want save model but disable log, set no_log=True
@@ -189,7 +196,8 @@ def train_flow(ops,
   else:
     print('Will not save log')
 
-  def train_once_(sess, step, is_start=False, fixed_step=None, num_epochs=None, model_path=None):
+  def train_once_(sess, step, is_start=False, fixed_step=None, 
+                  num_epochs=None, model_path=None, use_horovod=False):
     train_once(sess, 
                step, 
                ops, 
@@ -218,8 +226,10 @@ def train_flow(ops,
                learning_rate_decay_factor=learning_rate_decay_factor,
                num_epochs=num_epochs,           
                model_path=model_path,
+               use_horovod=use_horovod
                )
   
+  #print('1.2--------------------OMPI_COMM_WORLD_RANK in', 'OMPI_COMM_WORLD_RANK' in os.environ, hvd.rank())
   tf_train_flow(train_once_, 
                 model_dir, 
                 log_dir,

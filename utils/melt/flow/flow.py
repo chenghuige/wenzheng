@@ -19,6 +19,10 @@ FLAGS = flags.FLAGS
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.contrib import tpu
+try:
+  import horovod.tensorflow as hvd
+except Exception:
+  pass
 
 import os, sys, traceback
 import melt 
@@ -139,12 +143,13 @@ def tf_train_flow(train_once_fn,
                   learning_rate_patience=None,
                   learning_rate_decay_factor=None,
                   write_during_train=True,
-                  use_horovod=False,
                   model=None,
                   sess=None):
   """
   similary flow as tf_flow, but add model try reload and save
   """
+  use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+
   if sess is None:
     #TODO melt.get_session is global session but may cause non close at last
     sess = melt.get_session()
@@ -155,48 +160,49 @@ def tf_train_flow(train_once_fn,
   #logging.info('max_models_keep:', max_models_keep)
   #logging.info('save_interval_seconds:', save_interval_seconds)
 
-  if model:
-    checkpoint = tf.train.Checkpoint(model=model)
-    ckpt_dir = model_dir + '/ckpt'
-    checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
+  if model_dir:
+    if model:
+      checkpoint = tf.train.Checkpoint(model=model)
+      ckpt_dir = model_dir + '/ckpt'
+      checkpoint_prefix = os.path.join(ckpt_dir, 'ckpt')
   
-  #this is usefull for you use another model with another scope, and just load and restore/save initalize your scope vars!
-  #this is not for finetune but mainly for like using another model as in predict like this introducing graph other model scope and ignore here
+    #this is usefull for you use another model with another scope, and just load and restore/save initalize your scope vars!
+    #this is not for finetune but mainly for like using another model as in predict like this introducing graph other model scope and ignore here
 
-  # var_list = None if not restore_scope else tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
-  # #logging.info('-------------var_list', var_list)
-  
-  # if not variables_to_restore:
-  #   variables_to_restore = var_list
+    # var_list = None if not restore_scope else tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
+    # #logging.info('-------------var_list', var_list)
+    
+    # if not variables_to_restore:
+    #   variables_to_restore = var_list
 
-  if not variables_to_restore:
-    variables_to_restore = slim.get_variables_to_restore(include=restore_include, exclude=restore_exclude)
+    if not variables_to_restore:
+      variables_to_restore = slim.get_variables_to_restore(include=restore_include, exclude=restore_exclude)
 
-  if not variables_to_save:
-    variables_to_save = variables_to_restore
-  if save_all_scope:
-    variables_to_save = None
-  
-  #if variables_to_restore is None:
-  logging.info('variables_to_restore from %s' % model_dir)
-  #load all var in checkpoint try to save all var(might more then original checkpoint) if not specifiy variables_to_save
-  varnames_in_checkpoint = melt.get_checkpoint_varnames(model_dir)
-  #logging.info('varnames_in_checkpoint: {}'.format(varnames_in_checkpoint))
+    if not variables_to_save:
+      variables_to_save = variables_to_restore
+    if save_all_scope:
+      variables_to_save = None
+    
+    #if variables_to_restore is None:
+    logging.info('variables_to_restore from %s' % model_dir)
+    #load all var in checkpoint try to save all var(might more then original checkpoint) if not specifiy variables_to_save
+    varnames_in_checkpoint = melt.get_checkpoint_varnames(model_dir)
+    #logging.info('varnames_in_checkpoint: {}'.format(varnames_in_checkpoint))
 
-  # TODO has someproblem say  tf.Variable 'r_net/text_encoder/cudnn_rnn/cu_dnngru/recurrent_kernel/adam_v:0' even though in checkpoint I have renated it as ignore/rnet
-  variables_to_restore_from_model = slim.get_variables_to_restore(include=varnames_in_checkpoint)
-  #logging.info('variables_to_restore_from_model: {}'.format(variables_to_restore_from_model))
-  if not variables_to_restore:
-    variables_to_restore = variables_to_restore_from_model
-  else:
-    variables_to_restore = [v for v in variables_to_restore if v in variables_to_restore_from_model]
-  if restore_exclude:
-    for excl in restore_exclude:
-      variables_to_restore = [v for v in  variables_to_restore if not excl in v.name]
-  #--tf 1.6 adadelta will have same vars... 
-  variables_to_restore = list(set(variables_to_restore))
-  #logging.info('variables_to_restore', variables_to_restore[:100])
-  logging.info('variables_to_restore', [x for x in variables_to_restore if not 'OptimizeLoss' in x.name][:100])
+    # TODO has someproblem say  tf.Variable 'r_net/text_encoder/cudnn_rnn/cu_dnngru/recurrent_kernel/adam_v:0' even though in checkpoint I have renated it as ignore/rnet
+    variables_to_restore_from_model = slim.get_variables_to_restore(include=varnames_in_checkpoint)
+    #logging.info('variables_to_restore_from_model: {}'.format(variables_to_restore_from_model))
+    if not variables_to_restore:
+      variables_to_restore = variables_to_restore_from_model
+    else:
+      variables_to_restore = [v for v in variables_to_restore if v in variables_to_restore_from_model]
+    if restore_exclude:
+      for excl in restore_exclude:
+        variables_to_restore = [v for v in  variables_to_restore if not excl in v.name]
+    #--tf 1.6 adadelta will have same vars... 
+    variables_to_restore = list(set(variables_to_restore))
+    #logging.info('variables_to_restore', variables_to_restore[:100])
+    logging.info('variables_to_restore', [x for x in variables_to_restore if not 'OptimizeLoss' in x.name][:100])
 
   ##finally remove global_step since melt.apps.train will handle it!
   global_step = tf.train.get_or_create_global_step()
@@ -253,67 +259,69 @@ def tf_train_flow(train_once_fn,
   pre_step = -1
   fixed_pre_step = -1  #fixed pre step is for epoch num to be correct if you change batch size
   #print(model_dir)
-  model_path = _get_model_path(model_dir, save_model)
-  #print(model_path)
-  model_dir = gezi.get_dir(model_dir) #incase you pass ./model/model-ckpt1000 -> ./model
   pre_epoch = None
-  if model_path is not None:
-    if not restore_from_latest:
-      logging.info('using recent but not latest model')
-      model_path = melt.recent_checkpoint(model_dir)
-    model_name = os.path.basename(model_path)
-    timer = gezi.Timer('Loading and training from existing model [%s]' % model_path)
-    if restore_fn is not None:
-      restore_fn(sess)
-    loader.restore(sess, model_path)
-    ## not supported
-    #model.save()
-    #model.save_weights('./weights')
-    timer.print()
-    #pre_step = melt.get_model_step(model_path) - 1 if FLAGS.global_step is None else FLAGS.global_step -1
-    # TODO check ..
-    pre_step = sess.run(tf.train.get_global_step()) - 1
-    pre_epoch = melt.get_model_epoch(model_path) if FLAGS.global_epoch is None else FLAGS.global_epoch
-    fixed_pre_step = pre_step
-    # if pre_epoch is not None:
-    #   #like using batch size 32, then reload train using batch size 64
-    #   if abs(pre_step / num_steps_per_epoch - pre_epoch) > 0.1:
-    #     fixed_pre_step = int(pre_epoch * num_steps_per_epoch)
-    #     logging.info('Warning, epoch is diff with pre_step / num_steps_per_epoch:{}, pre_epoch:{},maybe you change batch size and we will adjust to set pre_step as {}'\
-    #       .format(pre_step / num_steps_per_epoch, pre_epoch, fixed_pre_step))
-  else:
-    latest_checkpoint = None
-    try:
-      latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
-      if latest_checkpoint:
-        logging.info('Try start from eager trained mode, latest checkpoint:', latest_checkpoint)
-        checkpoint.restore(latest_checkpoint).run_restore_ops(session=sess)
+  if model_dir:
+    model_path = _get_model_path(model_dir, save_model)
+    #print(model_path)
+    model_dir = gezi.get_dir(model_dir) #incase you pass ./model/model-ckpt1000 -> ./model
+  
+    if model_path is not None:
+      if not restore_from_latest:
+        logging.info('using recent but not latest model')
+        model_path = melt.recent_checkpoint(model_dir)
+      model_name = os.path.basename(model_path)
+      timer = gezi.Timer('Loading and training from existing model [%s]' % model_path)
+      if restore_fn is not None:
+        restore_fn(sess)
+      loader.restore(sess, model_path)
+      ## not supported
+      #model.save()
+      #model.save_weights('./weights')
+      timer.print()
+      #pre_step = melt.get_model_step(model_path) - 1 if FLAGS.global_step is None else FLAGS.global_step -1
+      # TODO check ..
+      pre_step = sess.run(tf.train.get_global_step()) - 1
+      pre_epoch = melt.get_model_epoch(model_path) if FLAGS.global_epoch is None else FLAGS.global_epoch
+      fixed_pre_step = pre_step
+      # if pre_epoch is not None:
+      #   #like using batch size 32, then reload train using batch size 64
+      #   if abs(pre_step / num_steps_per_epoch - pre_epoch) > 0.1:
+      #     fixed_pre_step = int(pre_epoch * num_steps_per_epoch)
+      #     logging.info('Warning, epoch is diff with pre_step / num_steps_per_epoch:{}, pre_epoch:{},maybe you change batch size and we will adjust to set pre_step as {}'\
+      #       .format(pre_step / num_steps_per_epoch, pre_epoch, fixed_pre_step))
+    else:
+      latest_checkpoint = None
+      try:
+        latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
+        if latest_checkpoint:
+          logging.info('Try start from eager trained mode, latest checkpoint:', latest_checkpoint)
+          checkpoint.restore(latest_checkpoint).run_restore_ops(session=sess)
 
-        pre_epoch = int(latest_checkpoint.split('-')[-1])
-        #pre_step = pre_epoch * num_steps_per_epoch - 1
-        # TODO check
-        pre_step = sess.run(tf.train.get_global_step()) - 1
-        fixed_pre_step = pre_step
-        logging.info('Start step is:', pre_step)
-    except Exception:
-      logging.info('Something wrong with restore from eager trained model')
-    if latest_checkpoint is None:
-      logging.info('Train all start step 0')
-      #https://stackoverflow.com/questions/40220201/tensorflow-tf-initialize-all-variables-vs-tf-initialize-local-variables
-      #tf.initialize_all_variables() is a shortcut to tf.initialize_variables(tf.all_variables()), 
-      #tf.initialize_local_variables() is a shortcut to tf.initialize_variables(tf.local_variables()), 
-      #which initializes variables in GraphKeys.VARIABLES and GraphKeys.LOCAL_VARIABLE collections, respectively.
-      #init_op = tf.group(tf.global_variables_initializer(),
-      #                   tf.local_variables_initializer())   
-      #[var for var in tf.all_variables() if var.op.name.startswith(restore_scope)] will be the same as tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
-      
-      #sess.run(init_op)
+          pre_epoch = int(latest_checkpoint.split('-')[-1])
+          #pre_step = pre_epoch * num_steps_per_epoch - 1
+          # TODO check
+          pre_step = sess.run(tf.train.get_global_step()) - 1
+          fixed_pre_step = pre_step
+          logging.info('Start step is:', pre_step)
+      except Exception:
+        logging.info('Something wrong with restore from eager trained model')
+      if latest_checkpoint is None:
+        logging.info('Train all start step 0')
+        #https://stackoverflow.com/questions/40220201/tensorflow-tf-initialize-all-variables-vs-tf-initialize-local-variables
+        #tf.initialize_all_variables() is a shortcut to tf.initialize_variables(tf.all_variables()), 
+        #tf.initialize_local_variables() is a shortcut to tf.initialize_variables(tf.local_variables()), 
+        #which initializes variables in GraphKeys.VARIABLES and GraphKeys.LOCAL_VARIABLE collections, respectively.
+        #init_op = tf.group(tf.global_variables_initializer(),
+        #                   tf.local_variables_initializer())   
+        #[var for var in tf.all_variables() if var.op.name.startswith(restore_scope)] will be the same as tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
+        
+        #sess.run(init_op)
 
-      #like use image model, build image graph, reload first train, and then will go to same checkpoint all varaible just restore will ok
-      #for finetune from loading other model init
-      if init_fn is not None:
-        init_fn(sess)
-      
+        #like use image model, build image graph, reload first train, and then will go to same checkpoint all varaible just restore will ok
+        #for finetune from loading other model init
+        if init_fn is not None:
+          init_fn(sess)
+        
   if gezi.env_has('METRIC'):
     l = metric_eval_fn(model_path)
     print(list(zip(l[1], l[0])))
@@ -333,19 +341,26 @@ def tf_train_flow(train_once_fn,
   except Exception:
     pass
   
-  #if save_interval_epochs and num_steps_per_epoch and num_steps >= 0:
-  epoch_dir = os.path.join(model_dir, 'epoch')
-  gezi.try_mkdir(epoch_dir)
+  if model_dir:
+    #if save_interval_epochs and num_steps_per_epoch and num_steps >= 0:
+    epoch_dir = os.path.join(model_dir, 'epoch')
+    gezi.try_mkdir(epoch_dir)
+    checkpoint_path = os.path.join(model_dir, 'model.ckpt')
   
   coord = tf.train.Coordinator()
   threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-  checkpoint_path = os.path.join(model_dir, 'model.ckpt')
+
+  if use_horovod:
+    bcast = hvd.broadcast_global_variables(0)
+    sess.run(bcast)
 
   #tf.train.write_graph(sess.graph_def, model_dir, 'train.pbtxt')
   only_one_step = False
   try:
     step = start = pre_step + 1
     fixed_step = fixed_pre_step + 1 
+
+    #first = True
 
     #hack just for save one model after load
     if num_steps < 0 or (num_steps and num_steps < step):
@@ -376,37 +391,43 @@ def tf_train_flow(train_once_fn,
     best_epoch_eval_loss = 1e20
     num_allowed_bad_epochs = 4 #allow 5 non decrease eval loss epochs  before stop
     while not coord.should_stop():
-      model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
-      model_step_path = model_path_ + '-' + str(step)
-      model_step_path = model_step_path \
-        if (write_during_train and metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0) \
-        else None
-      #model_step_path = None
+      model_step_path = None
+      if model_dir:
+        model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
+        model_step_path = model_path_ + '-' + str(step)
+        model_step_path = model_step_path \
+          if (write_during_train and metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0) \
+          else None
+        #model_step_path = None
 
       if step == 0:
         model_step_path = None
 
-      if use_horovod:
-        import horovod.tensorflow.keras as hvd
-        bcast_op = hvd.broadcast_global_variables(0)
-        sess.run(bcast_op)
+      # if use_horovod and first:
+      #   bcast_op = hvd.broadcast_global_variables(0)
+      #   sess.run(bcast_op)
 
       #print('--------------------step', step)
+      #print('1.5--------------------OMPI_COMM_WORLD_RANK in', 'OMPI_COMM_WORLD_RANK' in os.environ, hvd.rank())
       stop = train_once_fn(sess, 
                            step, 
                            is_start=(step==start), 
                            fixed_step=fixed_step,
                            num_epochs=num_epochs,
                            model_path=model_step_path,
+                           use_horovod=use_horovod,
                            ## TODO FIXME this line will cause   tensorflow.python.framework.errors_impl.NotFoundError: Resource localhost/save_counter/N10tensorflow3VarE does not exist. 
                           )
+
+
+      #first = False
 
       if only_one_step:
         stop = True
 
       step += 1
       fixed_step += 1
-      if save_model and step:
+      if save_model and step and model_dir:
         #step 0 is also saved! actually train one step and save
         if step % save_interval_steps == 0:
           timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path), False)
@@ -465,7 +486,7 @@ def tf_train_flow(train_once_fn,
         raise tf.errors.OutOfRangeError(None, None,'Reached max num epochs of %d'%max_num_epochs)
   #except tf.errors.OutOfRangeError, e:
   except tf.errors.OutOfRangeError:
-    if not (step==start) and save_model and step % save_interval_steps != 0:
+    if not (step==start) and save_model and step % save_interval_steps != 0 and mdoel_dir:
       model_path_ = _get_checkpoint_path(checkpoint_path, step, num_steps_per_epoch)
       saver.save(sess, model_path_, global_step=step)
       if freeze_graph:

@@ -32,6 +32,11 @@ import gezi
 from gezi import Timer, AvgScore 
 import melt
 
+try:
+  import horovod.tensorflow as hvd
+except Exception:
+  pass
+
 projector_config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
 
 def train_once(sess, 
@@ -62,8 +67,10 @@ def train_once(sess,
                learning_rate_decay_factor=None,
                num_epochs=None,
                model_path=None,
+               use_horovod=False,
                ):
-
+  #use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  
   #is_start = False # force not to evaluate at first step
   #print('-----------------global_step', sess.run(tf.train.get_or_create_global_step()))
   timer = gezi.Timer()
@@ -277,7 +284,9 @@ def train_once(sess,
     hours_per_epoch = None
     #step += 1
     #if is_start or interval_steps and step % interval_steps == 0:
-    if interval_steps and step % interval_steps == 0:
+    
+    interval_ok = not use_horovod or hvd.local_rank() == 0
+    if interval_steps and step % interval_steps == 0 and interval_ok:
       train_average_loss = train_once.avg_loss.avg_score()
       if print_time:
         duration = timer.elapsed()

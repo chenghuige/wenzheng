@@ -33,7 +33,7 @@ def main(_):
 
   FLAGS.train_input = '../input/train.small'
   FLAGS.valid_input = '../input/train.small'
-  FLAGS.batch_size = 5
+  FLAGS.batch_size = 4
   FLAGS.feat_file_path='../input/feature_index'
   FLAGS.field_file_path='../input/feat_fields.old'
 
@@ -54,7 +54,7 @@ def main(_):
         print(epoch, i, batch[0]['id'])
   else:
     for epoch in range(1):
-      for i in range(1):
+      for i in range(3):
         batch = sess.run(op)
         print(epoch, i, batch[0]['id'])
 

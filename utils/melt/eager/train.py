@@ -257,6 +257,8 @@ def train(Dataset,
           valid_dataset=None,
           test_dataset=None,
           sep=','):
+  use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+
   if Dataset is None:
     assert dataset
   if FLAGS.torch:
@@ -603,6 +605,18 @@ def train(Dataset,
     logging.info('learning_rate_decay_factor:{} decay_epochs:{} decay_steps:{} decay_start_epoch:{} decay_start_step:{}'.format(
         FLAGS.learning_rate_decay_factor, FLAGS.num_epochs_per_decay, decay_steps, FLAGS.decay_start_epoch, decay_start_step))
 
+  # https://github.com/horovod/horovod/blob/master/examples/pytorch_mnist.py
+  # TODO full support for pytorch now not work
+  if FLAGS.torch and use_horovod:
+    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+    # Horovod: (optional) compression algorithm.
+    compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.none
+
+    # Horovod: wrap optimizer with DistributedOptimizer.
+    optimizer = hvd.DistributedOptimizer(optimizer,
+                                        named_parameters=model.named_parameters(),
+                                        compression=compression)
   for epoch in range(start_epoch, num_epochs):
     melt.set_global('epoch', '%.4f' % (epoch))
 
@@ -632,6 +646,16 @@ def train(Dataset,
         loss, grads = melt.eager.grad(model, x, y, loss_fn_)
         grads, _ = tf.clip_by_global_norm(grads, FLAGS.clip_gradients)
         optimizer.apply_gradients(zip(grads, model.variables))
+        # https://github.com/horovod/horovod/blob/master/examples/tensorflow_mnist_eager.py
+        # Horovod: broadcast initial variable states from rank 0 to all other processes.
+        # This is necessary to ensure consistent initialization of all workers when
+        # training is started with random weights or restored from a checkpoint.
+        # Note: broadcast should be done after the first gradient step to ensure optimizer
+        # initialization.
+        if use_horovod and epoch == start_epoch and i == 0:
+          import horovod.tensorflow.keras as hvd
+          hvd.broadcast_variables(model.variables, root_rank=0)
+          hvd.broadcast_variables(optimizier.variables(), root_rank=0)
       else:
         optimizer.zero_grad()
         if 'training' in inspect.getargspec(loss_fn_).args:

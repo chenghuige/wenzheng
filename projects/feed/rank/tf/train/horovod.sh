@@ -1,6 +1,6 @@
 model=WideDeep
+    #--valid_input=../input/valid \
 python ./train.py \
-    --use_horovod=1 \
     --deep_final_act=0 \
     --mlp_dims=50 \
     --mlp_drop=0.2 \
@@ -14,6 +14,7 @@ python ./train.py \
     --train_input=../input/train \
     --valid_input=../input/valid \
     --model_dir=../input/model/$model.horovod \
+    --run_valid_op=0 \
     --batch_size=512 \
     --max_feat_len=100 \
     --optimizer=bert \

@@ -30,7 +30,8 @@ def grad(model, x, y, loss_fn):
       loss = loss_fn(model, x, y, training=True)
     else:
       loss = loss_fn(model, x, y)
-
+  # TODO eager or tf 2.0 support horovod
+  # tape = hvd.DistributedGradientTape(tape)
   return loss, tape.gradient(loss, model.trainable_variables)
 
 def clip_gradients(grads_and_vars, clip_ratio):
