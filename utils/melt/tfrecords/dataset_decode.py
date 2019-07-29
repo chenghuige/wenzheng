@@ -19,6 +19,7 @@ import melt
 logging = melt.logging
 
 import sys
+import os
 import numpy as np
 
 # TODO
@@ -175,6 +176,11 @@ def inputs(files,
                 .apply(tf.contrib.data.parallel_interleave(
                   Dataset, 
                   cycle_length=num_threads))
+
+    #https://github.com/horovod/horovod/issues/223
+    if 'OMPI_COMM_WORLD_RANK' in os.environ:
+      import horovod.tensorflow as hvd
+      dataset = dataset.shard(hvd.size(), hvd.rank())
 
     # must batch then map if use pyfunc which you might use py_func
     if not use_pyfunc:
