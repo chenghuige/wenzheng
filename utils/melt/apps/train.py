@@ -297,6 +297,8 @@ def init():
     if FLAGS.torch:
       import torch
       torch.cuda.set_device(hvd.local_rank())
+    FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
+    print('using horovod multipy learning rate by {} to {}'.format(hvd.size(), FLAGS.learning_rate))
 
   if 'TPU' in os.environ and int(os.environ['TPU']) == 1:
     FLAGS.use_tpu = True
@@ -512,7 +514,7 @@ def init():
   if not FLAGS.num_gpus:
     FLAGS.num_gpus = melt.get_num_gpus()
 
-  if not FLAGS.use_tower_loss:
+  if not FLAGS.use_tower_loss or FLAGS.use_horovod:
     FLAGS.num_gpus = 0
 
   if 'FIXED_BATCH_SIZE' in os.environ and os.environ['FIXED_BATCH_SIZE'] == '1':
@@ -962,7 +964,7 @@ def train_flow(ops,
              num_steps=num_steps,
              save_interval_seconds=save_interval_seconds,
              save_interval_steps=save_interval_steps,
-             save_model=save_model if not FLAGS.use_horovod or hvd.rank() == 0 else Fasle,
+             save_model=save_model if not FLAGS.use_horovod or hvd.rank() == 0 else False,
              save_interval_epochs=FLAGS.save_interval_epochs,
              freeze_graph=FLAGS.freeze_graph,
              #optimizer=optimizer, 

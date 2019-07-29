@@ -558,6 +558,14 @@ def split_batch(batch_datas, batch_size, num_shards, training=True):
       # return x, y
       #return batch_datas
 
+#https://stackoverflow.com/questions/38559755/how-to-get-current-available-gpus-in-tensorflow
+from tensorflow.python.client import device_lib
+def get_available_gpus():
+  #local_device_protos = device_lib.list_local_devices()
+  #return [x.name for x in local_device_protos if x.device_type == 'GPU']
+  import subprocess
+  n = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
+  return n
 
 def get_num_gpus():
   if 'CUDA_VISIBLE_DEVICES' in os.environ:
