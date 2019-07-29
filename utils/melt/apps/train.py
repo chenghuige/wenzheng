@@ -288,6 +288,10 @@ flags.DEFINE_boolean('use_horovod', False, '')
 inited = None 
 
 def init():
+  # TODO actually FLAGS.use_horovod is not needed as we can infer from environ
+  if 'OMPI_COMM_WORLD_RANK' in os.environ:
+    FLAGS.use_horovod = True
+
   if FLAGS.buckets:
     assert FLAGS.length_key, 'must set length key if using buckets'
 
@@ -339,7 +343,7 @@ def init():
   if not FLAGS.log_dir:
     if 'log_dir' in os.environ and os.environ['log_dir']:
       FLAGS.log_dir = os.environ['log_dir']
-  if not FLAGS.log_dir:
+  if not FLAGS.log_dir and FLAGS.model_dir:
     if os.path.isfile(FLAGS.model_dir):
      FLAGS.log_dir = os.path.dirname(FLAGS.model_dir)
     else:
@@ -397,6 +401,7 @@ def init():
     if not FLAGS.random_seed:
       FLAGS.random_seed = int(os.environ['SEED'])
     tf.set_random_seed(FLAGS.random_seed)
+
   logging.info('seed', FLAGS.random_seed)
 
   if 'VLOG' in os.environ:
@@ -720,8 +725,6 @@ def train_flow(ops,
 
   if sess is None:
     sess = melt.get_session()
-  if debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
   model_dir = model_dir or FLAGS.model_dir
   log_dir = log_dir or FLAGS.log_dir

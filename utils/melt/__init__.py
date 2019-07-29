@@ -44,6 +44,7 @@ from melt.metrics import *
 
 try:
   import melt.apps
+  from melt.apps.train import *
 except Exception:
 	print(traceback.format_exc(), file=sys.stderr)
 	pass

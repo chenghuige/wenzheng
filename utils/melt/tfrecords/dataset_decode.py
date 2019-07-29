@@ -156,6 +156,8 @@ def inputs(files,
     batch_join = False
     shuffle_batch = False 
 
+  drop_remainder = False if allow_smaller_final_batch else True
+
   if not num_prefetch_batches:
     num_prefetch_batches = num_threads + 3
   
@@ -308,15 +310,15 @@ def inputs(files,
     else:
       # no bucket
       if dynamic_pad and (not use_pyfunc):
-        dataset = dataset.padded_batch(batch_size, padded_shapes=(shapes))
+        dataset = dataset.padded_batch(batch_size, padded_shapes=(shapes), drop_remainder=drop_remainder)
       else:
-        dataset = dataset.batch(batch_size)
+        dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
         if use_pyfunc:
          dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
 
-    if not allow_smaller_final_batch:
-      # https://github.com/tensorflow/tensorflow/issues/13745 dataset.apply(tf.contrib.data.batch_and_drop_remainder(10)).
-      dataset = dataset.filter(lambda x, *args, **kw: tf.equal(tf.shape(x)[0], batch_size))
+    # if not allow_smaller_final_batch:
+    #   # https://github.com/tensorflow/tensorflow/issues/13745 dataset.apply(tf.contrib.data.batch_and_drop_remainder(10)).
+    #   dataset = dataset.filter(lambda x, *args, **kw: tf.equal(tf.shape(x)[0], batch_size))
 
   # TODO save iterator ?
   ## Create saveable object from iterator.

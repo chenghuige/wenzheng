@@ -20,7 +20,6 @@ from tfrecord_dataset import Dataset
 import tensorflow as tf 
 tf.enable_eager_execution()
 
-
 dataset = Dataset('train')
 
 da = dataset.make_batch()

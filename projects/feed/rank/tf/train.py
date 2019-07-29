@@ -16,6 +16,8 @@ import sys
 import os
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
 
 from dataset import *
 from model import *

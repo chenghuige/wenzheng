@@ -342,18 +342,21 @@ global or inside function global sess will cause this but not big problem for co
       config.gpu_options.allow_growth = True
       import horovod.keras as hvd
       config.gpu_options.visible_device_list = str(hvd.local_rank())  
+      # sess = tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint_dir,
+      #                                          config=config)
     #config.operation_timeout_in_ms=600000
     #NOTICE https://github.com/tensorflow/tensorflow/issues/2130 but 5000 will cause init problem!
     #config.operation_timeout_in_ms=50000   # terminate on long hangs
     #https://github.com/tensorflow/tensorflow/issues/2292 allow_soft_placement=True
-    if not FLAGS.use_tpu:
-      get_session.sess = tf.Session(config=config)
-    else:
+    if FLAGS.use_tpu:
       tpu_cluster_resolver = None
       if FLAGS.use_tpu and FLAGS.tpu_name:
         tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
           FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
       get_session.sess = tf.Session(tpu_cluster_resolver)
+    else:
+      get_session.sess = tf.Session(config=config)
+    
     if debug:
       from tensorflow.python import debug as tf_debug
       get_session.sess = tf_debug.LocalCLIDebugWrapperSession(get_session.sess)
@@ -567,7 +570,7 @@ def get_available_gpus():
   n = str(subprocess.check_output(["nvidia-smi", "-L"])).count('UUID')
   return n
 
-def get_num_gpus():
+def get_num_gpus_specific():
   if 'CUDA_VISIBLE_DEVICES' in os.environ:
     print("os.environ['CUDA_VISIBLE_DEVICES']", os.environ['CUDA_VISIBLE_DEVICES'])
     if os.environ['CUDA_VISIBLE_DEVICES'] == '-1':
@@ -577,6 +580,10 @@ def get_num_gpus():
     return num_gpus
   else:
     return None
+
+def get_num_gpus():
+  num_gpus = get_num_gpus_specific() or get_available_gpus()
+  return num_gpus
 
 def is_cudnn_cell(cell):
   return isinstance(cell, (tf.contrib.cudnn_rnn.CudnnGRU, tf.contrib.cudnn_rnn.CudnnLSTM))

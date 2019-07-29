@@ -54,7 +54,7 @@ class Dataset(object):
   def make_batch(self, 
                  batch_size=None, 
                  filenames=None,
-                 initializable=True,
+                 initializable=False,
                  repeat=None,
                  return_iterator=True):
     """Read the images and labels from 'filenames'."""
@@ -67,9 +67,12 @@ class Dataset(object):
     min_queue_examples = 20000
     if repeat is None:
       if tf.executing_eagerly():
-        repeat = False 
+        repeat = False # if True will not consider epoch stop using for... loop forever for item in dataset..
       else:
-        if self.subset == 'train' or melt.num_gpus() > 1:
+        # for eval in num_gpus > 1 then set repeat = True so final batch with full batch
+        # TODO 
+        num_gpus = melt.num_gpus() if not 'OMPI_COMM_WORLD_RANK' in os.environ else 1
+        if self.subset == 'train' or num_gpus > 1:
           repeat = True
         else:
           repeat = False
