@@ -69,6 +69,7 @@ class Dataset(melt.tfrecords.Dataset):
               self.field_id[tokens[0]] = len(self.field_id) + self.index_addone
               #self.field_id[tokens[0]] = len(self.field_id) 
           self.feat_to_field[fid] = self.field_id[tokens[0]]
+      print('----num fields', len(self.field_id))
       ifs.close()
 
   def get_feat_id_value(self, fields):

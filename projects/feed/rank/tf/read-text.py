@@ -26,10 +26,9 @@ dataset = Dataset('train')
 da = dataset.make_batch()
 
 for i, batch in enumerate(da):
-    print('---------------------------', i)
-    print(batch)
+    #print(batch)
     #print(batch[0]['index'][0])
     #print(batch[0]['field'][0])
-    if i == 2:
-        exit(0)
-exit(0)
+    
+    #if i == 2:
+    #    exit(0)
