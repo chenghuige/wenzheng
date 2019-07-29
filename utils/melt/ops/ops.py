@@ -887,14 +887,16 @@ def argmax_pooling(outputs, sequence_length, axis=1):
 def mean_pooling(outputs, sequence_length=None, axis=1):
   if sequence_length is None:
     return tf.reduce_mean(outputs, axis)
-  sequence_mask = tf.to_float(tf.expand_dims(tf.sequence_mask(sequence_length), -1))
+  sequence_mask = tf.to_float(tf.expand_dims(tf.sequence_mask(sequence_length, tf.shape(outputs)[1]), -1))
   outputs = outputs * sequence_mask
   return tf.reduce_sum(outputs, axis) / tf.to_float(tf.expand_dims(sequence_length, 1)) 
 
 def sum_pooling(outputs, sequence_length=None, axis=1):
   if sequence_length is None:
     return tf.reduce_sum(outputs, axis)
-  sequence_mask = tf.to_float(tf.expand_dims(tf.sequence_mask(sequence_length), -1))
+  # cause problem of dim mismatch if using multiple gpu using split batch
+  # if sequence_mask not input maxlens
+  sequence_mask = tf.to_float(tf.expand_dims(tf.sequence_mask(sequence_length, tf.shape(outputs)[1]), -1))
   outputs = outputs * sequence_mask
   return tf.reduce_sum(outputs, axis) 
 

@@ -1171,6 +1171,11 @@ def train(Dataset,
 
   batch_size = melt.batch_size()
   num_gpus = melt.num_gpus()
+
+  #hack for horovod
+  if FLAGS.use_horovod: 
+    num_gpus = 1
+
   batch_size_per_gpu = FLAGS.batch_size
   print('batch_size', batch_size, 'batch_size_per_gpu', batch_size_per_gpu, 'num_gpus', num_gpus)
 

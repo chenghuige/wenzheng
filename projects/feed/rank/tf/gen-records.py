@@ -25,6 +25,7 @@ import multiprocessing
 from multiprocessing import Value, Manager
 counter = Value('i', 0)
 
+import gezi
 import melt
 from text_dataset import Dataset
 
@@ -49,7 +50,7 @@ def build_features(infile):
         id = '{}\t{}'.format(fields[2], fields[3])
         feat_id, feat_field, feat_value = dataset.get_feat_set(fields)
         assert len(feat_id) == len(feat_value), "len(feat_id) == len(feat_value) -----------------"
-        assert len(feat_id) == len(feature_field)
+        assert len(feat_id) == len(feat_field)
 
         feature = {
                     'label': melt.int64_feature(label),

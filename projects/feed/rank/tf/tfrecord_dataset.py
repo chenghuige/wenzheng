@@ -39,6 +39,8 @@ class Dataset(melt.tfrecords.Dataset):
 
     features = tf.parse_single_example(example, features=features_dict)
 
+    print(features)
+
     melt.sparse2dense(features)
 
     y = features['label']

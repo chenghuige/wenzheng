@@ -1,2 +1,2 @@
-sh ./gen-valid.sh 
-sh ./gen-train.sh
+sh ./prepare/gen-valid.sh 
+sh ./prepare/gen-train.sh

@@ -114,7 +114,7 @@ class Dataset(object):
 
   @staticmethod
   def num_examples_per_epoch(subset='train', dir=None):
-    default_value = 10000
+    default_value = None
     if subset == 'train':
       file = (dir or gezi.dirname(FLAGS.train_input.split(',')[0])) + '/num_records.txt'
       return gezi.read_int_from(file, default_value)

@@ -26,7 +26,10 @@ import loss
 def main(_):
   melt.apps.init()
   fit = melt.apps.get_fit()
+  if melt.num_gpus() > 1:
+    FLAGS.valid_multiplier = 10
   FLAGS.eval_batch_size = 512 * FLAGS.valid_multiplier
+  print('---------eval_batch_size', FLAGS.eval_batch_size)
   model_name = FLAGS.model
   model = getattr(base, model_name)() 
   Dataset = TextDataset if not 'tfrecord' in FLAGS.train_input else TFRecordDataset

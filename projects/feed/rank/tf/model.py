@@ -113,6 +113,7 @@ class Deep(keras.Model):
       else:
         #TODO add melt.SumPooling.. 
         assert FLAGS.index_addone, 'can not calc length for like 0,1,2,0,0,0'
+        # sequence mask multi gpu split batch will cause dim unmatch FIXME
         c_len = melt.length(ids)
         x = self.pooling(x, c_len)
 
