@@ -80,9 +80,12 @@ class Dataset(object):
     if self.subset == 'train':
       shuffle_files=True 
       fix_sequence = False
+      hvd_shard = True
     else:
       shuffle_files = False
       fix_sequence = True
+      # TODO try horovod metric evaluate using multiple gpu
+      hvd_shard = False
 
     balance_pos_neg=False
     if self.pos_filter_fn and self.neg_filter_fn:
@@ -113,7 +116,8 @@ class Dataset(object):
         count_fn=self.count_fn if self.subset == 'train' else None,
         name=self.subset,
         Dataset=self.InputDataset,
-        use_pyfunc=self.use_pyfunc) 
+        use_pyfunc=self.use_pyfunc,
+        hvd_shard=hvd_shard) 
 
   @staticmethod
   def num_examples_per_epoch(subset='train', dir=None):

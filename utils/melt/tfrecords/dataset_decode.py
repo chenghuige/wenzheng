@@ -57,6 +57,7 @@ def inputs(files,
            return_iterator=False,
            Dataset=None,
            use_pyfunc=False,
+           hvd_shard=True,
            name='input'):
   """Reads input data num_epochs times.
   for sparse input here will do:
@@ -178,7 +179,7 @@ def inputs(files,
                   cycle_length=num_threads))
 
     #https://github.com/horovod/horovod/issues/223
-    if 'OMPI_COMM_WORLD_RANK' in os.environ:
+    if hvd_shard and 'OMPI_COMM_WORLD_RANK' in os.environ:
       import horovod.tensorflow as hvd
       dataset = dataset.shard(hvd.size(), hvd.rank())
 

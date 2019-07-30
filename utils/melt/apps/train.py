@@ -1318,8 +1318,9 @@ def train(Dataset,
         return valid_x[i], valid_y[i], valid_predict
 
       valid_ops = melt.tower(valid_fn, num_gpus, training=False)
-      if FLAGS.use_horovod:
-        num_valid_steps_per_epoch = num_valid_steps_per_epoch // hvd.size()
+      # # TODO  support multiple gpu eval
+      # if FLAGS.use_horovod:
+      #   num_valid_steps_per_epoch = num_valid_steps_per_epoch // hvd.size()
       metric_eval_fn = lambda model_path=None: \
                                     evaluate(valid_ops, 
                                             valid_iter,
@@ -1347,8 +1348,9 @@ def train(Dataset,
 
     test_ops = melt.tower(infer_fn, num_gpus, training=False)
 
-    if FLAGS.use_horovod:
-      num_test_steps_per_epoch = num_test_steps_per_epoch // hvd.size()
+    ## TODO support multiple gpu infer
+    # if FLAGS.use_horovod:
+    #   num_test_steps_per_epoch = num_test_steps_per_epoch // hvd.size()
 
     inference_fn = lambda model_path=None: \
                                   inference(test_ops, 
