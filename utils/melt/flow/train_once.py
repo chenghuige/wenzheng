@@ -209,7 +209,7 @@ def train_once(sess,
     except Exception:
       logging.info('Do nothing for metric eval fn with exception:\n', traceback.format_exc())
     
-    if not use_horovod or hvd.rank() == 0；
+    if not use_horovod or hvd.rank() == 0:
       #logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics' if model_path is None else 'epoch_valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
       logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
  

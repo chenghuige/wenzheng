@@ -286,7 +286,7 @@ flags.DEFINE_integer(
 
 # use horovod to do multiple gpu / server 
 flags.DEFINE_boolean('use_horovod', False, '')
-flags.DEFINE_boolean('horovod_eval', True, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently')
+flags.DEFINE_boolean('horovod_eval', False, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently, mpi4py ok for the first eval at start will hang after hvd train')
 
 
 inited = None 
