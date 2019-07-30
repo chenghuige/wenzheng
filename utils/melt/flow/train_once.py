@@ -209,8 +209,9 @@ def train_once(sess,
     except Exception:
       logging.info('Do nothing for metric eval fn with exception:\n', traceback.format_exc())
     
-    #logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics' if model_path is None else 'epoch_valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
-    logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
+    if not use_horovod or hvd.rank() == 0；
+      #logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics' if model_path is None else 'epoch_valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
+      logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
  
     if learning_rate is not None and (learning_rate_patience and learning_rate_patience > 0):
       assert learning_rate_decay_factor > 0 and learning_rate_decay_factor < 1

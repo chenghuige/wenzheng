@@ -59,6 +59,7 @@ except Exception:
 try:
   import horovod.tensorflow as hvd
   from mpi4py import MPI
+  comm = MPI.COMM_WORLD
 except Exception:
   print('---------no horovod support for mutliple gpu, notice we use mpi4py for some allgather op for eval')
   pass
@@ -285,7 +286,7 @@ flags.DEFINE_integer(
 
 # use horovod to do multiple gpu / server 
 flags.DEFINE_boolean('use_horovod', False, '')
-flags.DEFINE_boolean('horovod_eval', False, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently')
+flags.DEFINE_boolean('horovod_eval', True, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently')
 
 
 inited = None 
@@ -1051,11 +1052,13 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
 
   if FLAGS.use_horovod and FLAGS.horovod_eval:
     ## here for horovod mutliple gput dataset is not repeat mode
-    ids_list = MPI.COMM_WORLD.allgather(ids_list[0])
+    ids_list = comm.allgather(ids_list[0])
+    predictions_list = comm.allgather(predictions_list[0])
+    labels_list = comm.allgather(labels_list[0])
+    comm.barrier()
+
     ids2 = np.concatenate(ids_list)
-    predictions_list = MPI.COMM_WORLD.allgather(predictions_list[0])
     predicts2 = np.concatenate(predictions_list)
-    labels_list = MPI.COMM_WORLD.allgather(labels_list[0])
     labels2 = np.concatenate(labels_list)
     ids = []
     predicts = []
@@ -1145,10 +1148,12 @@ def inference(ops, iterator, num_steps, num_examples,
   except tf.errors.OutOfRangeError:
     pass
 
+  # TODO for infer might not need to use all gather ...
   if FLAGS.horovod and FLAGS.horovod_eval:
-    ids_list = MPI.COMM_WORLD.allgather(ids_list[0])
+    ids_list = comm.allgather(ids_list[0])
+    predictions_list = comm.allgather(predictions_list[0])
+    comm.barrier()
     ids2 = np.concatenate(ids_list)
-    predictions_list = MPI.COMM_WORLD.allgather(predictions_list[0])
     predicts2 = np.concatenate(predictions_list)
     ids = []
     predicts = []
