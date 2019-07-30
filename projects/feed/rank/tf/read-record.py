@@ -26,7 +26,7 @@ da = dataset.make_batch()
 
 for i, batch in enumerate(da):
     print('---------------------------', i)
-    print(batch[0])
+    print(batch[0]['id'], batch[0]['id'].shape, batch[1].shape, batch[0]['index'].shape)
     #print(batch[0]['index'][0])
     #print(batch[0]['field'][0])
     if i == 1:

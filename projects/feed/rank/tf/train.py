@@ -29,6 +29,7 @@ def main(_):
   melt.apps.init()
   fit = melt.apps.get_fit()
   FLAGS.eval_batch_size = 512 * FLAGS.valid_multiplier
+  #FLAGS.eval_batch_size = 30
   print('---------eval_batch_size', FLAGS.eval_batch_size)
   model_name = FLAGS.model
   model = getattr(base, model_name)() 

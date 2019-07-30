@@ -127,7 +127,8 @@ def train_once(sess,
 
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(train_once.summary_writer, projector_config)
     
-    if eval_ops is not None:
+    # TODO FIXME fore eval harovod
+    if eval_ops:
       #if deal_eval_results_fn is None and eval_names is not None:
       #  deal_eval_results_fn = lambda x: melt.print_results(x, eval_names)
       for i in range(eval_loops):
@@ -137,6 +138,9 @@ def train_once(sess,
         # might use EVAL_NO_SUMMARY if some old code has problem TODO CHECK
         if not log_dir or train_once.summary_op is None or gezi.env_has('EVAL_NO_SUMMARY'):
         #if not log_dir or train_once.summary_op is None:
+          if use_horovod:
+            for i in range(len(eval_ops)):
+              eval_ops[i] = hvd.allreduce(eval_ops[i])
           eval_results = sess.run(eval_ops, feed_dict=eval_feed_dict)
         else:
           eval_results = sess.run(eval_ops + [train_once.summary_op], feed_dict=eval_feed_dict)
@@ -146,6 +150,7 @@ def train_once(sess,
         #timer_.print()
         eval_stop = False
 
+        #if not use_horovod or  hvd.local_rank() == 0:
         # @TODO user print should also use logging as a must ?
         #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, 'eval_metrics:', end='')  
         eval_names_ = melt.adjust_names(eval_loss, eval_names)
@@ -182,27 +187,33 @@ def train_once(sess,
   if ((step == 0) and (not 'EVFIRST' in os.environ)) or ('QUICK' in os.environ) or ('EVFIRST' in os.environ and os.environ['EVFIRST'] == '0'):
     metric_evaluate = False
 
+  #print('------------step', step, 'metric_evaluate', metric_evaluate, hvd.rank())
   if metric_evaluate:
     # TODO better 
     if not model_path or 'model_path' not in inspect.getargspec(metric_eval_fn).args:
-      l = metric_eval_fn()
-      if len(l) == 2:
-        evaluate_results, evaluate_names = l
-        evaluate_summaries = None
-      else:
-        evaluate_results, evaluate_names, evaluate_summaries = l
+      metric_eval_fn_ = metric_eval_fn
     else:
-      try:
-        l = metric_eval_fn(model_path=model_path)     
-        if len(l) == 2:
+      metric_eval_fn_ = lambda: metric_eval_fn(model_path=model_path)
+    
+    try:
+      #print('------------before step', step,  'metric_evaluate', metric_evaluate, hvd.rank())
+      l = metric_eval_fn_()
+      if isinstance(l, tuple):
+        num_returns = len(l)    
+        if num_returns == 2:
           evaluate_results, evaluate_names = l
           evaluate_summaries = None
         else:
+          assert num_returns == 3, 'retrun 1,2,3 ok 4.. not ok'
           evaluate_results, evaluate_names, evaluate_summaries = l
-      except Exception:
-        logging.info('Do nothing for metric eval fn with exception:\n', traceback.format_exc())
+      else: #return dict
+        evaluate_results, evaluate_names = tuple(zip(*dict.items()))
+        evaluate_summaries = None
+    except Exception:
+      logging.info('Do nothing for metric eval fn with exception:\n', traceback.format_exc())
     
-    logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics' if model_path is None else 'epoch_valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
+    #logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics' if model_path is None else 'epoch_valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
+    logging.info2('{} valid_step:{} {}:{}'.format(epoch_str, step, 'valid_metrics', melt.parse_results(evaluate_results, evaluate_names)))
  
     if learning_rate is not None and (learning_rate_patience and learning_rate_patience > 0):
       assert learning_rate_decay_factor > 0 and learning_rate_decay_factor < 1
@@ -286,6 +297,7 @@ def train_once(sess,
     #if is_start or interval_steps and step % interval_steps == 0:
     
     interval_ok = not use_horovod or hvd.local_rank() == 0
+    interval_ok = True
     if interval_steps and step % interval_steps == 0 and interval_ok:
       train_average_loss = train_once.avg_loss.avg_score()
       if print_time:
@@ -443,7 +455,7 @@ def train_once(sess,
       # #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, info.getvalue())
       # logging.info2('{} {} {}'.format(epoch_str, 'eval_step: %d'%step, info.getvalue()))
       return stop
-    elif metric_evaluate:
+    elif metric_evaluate and log_dir:
       summary = tf.Summary()
       for summary_str in summary_strs:
         train_once.summary_writer.add_summary(summary_str, step)

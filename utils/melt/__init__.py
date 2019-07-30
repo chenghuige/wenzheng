@@ -29,6 +29,7 @@ from melt.util import *
 from melt.ops import *
 from melt.variable import * 
 from melt.tfrecords import * 
+from melt.tfrecords.dataset import Dataset
 
 from melt.inference import *
 

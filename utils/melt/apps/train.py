@@ -58,8 +58,9 @@ except Exception:
 
 try:
   import horovod.tensorflow as hvd
+  from mpi4py import MPI
 except Exception:
-  print('---------no horovod support for mutliple gpu')
+  print('---------no horovod support for mutliple gpu, notice we use mpi4py for some allgather op for eval')
   pass
 
 #-------input data
@@ -284,6 +285,7 @@ flags.DEFINE_integer(
 
 # use horovod to do multiple gpu / server 
 flags.DEFINE_boolean('use_horovod', False, '')
+flags.DEFINE_boolean('horovod_eval', True, 'wether using multiple gpu for eval and infer')
 
 
 inited = None 
@@ -297,8 +299,8 @@ def init():
     assert FLAGS.length_key, 'must set length key if using buckets'
 
   if FLAGS.use_horovod:
-    import horovod.tensorflow as hvd
     hvd.init()
+
     if FLAGS.torch:
       import torch
       torch.cuda.set_device(hvd.local_rank())
@@ -961,6 +963,8 @@ def train_flow(ops,
              names=names,
              gen_feed_dict_fn=gen_feed_dict_fn,
              deal_results_fn=deal_results_fn,
+             # TODO horovod might multiple gpu eval then reduceall mean
+             #eval_ops=eval_ops if not FLAGS.use_horovod or hvd.rank() == 0 else None,
              eval_ops=eval_ops,
              eval_names=eval_names,
              gen_eval_feed_dict_fn=gen_eval_feed_dict_fn,
@@ -985,9 +989,11 @@ def train_flow(ops,
              model_dir=model_dir if not FLAGS.use_horovod or hvd.rank() == 0 else None,
              log_dir=log_dir if not FLAGS.use_horovod or hvd.rank() == 0 else None,
              restore_from_latest=FLAGS.restore_from_latest,
+             #metric_eval_fn=metric_eval_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None,  
              metric_eval_fn=metric_eval_fn,
              metric_eval_interval_steps=metric_eval_interval_steps,
              valid_interval_epochs=FLAGS.valid_interval_epochs,
+             #inference_fn=inference_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None,
              inference_fn=inference_fn,
              inference_interval_epochs=FLAGS.inference_interval_epochs,
              no_log=FLAGS.no_log,
@@ -1031,6 +1037,7 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     pass
 
   try:
+    # here for multiple gpu dataset is repeate mode
     for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
       results = sess.run(ops)
       for i in range(num_gpus):
@@ -1042,12 +1049,34 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
   except tf.errors.OutOfRangeError:
     pass
 
-  try:
-    ids = np.concatenate(ids_list)[:num_examples]
-  except Exception:
-    ids = ['0'] * num_examples
-  predicts = np.concatenate(predictions_list)[:num_examples]
-  labels = np.concatenate(labels_list)[:num_examples]
+  if FLAGS.use_horovod and FLAGS.horovod_eval:
+    ## here for horovod mutliple gput dataset is not repeat mode
+    ids_list = MPI.COMM_WORLD.allgather(ids_list[0])
+    ids2 = np.concatenate(ids_list)
+    predictions_list = MPI.COMM_WORLD.allgather(predictions_list[0])
+    predicts2 = np.concatenate(predictions_list)
+    labels_list = MPI.COMM_WORLD.allgather(labels_list[0])
+    labels2 = np.concatenate(labels_list)
+    ids = []
+    predicts = []
+    labels = []
+
+    #print('-------------------ids2', ids2)
+    for i in range(len(ids2)):
+      if not ids2[i] == '':
+        ids.append(ids2[i])
+        predicts.append(predicts2[i])
+        labels.append(labels2[i])
+    ids = np.array(ids)
+    predicts = np.array(predicts)
+    labels = np.array(labels)
+  else:
+    try:
+      ids = np.concatenate(ids_list)[:num_examples]
+    except Exception:
+      ids = ['0'] * num_examples
+    predicts = np.concatenate(predictions_list)[:num_examples]
+    labels = np.concatenate(labels_list)[:num_examples]
 
   if model_path and write:
     ofile = model_path +  suffix
@@ -1116,8 +1145,24 @@ def inference(ops, iterator, num_steps, num_examples,
   except tf.errors.OutOfRangeError:
     pass
 
-  ids = np.concatenate(ids_list)[:num_examples]
-  predicts = np.concatenate(predictions_list)[:num_examples]
+  if FLAGS.horovod and FLAGS.horovod_eval:
+    ids_list = MPI.COMM_WORLD.allgather(ids_list[0])
+    ids2 = np.concatenate(ids_list)
+    predictions_list = MPI.COMM_WORLD.allgather(predictions_list[0])
+    predicts2 = np.concatenate(predictions_list)
+    ids = []
+    predicts = []
+    
+    for i in range(len(ids2)):
+      if not ids2[i] == '':
+        ids.append(ids2[i])
+        predicts.append(predicts2[i])
+    ids = np.array(ids)
+    predicts = np.array(predicts)
+
+  else:
+    ids = np.concatenate(ids_list)[:num_examples]
+    predicts = np.concatenate(predictions_list)[:num_examples]
 
   ofile = model_path +  suffix
   ofile2 = ofile + '.debug'
@@ -1229,8 +1274,9 @@ def train(Dataset,
   if valid_inputs:
     valid_dataset = valid_dataset or Dataset('valid')
     valid_batch_size = FLAGS.eval_batch_size or batch_size
-    valid_iter2 = valid_dataset.make_batch(valid_batch_size, valid_inputs, repeat=True, initializable=False)
-    valid_iter = valid_dataset.make_batch(valid_batch_size, valid_inputs)
+    # valid iter2 for valid op
+    valid_iter2 = valid_dataset.make_batch(valid_batch_size, valid_inputs, repeat=True, initializable=False, hvd_shard=FLAGS.horovod_eval)
+    valid_iter = valid_dataset.make_batch(valid_batch_size, valid_inputs, hvd_shard=FLAGS.horovod_eval)
   else:
     valid_dataset = None
   
@@ -1247,6 +1293,7 @@ def train(Dataset,
       else:
         num_valid_steps_per_epoch = None
   logging.info('num_valid_examples:', num_valid_examples)
+  assert not (FLAGS.valid_input and not num_valid_examples)
 
   if FLAGS.test_input:
     test_inputs = gezi.list_files(FLAGS.test_input)
@@ -1259,7 +1306,7 @@ def train(Dataset,
   if test_inputs:
     test_dataset = test_dataset or Dataset('test')
     test_batch_size = FLAGS.eval_batch_size or batch_size
-    test_iter = test_dataset.make_batch(test_batch_size, test_inputs)
+    test_iter = test_dataset.make_batch(test_batch_size, test_inputs, hvd_shard=FLAGS.horovod_eval)
     num_test_examples = test_dataset.num_examples_per_epoch('test')
     num_test_steps_per_epoch = -(-num_test_examples // test_batch_size) if num_test_examples else None
   else:
@@ -1318,9 +1365,11 @@ def train(Dataset,
         return valid_x[i], valid_y[i], valid_predict
 
       valid_ops = melt.tower(valid_fn, num_gpus, training=False)
-      # # TODO  support multiple gpu eval
-      # if FLAGS.use_horovod:
-      #   num_valid_steps_per_epoch = num_valid_steps_per_epoch // hvd.size()
+
+      if FLAGS.use_horovod and FLAGS.horovod_eval:
+        # multiple gpu eval
+        num_valid_steps_per_epoch = -(-num_valid_examples // (valid_batch_size * hvd.size()))
+
       metric_eval_fn = lambda model_path=None: \
                                     evaluate(valid_ops, 
                                             valid_iter,
@@ -1348,9 +1397,9 @@ def train(Dataset,
 
     test_ops = melt.tower(infer_fn, num_gpus, training=False)
 
-    ## TODO support multiple gpu infer
-    # if FLAGS.use_horovod:
-    #   num_test_steps_per_epoch = num_test_steps_per_epoch // hvd.size()
+    if FLAGS.use_horovod and FLAGS.horovod_eval:
+      # multiple gpu infer
+      num_test_steps_per_epoch = -(-num_test_examples // (test_batch_size * hvd.size()))
 
     inference_fn = lambda model_path=None: \
                                   inference(test_ops, 
@@ -1391,7 +1440,13 @@ def train(Dataset,
   #   checkpoint.save(checkpoint_prefix)
 
   if FLAGS.use_horovod:
-    num_steps_per_epoch = num_steps_per_epoch // hvd.size()
+    num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size()))
+
+  # if horovod do valid one batch will fail on next run train ops WHY ? TODO FIXME eval ops must all set to None using horovod now
+  #eval_ops = eval_ops if not FLAGS.use_horovod or hvd.rank() == 0 else None
+  eval_ops = eval_ops if not FLAGS.use_horovod else None
+  metric_eval_fn = metric_eval_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None
+  inference_fn = inference_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None
 
   train_flow(ops, 
              eval_ops=eval_ops,

@@ -13,7 +13,7 @@ python ./train.py \
     --eager=0 \
     --valid_interval_epochs=0.1 \
     --train_input=../input/train \
-    --valid_input=../input/valid \
+    --valid_input=../input/valid.small \
     --model_dir=../input/model/$model.horovod \
     --batch_size=512 \
     --max_feat_len=100 \

@@ -26,16 +26,26 @@ import gezi
 import melt
 logging = melt.logging
 
+# NOTICE if batc_parse, first batch then map.. you have faster speed but each batch is the same size like 256 even for the last batch with drop remind=False
+# have tested textlinedataset behavior like above TODO check tfrecord
 class Dataset(object):
-  def __init__(self, subset='train', InputDataset=None, use_pyfunc=False):
+  def __init__(self, 
+               subset='train',
+               batch_size=None,
+               filenames=None, 
+               InputDataset=None, 
+               batch_parse=False,
+               hvd_shard=True):
     self.subset = subset
     self.filter_fn = None
     self.pos_filter_fn = None
     self.neg_filter_fn = None 
     self.count_fn = None
     self.InputDataset = InputDataset
-    self.use_pyfunc = use_pyfunc
-    self.batch_size = None
+    self.batch_parse = batch_parse
+    self.batch_size = batch_size or FLAGS.batch_size
+    self.filenames = filenames or self.get_filenames()
+    self.hvd_shard = hvd_shard
 
   def get_filenames(self):
     if self.subset in ['train', 'valid', 'test']:
@@ -51,20 +61,26 @@ class Dataset(object):
   def parser(self, example):
     pass
 
+  def adjust(self, result):
+    return result
+
   def make_batch(self, 
                  batch_size=None, 
                  filenames=None,
                  initializable=False,
                  repeat=None,
-                 return_iterator=True):
+                 return_iterator=True,
+                 hvd_shard=None):
     """Read the images and labels from 'filenames'."""
     #with tf.device('/cpu:0'):
-    batch_size = batch_size or FLAGS.batch_size
+    hvd_shard = hvd_shard or self.hvd_shard
+    batch_size = batch_size or self.batch_size
     self.batch_size = batch_size
-    filenames = filenames or self.get_filenames()
+    filenames = filenames or self.filenames
     logging.info(self.subset, 'num files', len(filenames))
     assert filenames, self.subset
     min_queue_examples = 20000
+    allow_smaller_final_batch = True
     if repeat is None:
       if tf.executing_eagerly():
         repeat = False # if True will not consider epoch stop using for... loop forever for item in dataset..
@@ -80,20 +96,23 @@ class Dataset(object):
     if self.subset == 'train':
       shuffle_files=True 
       fix_sequence = False
-      hvd_shard = True
+      # if self.batch_parse:
+      #   allow_smaller_final_batch = False
     else:
       shuffle_files = False
       fix_sequence = True
       # TODO try horovod metric evaluate using multiple gpu
-      hvd_shard = False
 
     balance_pos_neg=False
     if self.pos_filter_fn and self.neg_filter_fn:
       balance_pos_neg = True
 
+    print('-----------dataset repeat', repeat)
+    print('-----------dataset batch_parse', self.batch_parse)
+    print('-----------dataset allow final small batch', allow_smaller_final_batch)
     # for bow using cpu 69 insts/s using gpu 54 inst/s
     with tf.device('/cpu:0'):
-      return melt.dataset_decode.inputs(
+      result = melt.dataset_decode.inputs(
         filenames, 
         decode_fn=self.parse,
         batch_size=batch_size,
@@ -103,6 +122,7 @@ class Dataset(object):
         buffer_size=min_queue_examples + 3 * batch_size if not FLAGS.buffer_size else FLAGS.buffer_size,
         initializable=initializable,
         repeat=repeat,
+        allow_smaller_final_batch=allow_smaller_final_batch,
         bucket_boundaries=FLAGS.buckets,
         bucket_batch_sizes=FLAGS.batch_sizes,
         length_index=FLAGS.length_index,
@@ -116,8 +136,11 @@ class Dataset(object):
         count_fn=self.count_fn if self.subset == 'train' else None,
         name=self.subset,
         Dataset=self.InputDataset,
-        use_pyfunc=self.use_pyfunc,
+        batch_parse=self.batch_parse,
         hvd_shard=hvd_shard) 
+
+      return self.adjust(result)
+
 
   @staticmethod
   def num_examples_per_epoch(subset='train', dir=None):

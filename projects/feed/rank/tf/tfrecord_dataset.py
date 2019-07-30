@@ -27,6 +27,8 @@ from config import *
 class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='valid'):
     super(Dataset, self).__init__(subset)
+    # only support line parse not batch parse since here parse_single_example
+    # so slower then text + pyfunc due to they use batch parse
   
   def parse(self, example):
     features_dict = {

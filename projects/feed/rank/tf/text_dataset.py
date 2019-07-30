@@ -26,10 +26,9 @@ from config import *
 
 class Dataset(melt.tfrecords.Dataset):
   def __init__(self, subset='train'):
-    super(Dataset, self).__init__(subset, 
-                                  InputDataset=tf.data.TextLineDataset,
-                                  use_pyfunc=True)
-    
+    super(Dataset, self).__init__(subset)
+    self.InputDataset = tf.data.TextLineDataset
+    self.batch_parse = FLAGS.batch_parse
     self.index_addone = int(FLAGS.index_addone)
     self.max_feat_len = FLAGS.max_feat_len
 
@@ -39,16 +38,6 @@ class Dataset(melt.tfrecords.Dataset):
     self.batch_size = melt.batch_size()
 
   def load_feature_files(self):
-    #   ifs = open(FLAGS.field_file_path, 'r')
-    #   cursor = 0
-    #   while True:
-    #       line = ifs.readline()
-    #       if line == '':
-    #           break
-    #       line = line.rstrip()
-    #       self.field_id[line] = cursor
-    #       cursor += 1
-    #   ifs.close()
       self.field_id = {}
       ifs = open(FLAGS.feat_file_path, 'r')
       while True:
@@ -72,21 +61,6 @@ class Dataset(melt.tfrecords.Dataset):
       print('----num fields', len(self.field_id))
       ifs.close()
 
-  def get_feat_id_value(self, fields):
-      feat_id = []
-      feat_value = []
-  
-      for i in range(4, len(fields)):
-          tokens = fields[i].split(':')
-          assert len(tokens) == 2
-          f_id = int(tokens[0])
-          if f_id in self.feat_to_field:
-              f_value = float(tokens[1])
-              feat_id.append(f_id)
-              feat_value.append(f_value)
-  
-      return feat_id, feat_value
-  
   def get_feat_set(self, fields):
     feat_id = []
     feat_field = []
@@ -100,20 +74,43 @@ class Dataset(melt.tfrecords.Dataset):
         #f_id = int(tokens[0]) - 1 + FLAGS.index_addone
         f_id = int(tokens[0]) - 1 + self.index_addone
         f_field = self.feat_to_field[f_id]
-        f_value = float(tokens[1])
+        f_value = np.float32(tokens[1])
         feat_id.append(f_id)
         feat_field.append(f_field)
         feat_value.append(f_value)
 
     return feat_id, feat_field, feat_value
+  
+  #-----------by this way decode line by line , more powerfull, but slower if batch parse then you must have fixed batch size! 1epoch:[2.69h] batch parse 2.03h
+  def parse_line(self, line):
+    fields = line.decode().split('\t')
+    if len(fields) > 4:
+      #need np.float32 if float32 tf complain double ..
+      label = np.float32(fields[0])
+      id = '{}\t{}'.format(fields[2], fields[3])
+      feat_id, feat_field, feat_value = self.get_feat_set(fields)
+      # need [label] consider tfrecord generation
+      return feat_id, feat_field, feat_value, [label], [id]
 
+  def line_parse_(self, string_line):
+    feat_id, feat_field, feat_value, label, id = \
+        tf.py_func(self.parse_line, [string_line],
+                    [tf.int64, tf.int64, tf.float32, tf.float32, tf.string])
+    feat_id.set_shape([None])
+    feat_field.set_shape([None])
+    feat_value.set_shape([None])
+    label.set_shape([1]) 
+    id.set_shape([1])
+    # label id shape like (batch_size,)
+    return {'index': feat_id, 'field': feat_field, 'value': feat_value, 'id': tf.squeeze(id, -1)}, tf.squeeze(label, -1)
 
-  def make_input_fn(self, feat_list):
+  # https://stackoverflow.com/questions/52284951/tensorflow-py-func-typeerror-with-tf-data-dataset-output
+  def parse_batch(self, feat_list):
       feat_ids = np.zeros((self.batch_size, self.max_feat_len), dtype=np.int64)
       feat_fields = np.zeros((self.batch_size, self.max_feat_len), dtype=np.int64)
       feat_values = np.zeros((self.batch_size, self.max_feat_len), dtype=np.float32)
       labels = np.zeros(self.batch_size, dtype=np.float32)
-      ids = [''] * self.batch_size
+      ids = [''] * self.batch_size # ''means not effective id, usefull for batch_parse + not repeat final batch with padding elments
 
       cur_max_feat_len = 0
       for bid, feat_line in enumerate(feat_list):
@@ -132,23 +129,33 @@ class Dataset(melt.tfrecords.Dataset):
               feat_values[bid, :trunc_len] = feat_value[:trunc_len]
               cur_max_feat_len = max(cur_max_feat_len, trunc_len)
       
+      # evn here [:bid, :cur..] still final batch size is same not small 
+      # feat_ids = feat_ids[:bid, :cur_max_feat_len]
+      # feat_fields = feat_fields[:bid, :cur_max_feat_len]
+      # feat_values = feat_values[:bid, :cur_max_feat_len]
       feat_ids = feat_ids[:, :cur_max_feat_len]
       feat_fields = feat_fields[:, :cur_max_feat_len]
       feat_values = feat_values[:, :cur_max_feat_len]
-
-      #-------do not use np array.. for string
-      #ids = np.array(ids)
   
       return feat_ids, feat_fields, feat_values, labels, ids
-  
-  def parse(self, string_line):
-      feat_ids, feat_fields, feat_values, labels, ids  = \
-          tf.py_func(self.make_input_fn, [string_line],
-                      [tf.int64, tf.int64, tf.float32, tf.float32, tf.string])
-    #---for pyfunc you need to set shape.. otherwise first dim unk 
-      feat_ids.set_shape((self.batch_size, None))
-      feat_fields.set_shape((self.batch_size, None))
-      feat_values.set_shape((self.batch_size, None))
 
-      return {'index': feat_ids, 'field': feat_fields, 'value': feat_values, 'id': ids}, labels
+    
+  def batch_parse_(self, string_line):
+    feat_ids, feat_fields, feat_values, labels, ids = \
+        tf.py_func(self.parse_batch, [string_line],
+                    [tf.int64, tf.int64, tf.float32, tf.float32, tf.string])
+
+    #---for pyfunc you need to set shape.. otherwise first dim unk strange for keras layer TODO FIXME
+    feat_ids.set_shape((self.batch_size, None))
+    feat_fields.set_shape((self.batch_size, None))
+    feat_values.set_shape((self.batch_size, None))
+
+    return {'index': feat_ids, 'field': feat_fields, 'value': feat_values, 'id': ids}, labels
+
+  def parse(self, string_line):
+    if self.batch_parse:
+      return self.batch_parse_(string_line)
+    else:
+      return self.line_parse_(string_line)
+
   

@@ -47,3 +47,5 @@ flags.DEFINE_bool('deep_final_act', False, 'deep do not need final act relu')
 
 flags.DEFINE_bool('field_concat', False, '')
 #flags.DEFINE_integer('num_fields', 100, '')
+
+flags.DEFINE_bool('batch_parse', True, '')

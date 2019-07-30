@@ -390,6 +390,7 @@ def tf_train_flow(train_once_fn,
     pre_epoch_eval_loss = 1e20
     best_epoch_eval_loss = 1e20
     num_allowed_bad_epochs = 4 #allow 5 non decrease eval loss epochs  before stop
+    epoch_saved_step = 0
     while not coord.should_stop():
       model_step_path = None
       if model_dir:
@@ -444,6 +445,7 @@ def tf_train_flow(train_once_fn,
   
         if save_interval_steps and num_steps_per_epoch and fixed_step % int(num_steps_per_epoch * save_interval_epochs) == 0:
           # TODO only epoch in name not sep ?
+          epoch_saved_step = step
           model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
           model_step_path = model_path_ + '-' + str(step)
           epoch_saver.save(sess, model_path_, global_step=step)
@@ -486,7 +488,8 @@ def tf_train_flow(train_once_fn,
         raise tf.errors.OutOfRangeError(None, None,'Reached max num epochs of %d'%max_num_epochs)
   #except tf.errors.OutOfRangeError, e:
   except tf.errors.OutOfRangeError:
-    if not (step==start) and save_model and step % save_interval_steps != 0 and model_dir:
+    # if run 2 epoch and we have just epoch saved, do not need to save only 1 step more model
+    if (step - epoch_saved_step > 1) and not (step==start) and save_model and step % save_interval_steps != 0 and model_dir:
       model_path_ = _get_checkpoint_path(checkpoint_path, step, num_steps_per_epoch)
       saver.save(sess, model_path_, global_step=step)
       if freeze_graph:
@@ -500,8 +503,8 @@ def tf_train_flow(train_once_fn,
       logging.info('Done one step')
       exit(0)
     
-    # if metric_eval_fn is not None:
-    #   metric_eval_fn(model_path=model_step_path)
+    if (step - epoch_saved_step > 1) and metric_eval_fn is not None:
+      metric_eval_fn(model_path=model_step_path)
     
     if (num_epochs and fixed_step / num_steps_per_epoch >= num_epochs) or (num_steps and step == start + num_steps) :
       logging.info('Done training for %.3f epochs, %d steps.' % (fixed_step / num_steps_per_epoch, step))

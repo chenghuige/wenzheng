@@ -1,7 +1,6 @@
 model=WideDeep
     #--valid_input=../input/valid \
 python ./train.py \
-    --eval_batch_size=1 \
     --deep_final_act=0 \
     --mlp_dims=50 \
     --mlp_drop=0.2 \
@@ -14,8 +13,8 @@ python ./train.py \
     --valid_interval_epochs=0.1 \
     --train_input=../input/train \
     --valid_input=../input/valid \
-    --model_dir=../input/model/$model.horovod \
-    --batch_size=512 \
+    --model_dir=../input/model/$model.horovod.b256 \
+    --batch_size=256 \
     --max_feat_len=100 \
     --optimizer=bert \
     --min_learning_rate=1e-6 \

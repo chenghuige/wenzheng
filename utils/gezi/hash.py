@@ -35,3 +35,4 @@ def fasttext_hash(word):
 
 hash = fasttext_hash
 
+

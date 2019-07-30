@@ -22,6 +22,11 @@ import sys
 import os
 import numpy as np
 
+try:
+  import horovod.tensorflow as hvd
+except Exception:
+  pass
+
 # TODO
 # #https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/utils/data_reader.py
 def padded_batch(dataset, batch_size, padded_shapes=None):
@@ -56,7 +61,7 @@ def inputs(files,
            count_fn=None,
            return_iterator=False,
            Dataset=None,
-           use_pyfunc=False,
+           batch_parse=False, #by default will be line parse
            hvd_shard=True,
            name='input'):
   """Reads input data num_epochs times.
@@ -159,32 +164,46 @@ def inputs(files,
     shuffle_batch = False 
 
   drop_remainder = False if allow_smaller_final_batch else True
+  #drop_remainder = True
 
   if not num_prefetch_batches:
     num_prefetch_batches = num_threads + 3
   
   if buffer_size is None:
     buffer_size = min_after_dequeue + num_prefetch_batches * batch_size
+
+  def shard(dataset):
+    return dataset.shard(hvd.size(), hvd.rank())
+
+  use_horovod =  hvd_shard and 'OMPI_COMM_WORLD_RANK' in os.environ
     
   with tf.name_scope(name):
     # https://github.com/tensorflow/tensorflow/issues/14857
     Dataset = Dataset or tf.data.TFRecordDataset
     if not shuffle_files:
       dataset = Dataset(files)
+      if use_horovod:
+        dataset = shard(dataset)
     else:
-      num_shards = len(files)
-      dataset = tf.data.Dataset.list_files(files).shuffle(num_shards) \
-                .apply(tf.contrib.data.parallel_interleave(
-                  Dataset, 
-                  cycle_length=num_threads))
+      num_files = len(files)
+      if num_files == 1:
+        dataset = Dataset(files)
+        if use_horovod:
+          dataset = shard(dataset)
+      else:
+        dataset = tf.data.Dataset.list_files(files)
+        if use_horovod:
+          dataset = shard(dataset)
+        # TODO still need shuffle here ?
+        #https://www.tensorflow.org/api_docs/python/tf/data/Dataset#shuffle
+        dataset = dataset.shuffle(num_files)\
+                         .apply(tf.contrib.data.parallel_interleave(
+                                Dataset, 
+                                cycle_length=num_threads))
 
-    #https://github.com/horovod/horovod/issues/223
-    if hvd_shard and 'OMPI_COMM_WORLD_RANK' in os.environ:
-      import horovod.tensorflow as hvd
-      dataset = dataset.shard(hvd.size(), hvd.rank())
 
-    # must batch then map if use pyfunc which you might use py_func
-    if not use_pyfunc:
+    # must batch then map if use pyfunc which you might use py_func, here py_func means batch parse otherwise slower but simple and powerfull...
+    if not batch_parse:
       dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
 
     try:
@@ -316,12 +335,12 @@ def inputs(files,
             example_to_bucket_id, batching_fn, None, window_size_fn)).shuffle((len(boundaries) + 1) * 25)      
     else:
       # no bucket
-      if dynamic_pad and (not use_pyfunc):
+      if dynamic_pad and not batch_parse:
         dataset = dataset.padded_batch(batch_size, padded_shapes=(shapes), drop_remainder=drop_remainder)
       else:
         dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
-        if use_pyfunc:
-         dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
+        if batch_parse:
+          dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
 
     # if not allow_smaller_final_batch:
     #   # https://github.com/tensorflow/tensorflow/issues/13745 dataset.apply(tf.contrib.data.batch_and_drop_remainder(10)).
@@ -333,27 +352,13 @@ def inputs(files,
 
   # Save the iterator state by adding it to the saveable objects collection.
   #tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
-    try:
-      if tf.executing_eagerly():
-        # TODO store iterator for eager
-        return dataset
-      else:
-        if repeat and not initializable:
-          iterator = dataset.make_one_shot_iterator() 
-          saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
-          tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
-          if return_iterator:
-            return iterator
-          ops = iterator.get_next()
-          return ops
-        else:
-          iterator = dataset.make_initializable_iterator()
-          saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
-          tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
-          return iterator
-    except Exception:
+    #try:
+    if tf.executing_eagerly():
+      # TODO store iterator for eager
+      return dataset
+    else:
       if repeat and not initializable:
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset.make_one_shot_iterator() 
         saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
         tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
         if return_iterator:
@@ -361,8 +366,22 @@ def inputs(files,
         ops = iterator.get_next()
         return ops
       else:
-        # if not repeat then need to init iterator each epoch
         iterator = dataset.make_initializable_iterator()
         saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
         tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
-        return iterator         
+        return iterator
+    # except Exception:
+    #   if repeat and not initializable:
+    #     iterator = dataset.make_one_shot_iterator()
+    #     saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+    #     tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    #     if return_iterator:
+    #       return iterator
+    #     ops = iterator.get_next()
+    #     return ops
+    #   else:
+    #     # if not repeat then need to init iterator each epoch
+    #     iterator = dataset.make_initializable_iterator()
+    #     saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
+    #     tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    #     return iterator         
