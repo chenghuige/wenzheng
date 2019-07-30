@@ -486,7 +486,7 @@ def tf_train_flow(train_once_fn,
         raise tf.errors.OutOfRangeError(None, None,'Reached max num epochs of %d'%max_num_epochs)
   #except tf.errors.OutOfRangeError, e:
   except tf.errors.OutOfRangeError:
-    if not (step==start) and save_model and step % save_interval_steps != 0 and mdoel_dir:
+    if not (step==start) and save_model and step % save_interval_steps != 0 and model_dir:
       model_path_ = _get_checkpoint_path(checkpoint_path, step, num_steps_per_epoch)
       saver.save(sess, model_path_, global_step=step)
       if freeze_graph:
