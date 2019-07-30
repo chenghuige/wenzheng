@@ -285,7 +285,7 @@ flags.DEFINE_integer(
 
 # use horovod to do multiple gpu / server 
 flags.DEFINE_boolean('use_horovod', False, '')
-flags.DEFINE_boolean('horovod_eval', True, 'wether using multiple gpu for eval and infer')
+flags.DEFINE_boolean('horovod_eval', False, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently')
 
 
 inited = None 
@@ -1443,8 +1443,8 @@ def train(Dataset,
     num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size()))
 
   # if horovod do valid one batch will fail on next run train ops WHY ? TODO FIXME eval ops must all set to None using horovod now
-  eval_ops = eval_ops if not FLAGS.use_horovod or hvd.rank() == 0 else None
-  #eval_ops = eval_ops if not FLAGS.use_horovod else None
+  #eval_ops = eval_ops if not FLAGS.use_horovod or hvd.rank() == 0 else None
+  eval_ops = eval_ops if not FLAGS.use_horovod else None
   
   metric_eval_fn = metric_eval_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None
   inference_fn = inference_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None
