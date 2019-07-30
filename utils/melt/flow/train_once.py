@@ -127,7 +127,7 @@ def train_once(sess,
 
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(train_once.summary_writer, projector_config)
     
-    # TODO FIXME fore eval harovod
+    # if eval ops then should have bee rank 0
     if eval_ops:
       #if deal_eval_results_fn is None and eval_names is not None:
       #  deal_eval_results_fn = lambda x: melt.print_results(x, eval_names)
@@ -138,9 +138,6 @@ def train_once(sess,
         # might use EVAL_NO_SUMMARY if some old code has problem TODO CHECK
         if not log_dir or train_once.summary_op is None or gezi.env_has('EVAL_NO_SUMMARY'):
         #if not log_dir or train_once.summary_op is None:
-          if use_horovod:
-            for i in range(len(eval_ops)):
-              eval_ops[i] = hvd.allreduce(eval_ops[i])
           eval_results = sess.run(eval_ops, feed_dict=eval_feed_dict)
         else:
           eval_results = sess.run(eval_ops + [train_once.summary_op], feed_dict=eval_feed_dict)
@@ -246,12 +243,13 @@ def train_once(sess,
     feed_dict = {} if gen_feed_dict_fn is None else gen_feed_dict_fn()
     # NOTICE ops[2] should be scalar otherwise wrong!! loss should be scalar
     #print('---------------ops', ops) 
-    if eval_ops is not None or not log_dir or not hasattr(train_once, 'summary_op') or train_once.summary_op is None:
-      feed_dict[K.learning_phase()] = 0
+    if eval_ops is not None or not log_dir or not hasattr(train_once, 'summary_op') or train_once.summary_op is None or use_horovod:
+      feed_dict[K.learning_phase()] = 1
       results = sess.run(ops, feed_dict=feed_dict) 
     else:
+      ## TODO why below ?
       #try:
-      feed_dict[K.learning_phase()] = 0
+      feed_dict[K.learning_phase()] = 1
       results = sess.run(ops + [train_once.summary_op], feed_dict=feed_dict)
       summary_str = results[-1]
       results = results[:-1]

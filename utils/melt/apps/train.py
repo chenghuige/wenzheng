@@ -1275,7 +1275,7 @@ def train(Dataset,
     valid_dataset = valid_dataset or Dataset('valid')
     valid_batch_size = FLAGS.eval_batch_size or batch_size
     # valid iter2 for valid op
-    valid_iter2 = valid_dataset.make_batch(valid_batch_size, valid_inputs, repeat=True, initializable=False, hvd_shard=FLAGS.horovod_eval)
+    valid_iter2 = valid_dataset.make_batch(valid_batch_size, valid_inputs, repeat=True, initializable=False, hvd_shard=False)
     valid_iter = valid_dataset.make_batch(valid_batch_size, valid_inputs, hvd_shard=FLAGS.horovod_eval)
   else:
     valid_dataset = None
@@ -1443,8 +1443,9 @@ def train(Dataset,
     num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size()))
 
   # if horovod do valid one batch will fail on next run train ops WHY ? TODO FIXME eval ops must all set to None using horovod now
-  #eval_ops = eval_ops if not FLAGS.use_horovod or hvd.rank() == 0 else None
-  eval_ops = eval_ops if not FLAGS.use_horovod else None
+  eval_ops = eval_ops if not FLAGS.use_horovod or hvd.rank() == 0 else None
+  #eval_ops = eval_ops if not FLAGS.use_horovod else None
+  
   metric_eval_fn = metric_eval_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None
   inference_fn = inference_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None
 
