@@ -302,8 +302,8 @@ def init():
     if FLAGS.torch:
       import torch
       torch.cuda.set_device(hvd.local_rank())
-    FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
-    print('using horovod multipy learning rate by {} to {}'.format(hvd.size(), FLAGS.learning_rate))
+    # FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
+    # print('using horovod multipy learning rate by {} to {}'.format(hvd.size(), FLAGS.learning_rate))
 
   if 'TPU' in os.environ and int(os.environ['TPU']) == 1:
     FLAGS.use_tpu = True
