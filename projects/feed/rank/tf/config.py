@@ -38,7 +38,7 @@ flags.DEFINE_bool('rank_loss', False, '')
 flags.DEFINE_integer('feature_dict_size', 3200000, '')
 flags.DEFINE_integer('field_dict_size', 100, '')
 
-flags.DEFINE_integer('valid_multiplier', 100, '')
+flags.DEFINE_integer('valid_multiplier', 10, '')
 
 flags.DEFINE_string('mlp_dims', None, 'use 50 better then None but more param')
 flags.DEFINE_float('mlp_drop', 0.2, '')
