@@ -154,7 +154,7 @@ def tf_train_flow(train_once_fn,
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
 
   model_dir_ = model_dir
-  if use_horovod and hvd.rank != 0:
+  if use_horovod and hvd.rank() != 0:
     model_dir = None
   
   if sess is None:
@@ -437,6 +437,7 @@ def tf_train_flow(train_once_fn,
 
       step += 1
       fixed_step += 1
+
       if save_model and step and model_dir:
         #step 0 is also saved! actually train one step and save
         if step % save_interval_steps == 0:
