@@ -253,9 +253,12 @@ def optimize_loss(losses,
       #     compression = Compression.fp16
       # else:
       #     compression = Compression.none
-      # opt = hvd.DistributedOptimizer(opt, sparse_as_dense=True,
+      # opt = hvd.DistributedOptimizer(opt, sparse_as_dense=True,t7
       #                                compression=compression)
       opt = hvd.DistributedOptimizer(opt)
+
+      ## just use opt.minize 0.1 epoch 64 *  8 gpu  auc 0.717 if cmment this line using gradiens.. auc 0.7186
+      #return opt.minimize(losses[0], global_step=global_step if increment_global_step else None)
 
     if num_gpus > 1:
       # Calculate the gradients for each model tower.
@@ -330,6 +333,10 @@ def optimize_loss(losses,
                       clip_ops.global_norm(list(zip(*gradients))[0]))
     else:
       loss = losses[0]
+
+      ## similar but will do do clip gradient and other things, if comment auc 0.72739 not comment 0.72634
+      #return opt.minimize(losses[0], global_step=global_step if increment_global_step else None)
+      
       # All trainable variables, if specific variables are not specified.
       if variables is None:
         variables = vars_.trainable_variables()
@@ -347,7 +354,7 @@ def optimize_loss(losses,
       # Optionally add gradient noise.
       if gradient_noise_scale is not None:
         gradients = _add_scaled_noise_to_gradients(gradients,
-                                                  gradient_noise_scale)
+                                                   gradient_noise_scale)
 
       # Multiply some gradients.
       if gradient_multipliers is not None:

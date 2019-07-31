@@ -1,6 +1,7 @@
 model=WideDeep
     #--valid_input=../input/valid \
 python ./train.py \
+    --valid_multiplier=10 \
     --eval_batch_size=1 \
     --deep_final_act=0 \
     --mlp_dims=50 \

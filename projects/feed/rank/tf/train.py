@@ -40,7 +40,8 @@ def main(_):
       model,  
       loss_fn,
       eval_fn=ev.evaluate,
-      valid_write_fn=ev.valid_write)   
+      valid_write_fn=ev.valid_write,
+      write_evaluate=False)   
 
 if __name__ == '__main__':
   tf.app.run()  
