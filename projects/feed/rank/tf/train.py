@@ -38,7 +38,7 @@ def main(_):
   Dataset = TextDataset if not 'tfrecord' in FLAGS.train_input else TFRecordDataset
 
   loss_fn = tf.losses.sigmoid_cross_entropy if not FLAGS.rank_loss else loss.binary_crossentropy_with_ranking
-  
+
   print('--------------', model, Dataset, loss_fn)
 
   fit(Dataset,
@@ -46,7 +46,7 @@ def main(_):
       loss_fn,
       eval_fn=ev.evaluate,
       valid_write_fn=ev.valid_write,
-      write_evaluate=FLAGS.write_valid)   
+      write_valid=FLAGS.write_valid)   
 
 if __name__ == '__main__':
   tf.app.run()  
