@@ -49,3 +49,4 @@ flags.DEFINE_bool('field_concat', False, '')
 #flags.DEFINE_integer('num_fields', 100, '')
 
 flags.DEFINE_bool('batch_parse', True, '')
+flags.DEFINE_bool('write_valid', False, '')

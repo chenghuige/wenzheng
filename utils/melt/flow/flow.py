@@ -518,8 +518,8 @@ def tf_train_flow(train_once_fn,
       logging.info('Done one step')
       exit(0)
     
-    if (step - epoch_saved_step > 1) and metric_eval_fn is not None:
-      metric_eval_fn(model_path=model_step_path)
+    # if (step - epoch_saved_step > 1) and metric_eval_fn is not None:
+    #   metric_eval_fn(model_path=model_step_path)
     
     if (num_epochs and fixed_step / num_steps_per_epoch >= num_epochs) or (num_steps and step == start + num_steps) :
       logging.info('Done training for %.3f epochs, %d steps.' % (fixed_step / num_steps_per_epoch, step))
