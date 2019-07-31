@@ -3,7 +3,7 @@
 #          \file   train.py
 #        \author   chenghuige  
 #          \date   2016-08-17 10:30:20.286494
-#   \Description  
+#   \Description   METRIC=1 python ....    just run metric eval
 # ==============================================================================
 
 """
@@ -1082,7 +1082,6 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     ids = np.array(ids)
     predicts = np.array(predicts)
     labels = np.array(labels)
-    print('-------------len predicts filter', len(predicts), len(ids))
   else:
     try:
       # concat list so like [[512,], [512,]...] -> [512 * num_batchs]

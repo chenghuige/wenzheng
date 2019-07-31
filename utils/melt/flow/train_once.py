@@ -192,7 +192,7 @@ def train_once(sess,
   #print('------------1step', step, 'pre metric_evaluate', metric_evaluate, hvd.rank())
   if metric_evaluate:
     if use_horovod:
-      print('------------------------', step, model_path, hvd.rank())
+      print('------------metric evaluate step', step, model_path, hvd.rank())
     if not model_path or 'model_path' not in inspect.getargspec(metric_eval_fn).args:
       metric_eval_fn_ = metric_eval_fn
     else:
