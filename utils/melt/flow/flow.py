@@ -269,6 +269,8 @@ def tf_train_flow(train_once_fn,
   pre_epoch = None
   if model_dir:
     model_path = _get_model_path(model_dir, save_model)
+    # if not model_path:
+    #   model_path = _get_model_path(os.path.join(model_dir, 'epoch'))
     #print(model_path)
     model_dir = gezi.get_dir(model_dir) #incase you pass ./model/model-ckpt1000 -> ./model
   
@@ -298,36 +300,37 @@ def tf_train_flow(train_once_fn,
       #       .format(pre_step / num_steps_per_epoch, pre_epoch, fixed_pre_step))
     else:
       latest_checkpoint = None
-      try:
-        latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
-        if latest_checkpoint:
-          logging.info('Try start from eager trained mode, latest checkpoint:', latest_checkpoint)
-          checkpoint.restore(latest_checkpoint).run_restore_ops(session=sess)
+      if not use_horovod: #now will hang
+        try:
+          latest_checkpoint = tf.train.latest_checkpoint(ckpt_dir)
+          if latest_checkpoint:
+            logging.info('Try start from eager trained mode, latest checkpoint:', latest_checkpoint)
+            checkpoint.restore(latest_checkpoint).run_restore_ops(session=sess)
 
-          pre_epoch = int(latest_checkpoint.split('-')[-1])
-          #pre_step = pre_epoch * num_steps_per_epoch - 1
-          # TODO check
-          pre_step = sess.run(tf.train.get_global_step()) - 1
-          fixed_pre_step = pre_step
-          logging.info('Start step is:', pre_step)
-      except Exception:
-        logging.info('Something wrong with restore from eager trained model')
-      if latest_checkpoint is None:
-        logging.info('Train all start step 0')
-        #https://stackoverflow.com/questions/40220201/tensorflow-tf-initialize-all-variables-vs-tf-initialize-local-variables
-        #tf.initialize_all_variables() is a shortcut to tf.initialize_variables(tf.all_variables()), 
-        #tf.initialize_local_variables() is a shortcut to tf.initialize_variables(tf.local_variables()), 
-        #which initializes variables in GraphKeys.VARIABLES and GraphKeys.LOCAL_VARIABLE collections, respectively.
-        #init_op = tf.group(tf.global_variables_initializer(),
-        #                   tf.local_variables_initializer())   
-        #[var for var in tf.all_variables() if var.op.name.startswith(restore_scope)] will be the same as tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
-        
-        #sess.run(init_op)
+            pre_epoch = int(latest_checkpoint.split('-')[-1])
+            #pre_step = pre_epoch * num_steps_per_epoch - 1
+            # TODO check
+            pre_step = sess.run(tf.train.get_global_step()) - 1
+            fixed_pre_step = pre_step
+            logging.info('Start step is:', pre_step)
+        except Exception:
+          logging.info('Something wrong with restore from eager trained model')
+        if latest_checkpoint is None:
+          logging.info('Train all start step 0')
+          #https://stackoverflow.com/questions/40220201/tensorflow-tf-initialize-all-variables-vs-tf-initialize-local-variables
+          #tf.initialize_all_variables() is a shortcut to tf.initialize_variables(tf.all_variables()), 
+          #tf.initialize_local_variables() is a shortcut to tf.initialize_variables(tf.local_variables()), 
+          #which initializes variables in GraphKeys.VARIABLES and GraphKeys.LOCAL_VARIABLE collections, respectively.
+          #init_op = tf.group(tf.global_variables_initializer(),
+          #                   tf.local_variables_initializer())   
+          #[var for var in tf.all_variables() if var.op.name.startswith(restore_scope)] will be the same as tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=restore_scope)
+          
+          #sess.run(init_op)
 
-        #like use image model, build image graph, reload first train, and then will go to same checkpoint all varaible just restore will ok
-        #for finetune from loading other model init
-        if init_fn is not None:
-          init_fn(sess)
+          #like use image model, build image graph, reload first train, and then will go to same checkpoint all varaible just restore will ok
+          #for finetune from loading other model init
+          if init_fn is not None:
+            init_fn(sess)
         
   if gezi.env_has('METRIC'):
     l = metric_eval_fn(model_path)
@@ -367,9 +370,10 @@ def tf_train_flow(train_once_fn,
     if use_horovod:
       ## TODO FIXME why bcast here not work ? simple test work see tests/bcast.py
       #comm.bcast(pre_step, root=0)
-      temp = np.array([pre_step])
+      temp = np.array([pre_step, fixed_pre_step])
       comm.Bcast(temp, root=0)
       pre_step = temp[0]
+      fixed_pre_step = temp[1]
 
     step = start = pre_step + 1
     fixed_step = fixed_pre_step + 1 
@@ -461,11 +465,12 @@ def tf_train_flow(train_once_fn,
           epoch_saver.save(sess, model_path_, global_step=step)
           #epoch_saver.save(sess, model_path_)
           
-          if model:
-            #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
-            # TODO FIXME if restart will save from 1... again..
-            checkpoint.save(checkpoint_prefix, session=sess)
-            #print(sess.run(checkpoint.save_counter))
+          ## TODO FIXME do not support tf.keras save currently with horovod
+          # if model:
+          #   #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
+          #   # TODO FIXME if restart will save from 1... again..
+          #   checkpoint.save(checkpoint_prefix, session=sess)
+          #   #print(sess.run(checkpoint.save_counter))
             
           if freeze_graph:
             melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)

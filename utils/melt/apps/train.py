@@ -1045,7 +1045,7 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     pass
 
   try:
-    # here for multiple gpu dataset is repeate mode
+    # here for multiple gpu (not horovod) dataset is repeate mode
     for _ in tqdm(range(num_steps), total=num_steps, ascii=True):
       results = sess.run(ops)
       for i in range(num_gpus):
@@ -1058,21 +1058,22 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     pass
 
   if FLAGS.use_horovod and FLAGS.horovod_eval:
+    #print('----------------------before hvd reduce')
     sess.run(hvd.allreduce(tf.constant(0)))
-    ## here for horovod mutliple gput dataset is not repeat mode
-    ids_list = comm.allgather(ids_list[0])
-    predictions_list = comm.allgather(predictions_list[0])
-    labels_list = comm.allgather(labels_list[0])
+    ## here for horovod mutliple gpu dataset is not repeat mode 
+    ids_list = comm.allgather(np.concatenate(ids_list))
+    predictions_list = comm.allgather(np.concatenate(predictions_list))
+    labels_list = comm.allgather(np.concatenate(labels_list))
     comm.barrier()
 
     ids2 = np.concatenate(ids_list)
     predicts2 = np.concatenate(predictions_list)
     labels2 = np.concatenate(labels_list)
+    #----below is for batch parse which if not repeat mode then final batch will still same size not smaller
+    # and not use repeat mode so last batch fill with id '' empty we can remove here
     ids = []
     predicts = []
     labels = []
-
-    #print('-------------------ids2', ids2)
     for i in range(len(ids2)):
       if not ids2[i] == '':
         ids.append(ids2[i])
@@ -1081,15 +1082,21 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     ids = np.array(ids)
     predicts = np.array(predicts)
     labels = np.array(labels)
+    print('-------------len predicts filter', len(predicts), len(ids))
   else:
     try:
+      # concat list so like [[512,], [512,]...] -> [512 * num_batchs]
+      # ore [[512, 3], [512,3] ..] -> [512 * num_batchs, 3]
       ids = np.concatenate(ids_list)[:num_examples]
     except Exception:
       ids = ['0'] * num_examples
     predicts = np.concatenate(predictions_list)[:num_examples]
     labels = np.concatenate(labels_list)[:num_examples]
 
-  assert len(predicts) > 0, 'all ids are empty string ? we ignore these instance with empty id'
+  if FLAGS.use_horovod:
+    assert len(predicts) > 0, 'all ids are empty string ? we ignore these instance with empty id'
+    assert len(predicts) == num_examples
+
   if model_path and write and (not FLAGS.use_horovod or hvd.rank() == 0):
     ofile = model_path +  suffix
     with open(ofile, 'w') as out:
@@ -1160,8 +1167,8 @@ def inference(ops, iterator, num_steps, num_examples,
   # TODO for infer might not need to use all gather ...
   if FLAGS.horovod and FLAGS.horovod_eval:
     sess.run(hvd.allreduce(tf.constant(0)))
-    ids_list = comm.allgather(ids_list[0])
-    predictions_list = comm.allgather(predictions_list[0])
+    ids_list = comm.allgather(np.concatenate(ids_list))
+    predictions_list = comm.allgather(np.concatenate(predictions_list))
     comm.barrier()
     ids2 = np.concatenate(ids_list)
     predicts2 = np.concatenate(predictions_list)

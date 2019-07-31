@@ -135,7 +135,7 @@ def train_once(sess,
         eval_feed_dict = {} if gen_eval_feed_dict_fn is None else gen_eval_feed_dict_fn()
         #eval_feed_dict.update(feed_dict)
         
-        # might use EVAL_NO_SUMMARY if some old code has problem TODO CHECK
+        # if use horovod let each rant use same sess.run!
         if not log_dir or train_once.summary_op is None or gezi.env_has('EVAL_NO_SUMMARY') or use_horovod:
         #if not log_dir or train_once.summary_op is None:
           eval_results = sess.run(eval_ops, feed_dict=eval_feed_dict)
@@ -191,7 +191,8 @@ def train_once(sess,
 
   #print('------------1step', step, 'pre metric_evaluate', metric_evaluate, hvd.rank())
   if metric_evaluate:
-    #print('------------------------', step, model_path, hvd.rank())
+    if use_horovod:
+      print('------------------------', step, model_path, hvd.rank())
     if not model_path or 'model_path' not in inspect.getargspec(metric_eval_fn).args:
       metric_eval_fn_ = metric_eval_fn
     else:
