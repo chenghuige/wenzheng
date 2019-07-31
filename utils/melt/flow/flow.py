@@ -21,6 +21,8 @@ import tensorflow.contrib.slim as slim
 from tensorflow.contrib import tpu
 try:
   import horovod.tensorflow as hvd
+  from mpi4py import MPI
+  comm = MPI.COMM_WORLD
 except Exception:
   pass
 
@@ -31,6 +33,7 @@ from melt.utils import logging
 import glob
 import inspect
 import traceback
+import numpy as np
 
 def tf_flow(process_once, model_dir=None, num_steps=None, sess=None):
   """
@@ -150,6 +153,10 @@ def tf_train_flow(train_once_fn,
   """
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
 
+  model_dir_ = model_dir
+  if use_horovod and hvd.rank != 0:
+    model_dir = None
+  
   if sess is None:
     #TODO melt.get_session is global session but may cause non close at last
     sess = melt.get_session()
@@ -341,11 +348,11 @@ def tf_train_flow(train_once_fn,
   except Exception:
     pass
   
-  if model_dir:
+  if model_dir_:
     #if save_interval_epochs and num_steps_per_epoch and num_steps >= 0:
-    epoch_dir = os.path.join(model_dir, 'epoch')
+    epoch_dir = os.path.join(model_dir_, 'epoch')
     gezi.try_mkdir(epoch_dir)
-    checkpoint_path = os.path.join(model_dir, 'model.ckpt')
+    checkpoint_path = os.path.join(model_dir_, 'model.ckpt')
   
   coord = tf.train.Coordinator()
   threads = tf.train.start_queue_runners(sess=sess, coord=coord)
@@ -357,6 +364,13 @@ def tf_train_flow(train_once_fn,
   #tf.train.write_graph(sess.graph_def, model_dir, 'train.pbtxt')
   only_one_step = False
   try:
+    if use_horovod:
+      ## TODO FIXME why bcast here not work ? simple test work see tests/bcast.py
+      #comm.bcast(pre_step, root=0)
+      temp = np.array([pre_step])
+      comm.Bcast(temp, root=0)
+      pre_step = temp[0]
+
     step = start = pre_step + 1
     fixed_step = fixed_pre_step + 1 
 
@@ -393,23 +407,18 @@ def tf_train_flow(train_once_fn,
     epoch_saved_step = 0
     while not coord.should_stop():
       model_step_path = None
-      if model_dir:
+      if model_dir_:
         model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
-        model_step_path = model_path_ + '-' + str(step)
-        model_step_path = model_step_path \
-          if (write_during_train and metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0) \
-          else None
-        #model_step_path = None
+        model_step_path_ = model_path_ + '-' + str(step)
+        if (write_during_train and metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0):
+          model_step_path = model_step_path_
+        else:
+           model_step_path = None
 
       if step == 0:
         model_step_path = None
 
-      # if use_horovod and first:
-      #   bcast_op = hvd.broadcast_global_variables(0)
-      #   sess.run(bcast_op)
-
       #print('--------------------step', step)
-      #print('1.5--------------------OMPI_COMM_WORLD_RANK in', 'OMPI_COMM_WORLD_RANK' in os.environ, hvd.rank())
       stop = train_once_fn(sess, 
                            step, 
                            is_start=(step==start), 

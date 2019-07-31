@@ -58,6 +58,7 @@ except Exception:
 
 try:
   import horovod.tensorflow as hvd
+  import mpi4py
   from mpi4py import MPI
   comm = MPI.COMM_WORLD
 except Exception:
@@ -286,7 +287,7 @@ flags.DEFINE_integer(
 
 # use horovod to do multiple gpu / server 
 flags.DEFINE_boolean('use_horovod', False, '')
-flags.DEFINE_boolean('horovod_eval', False, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently, mpi4py ok for the first eval at start will hang after hvd train')
+flags.DEFINE_boolean('horovod_eval', True, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently, mpi4py ok')
 
 
 inited = None 
@@ -300,7 +301,10 @@ def init():
     assert FLAGS.length_key, 'must set length key if using buckets'
 
   if FLAGS.use_horovod:
+    mpi4py.rc.initialize = False
     hvd.init()
+    assert hvd.mpi_threads_supported()
+    assert hvd.size() == comm.Get_size()
 
     if FLAGS.torch:
       import torch
@@ -526,6 +530,7 @@ def init():
   if not FLAGS.use_tower_loss or FLAGS.use_horovod:
     FLAGS.num_gpus = 0
 
+  #print('======', melt.get_num_gpus(), FLAGS.num_gpus)
   if 'FIXED_BATCH_SIZE' in os.environ and os.environ['FIXED_BATCH_SIZE'] == '1':
     FLAGS.batch_size_per_gpu = False
   if 'BATCH_SIZE_PER_GPU' in os.environ:
@@ -987,7 +992,9 @@ def train_flow(ops,
              learning_rate_decay_factor=FLAGS.learning_rate_decay_factor,
              num_steps_per_epoch=num_steps_per_epoch,
              max_models_keep=FLAGS.max_models_keep,
-             model_dir=model_dir if not FLAGS.use_horovod or hvd.rank() == 0 else None,
+             #model_dir=model_dir if not FLAGS.use_horovod or hvd.rank() == 0 else None,
+             # still pass model dir eve hvd rank > 0 for evaluate or infer might use it 
+             model_dir=model_dir,
              log_dir=log_dir if not FLAGS.use_horovod or hvd.rank() == 0 else None,
              restore_from_latest=FLAGS.restore_from_latest,
              #metric_eval_fn=metric_eval_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None,  
@@ -1051,6 +1058,7 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     pass
 
   if FLAGS.use_horovod and FLAGS.horovod_eval:
+    sess.run(hvd.allreduce(tf.constant(0)))
     ## here for horovod mutliple gput dataset is not repeat mode
     ids_list = comm.allgather(ids_list[0])
     predictions_list = comm.allgather(predictions_list[0])
@@ -1081,7 +1089,7 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     predicts = np.concatenate(predictions_list)[:num_examples]
     labels = np.concatenate(labels_list)[:num_examples]
 
-  if model_path and write:
+  if model_path and write and (not FLAGS.use_horovod or hvd.rank() == 0):
     ofile = model_path +  suffix
     with open(ofile, 'w') as out:
       if write_streaming:
@@ -1150,6 +1158,7 @@ def inference(ops, iterator, num_steps, num_examples,
 
   # TODO for infer might not need to use all gather ...
   if FLAGS.horovod and FLAGS.horovod_eval:
+    sess.run(hvd.allreduce(tf.constant(0)))
     ids_list = comm.allgather(ids_list[0])
     predictions_list = comm.allgather(predictions_list[0])
     comm.barrier()
@@ -1169,34 +1178,35 @@ def inference(ops, iterator, num_steps, num_examples,
     ids = np.concatenate(ids_list)[:num_examples]
     predicts = np.concatenate(predictions_list)[:num_examples]
 
-  ofile = model_path +  suffix
-  ofile2 = ofile + '.debug'
-
-  if write_streaming:
-    if write_fn and len(inspect.getargspec(write_fn).args) == 4:
-      out_debug = open(ofile2, 'w')
-    else:
-      out_debug = None
-    with open(ofile, 'w') as out:
-      if names:
-        print(*names, sep=sep, file=out)
-      if debug_names and out_debug:
-        print(*debug_names, sep=',', file=out_debug)
-      for id, predict in zip(ids, predicts):
-        if write_fn is None:
-          if not gezi.iterable(predict):
-            predict = [predict]
-          print(id, *predict, sep=sep, file=out)
-        else:
-          if out_debug:
-            write_fn(id, predict, out, out_debug)
+  if (not FLAGS.use_horovod or hvd.rank() == 0):
+    ofile = model_path +  suffix
+    ofile2 = ofile + '.debug'
+    
+    if write_streaming:
+      if write_fn and len(inspect.getargspec(write_fn).args) == 4:
+        out_debug = open(ofile2, 'w')
+      else:
+        out_debug = None
+      with open(ofile, 'w') as out:
+        if names:
+          print(*names, sep=sep, file=out)
+        if debug_names and out_debug:
+          print(*debug_names, sep=',', file=out_debug)
+        for id, predict in zip(ids, predicts):
+          if write_fn is None:
+            if not gezi.iterable(predict):
+              predict = [predict]
+            print(id, *predict, sep=sep, file=out)
           else:
-            write_fn(id, predict, out)
-  else:
-    if len(inspect.getargspec(write_fn).args) == 4:
-      write_fn(ids, predicts, ofile, ofile2)
+            if out_debug:
+              write_fn(id, predict, out, out_debug)
+            else:
+              write_fn(id, predict, out)
     else:
-      write_fn(ids, predicts, ofile)
+      if len(inspect.getargspec(write_fn).args) == 4:
+        write_fn(ids, predicts, ofile, ofile2)
+      else:
+        write_fn(ids, predicts, ofile)
 
 def train(Dataset, 
           model, 
@@ -1449,7 +1459,7 @@ def train(Dataset,
 
   # if horovod do valid one batch will fail on next run train ops WHY ? TODO FIXME eval ops must all set to None using horovod now
   #eval_ops = eval_ops if not FLAGS.use_horovod or hvd.rank() == 0 else None
-  eval_ops = eval_ops if not FLAGS.use_horovod else None
+  #eval_ops = eval_ops if not FLAGS.use_horovod else None
   
   metric_eval_fn = metric_eval_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None
   inference_fn = inference_fn if not (FLAGS.use_horovod and not FLAGS.horovod_eval) or hvd.rank() == 0 else None

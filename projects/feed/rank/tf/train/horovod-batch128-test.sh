@@ -11,11 +11,11 @@ python ./train.py \
     --model=$model \
     --num_epochs=2 \
     --eager=0 \
-    --valid_interval_epochs=0.1 \
+    --valid_interval_epochs=0.02 \
     --train_input=../input/train \
     --valid_input=../input/valid \
-    --model_dir=../input/model/$model.horovod.b64\
-    --batch_size=64 \
+    --model_dir=../input/model/$model.horovod.b128.test\
+    --batch_size=128 \
     --max_feat_len=100 \
     --optimizer=bert \
     --min_learning_rate=1e-6 \

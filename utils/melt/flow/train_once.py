@@ -70,7 +70,7 @@ def train_once(sess,
                use_horovod=False,
                ):
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
-  
+
   #is_start = False # force not to evaluate at first step
   #print('-----------------global_step', sess.run(tf.train.get_or_create_global_step()))
   timer = gezi.Timer()
@@ -103,7 +103,7 @@ def train_once(sess,
 
   is_eval_step = is_start or eval_interval_steps and step % eval_interval_steps == 0
   summary_str = []
-  
+
   if is_eval_step:
     # deal with summary
     if log_dir:
@@ -136,7 +136,7 @@ def train_once(sess,
         #eval_feed_dict.update(feed_dict)
         
         # might use EVAL_NO_SUMMARY if some old code has problem TODO CHECK
-        if not log_dir or train_once.summary_op is None or gezi.env_has('EVAL_NO_SUMMARY'):
+        if not log_dir or train_once.summary_op is None or gezi.env_has('EVAL_NO_SUMMARY') or use_horovod:
         #if not log_dir or train_once.summary_op is None:
           eval_results = sess.run(eval_ops, feed_dict=eval_feed_dict)
         else:
@@ -146,12 +146,15 @@ def train_once(sess,
         eval_loss = gezi.get_singles(eval_results)
         #timer_.print()
         eval_stop = False
+        if use_horovod:
+          sess.run(hvd.allreduce(tf.constant(0)))
 
         #if not use_horovod or  hvd.local_rank() == 0:
         # @TODO user print should also use logging as a must ?
         #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, 'eval_metrics:', end='')  
         eval_names_ = melt.adjust_names(eval_loss, eval_names)
-        logging.info2('{} eval_step:{} eval_metrics:{}'.format(epoch_str, step, melt.parse_results(eval_loss, eval_names_)))
+        if not use_horovod or hvd.rank() == 0:
+          logging.info2('{} eval_step:{} eval_metrics:{}'.format(epoch_str, step, melt.parse_results(eval_loss, eval_names_)))
         
         # if deal_eval_results_fn is not None:
         #   eval_stop = deal_eval_results_fn(eval_results)
@@ -160,11 +163,13 @@ def train_once(sess,
         if eval_stop is True:
           stop = True
         eval_names_ = melt.adjust_names(eval_loss, eval_names)
-        melt.set_global('eval_loss', melt.parse_results(eval_loss, eval_names_))
+        if not use_horovod or hvd.rank() == 0:
+          melt.set_global('eval_loss', melt.parse_results(eval_loss, eval_names_))
 
     elif interval_steps != eval_interval_steps:
       #print()
       pass
+
 
   metric_evaluate = False
 
@@ -184,16 +189,15 @@ def train_once(sess,
   if ((step == 0) and (not 'EVFIRST' in os.environ)) or ('QUICK' in os.environ) or ('EVFIRST' in os.environ and os.environ['EVFIRST'] == '0'):
     metric_evaluate = False
 
-  #print('------------step', step, 'metric_evaluate', metric_evaluate, hvd.rank())
+  #print('------------1step', step, 'pre metric_evaluate', metric_evaluate, hvd.rank())
   if metric_evaluate:
-    # TODO better 
+    #print('------------------------', step, model_path, hvd.rank())
     if not model_path or 'model_path' not in inspect.getargspec(metric_eval_fn).args:
       metric_eval_fn_ = metric_eval_fn
     else:
       metric_eval_fn_ = lambda: metric_eval_fn(model_path=model_path)
     
     try:
-      #print('------------before step', step,  'metric_evaluate', metric_evaluate, hvd.rank())
       l = metric_eval_fn_()
       if isinstance(l, tuple):
         num_returns = len(l)    
@@ -338,66 +342,12 @@ def train_once(sess,
     if is_eval_step:
       # deal with summary
       if log_dir:
-        # if not hasattr(train_once, 'summary_op'):
-        #   melt.print_summary_ops()
-        #   if summary_excls is None:
-        #     train_once.summary_op = tf.summary.merge_all()
-        #   else:
-        #     summary_ops = []
-        #     for op in tf.get_collection(tf.GraphKeys.SUMMARIES):
-        #       for summary_excl in summary_excls:
-        #         if not summary_excl in op.name:
-        #           summary_ops.append(op)
-        #     print('filtered summary_ops:')
-        #     for op in summary_ops:
-        #       print(op)
-        #     train_once.summary_op = tf.summary.merge(summary_ops)
-
-        #   print('-------------summary_op', train_once.summary_op)
-          
-
-        #   #train_once.summary_train_op = tf.summary.merge_all(key=melt.MonitorKeys.TRAIN)
-        #   train_once.summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
-
-        #   tf.contrib.tensorboard.plugins.projector.visualize_embeddings(train_once.summary_writer, projector_config)
-
         summary = tf.Summary()
-        # #so the strategy is on eval_interval_steps, if has eval dataset, then tensorboard evluate on eval dataset
-        # #if not have eval dataset, will evaluate on trainset, but if has eval dataset we will also monitor train loss
-        # assert train_once.summary_train_op is None
-        # if train_once.summary_train_op is not None:
-        #   summary_str = sess.run(train_once.summary_train_op, feed_dict=feed_dict)
-        #   train_once.summary_writer.add_summary(summary_str, step)
-
         if eval_ops is None:
-          # #get train loss, for every batch train
-          # if train_once.summary_op is not None:
-          #   #timer2 = gezi.Timer('sess run')
-          #   try:
-          #     # TODO FIXME so this means one more train batch step without adding to global step counter ?! so should move it earlier 
-          #     summary_str = sess.run(train_once.summary_op, feed_dict=feed_dict)
-          #   except Exception:
-          #     if not hasattr(train_once, 'num_summary_errors'):
-          #       logging.warning('summary_str = sess.run(train_once.summary_op, feed_dict=feed_dict) fail')
-          #       train_once.num_summary_errors = 1
-          #       logging.warning(traceback.format_exc())
-          #     summary_str = ''
-          #   # #timer2.print()
           if train_once.summary_op is not None:
             for summary_str in summary_strs:
               train_once.summary_writer.add_summary(summary_str, step)
         else:
-          # #get eval loss for every batch eval, then add train loss for eval step average loss
-          # try:
-          #   summary_str = sess.run(train_once.summary_op, feed_dict=eval_feed_dict) if train_once.summary_op is not None else ''
-          # except Exception:
-          #   if not hasattr(train_once, 'num_summary_errors'):
-          #     logging.warning('summary_str = sess.run(train_once.summary_op, feed_dict=eval_feed_dict) fail')
-          #     train_once.num_summary_errors = 1
-          #     logging.warning(traceback.format_exc())
-          #   summary_str = ''
-          #all single value results will be add to summary here not using tf.scalar_summary..
-          #summary.ParseFromString(summary_str)
           for summary_str in summary_strs:
             train_once.summary_writer.add_summary(summary_str, step)
           suffix = 'eval' if not eval_names else ''
@@ -434,23 +384,6 @@ def train_once(sess,
         
         train_once.summary_writer.add_summary(summary, step)
         train_once.summary_writer.flush()
-
-        #timer_.print()
-      
-      # if print_time:
-      #   full_duration = train_once.eval_timer.elapsed()
-      #   if metric_evaluate:
-      #     metric_full_duration = train_once.metric_eval_timer.elapsed()
-      #   full_duration_str = 'elapsed:{:.3f} '.format(full_duration)
-      #   #info.write('duration:{:.3f} '.format(timer.elapsed()))
-      #   duration = timer.elapsed()
-      #   info.write('duration:{:.3f} '.format(duration))
-      #   info.write(full_duration_str)
-      #   info.write('eval_time_ratio:{:.3f} '.format(duration/full_duration))
-      #   if metric_evaluate:
-      #     info.write('metric_time_ratio:{:.3f} '.format(duration/metric_full_duration))
-      # #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, info.getvalue())
-      # logging.info2('{} {} {}'.format(epoch_str, 'eval_step: %d'%step, info.getvalue()))
       return stop
     elif metric_evaluate and log_dir:
       summary = tf.Summary()

@@ -582,9 +582,11 @@ def get_num_gpus_specific():
     return None
 
 def get_num_gpus():
-  num_gpus = get_num_gpus_specific() or get_available_gpus()
+  num_gpus = get_num_gpus_specific()
+  if num_gpus is None:
+    num_gpus = get_available_gpus()
   return num_gpus
-
+ 
 def is_cudnn_cell(cell):
   return isinstance(cell, (tf.contrib.cudnn_rnn.CudnnGRU, tf.contrib.cudnn_rnn.CudnnLSTM))
 
