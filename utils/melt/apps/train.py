@@ -1089,6 +1089,7 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     predicts = np.concatenate(predictions_list)[:num_examples]
     labels = np.concatenate(labels_list)[:num_examples]
 
+  assert len(predicts) > 0, 'all ids are empty string ? we ignore these instance with empty id'
   if model_path and write and (not FLAGS.use_horovod or hvd.rank() == 0):
     ofile = model_path +  suffix
     with open(ofile, 'w') as out:
@@ -1178,6 +1179,7 @@ def inference(ops, iterator, num_steps, num_examples,
     ids = np.concatenate(ids_list)[:num_examples]
     predicts = np.concatenate(predictions_list)[:num_examples]
 
+  assert len(predicts) > 0, 'all ids are empty string ? we ignore these instance with empty id'
   if (not FLAGS.use_horovod or hvd.rank() == 0):
     ofile = model_path +  suffix
     ofile2 = ofile + '.debug'
