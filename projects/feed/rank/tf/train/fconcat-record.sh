@@ -13,7 +13,7 @@ python ./train.py \
     --num_epochs=2 \
     --eager=0 \
     --valid_interval_epochs=0.1 \
-    --train_input=../input/train \
+    --train_input=../input/train.rand \
     --valid_input=../input/valid \
     --model_dir=../input/model/$model.dw.fconcat.record \
     --batch_size=512 \

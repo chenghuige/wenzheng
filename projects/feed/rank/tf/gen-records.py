@@ -76,7 +76,11 @@ def main(_):
   files = glob.glob(FLAGS.input)
   print('input', FLAGS.input)
   
-  
+
+  if not os.path.exists(FLAGS.out_dir):
+    print('make new dir: [%s]' % FLAGS.out_dir, file=sys.stderr)
+    os.makedirs(FLAGS.out_dir)
+
   pool.map(build_features, files)
   pool.close()
   pool.join()
