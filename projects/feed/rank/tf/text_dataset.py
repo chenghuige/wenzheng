@@ -72,9 +72,6 @@ class Dataset(melt.tfrecords.Dataset):
     feat_id = [None] * num_features
     feat_field = [None] * num_features
     feat_value = [None] * num_features
-    # feat_id = np.zeros(num_features, dtype=np.int64)
-    # feat_field = np.zeros(num_features, dtype=np.int64)
-    # feat_value = np.zeros(num_features, dtype=np.float32)
 
     for i in range(num_features):
       tokens = fields[i].split(':')

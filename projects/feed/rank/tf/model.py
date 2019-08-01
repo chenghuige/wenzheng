@@ -132,6 +132,7 @@ class WideDeep(keras.Model):
     self.deep = Deep() 
     self.dense = keras.layers.Dense(1)
 
+  # TODO verify we can remove training ? since we use K.Phrase() when sess.run
   def call(self, input, training=False):
     w = self.wide(input)
     d = self.deep(input, training=training)
