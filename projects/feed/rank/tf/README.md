@@ -10,3 +10,5 @@ nc python read-test.py
 different result 
 
 batch_parse=1 is much faster  
+
+speed much affected by text_dataset.py so if you change some thing there make sure to check speed not down 

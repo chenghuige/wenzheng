@@ -202,7 +202,7 @@ def inputs(files,
                                 cycle_length=num_threads))
 
 
-    # must batch then map if use pyfunc which you might use py_func, here py_func means batch parse otherwise slower but simple and powerfull...
+    # must batch then map if use pyfunc which you might use batch_parse, here batch_parse means batch parse otherwise slower but simple and powerfull...
     if not batch_parse:
       dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
 

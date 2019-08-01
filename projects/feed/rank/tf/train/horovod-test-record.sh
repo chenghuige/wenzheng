@@ -11,10 +11,11 @@ python ./train.py \
     --model=$model \
     --num_epochs=2 \
     --eager=0 \
-    --valid_interval_epochs=0.1 \
-    --train_input=../input/train \
-    --valid_input=../input/valid \
-    --model_dir=../input/model/$model.best.v0 \
+    --valid_interval_epochs=0.05 \
+    --save_interval_epochs=0.05 \
+    --train_input=../input/tfrecord/train \
+    --valid_input=../input/tfrecord/valid \
+    --model_dir=../input/model/$model.horovod.test.tfrecord \
     --batch_size=512 \
     --max_feat_len=100 \
     --optimizer=bert \

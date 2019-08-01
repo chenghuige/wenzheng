@@ -31,7 +31,7 @@ flags.DEFINE_string('deep_wide_combine', 'concat', 'concat or add')
 flags.DEFINE_string('pooling', 'sum', '')
 
 flags.DEFINE_bool('field_emb', False, 'if True better but more param')
-flags.DEFINE_bool('index_addone', True, '')
+flags.DEFINE_bool('index_addone', True, 'will not support index addone false')
 
 flags.DEFINE_bool('rank_loss', False, '')
 

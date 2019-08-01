@@ -185,8 +185,15 @@ def train_once(sess,
          and step % metric_eval_interval_steps == 0) or model_path):
    metric_evaluate = True
 
-  #if (is_start or step == 0) and (not 'EVFIRST' in os.environ):
-  if ((step == 0) and (not 'EVFIRST' in os.environ)) or ('QUICK' in os.environ) or ('EVFIRST' in os.environ and os.environ['EVFIRST'] == '0'):
+  if 'EVFIRST' in os.environ:
+    if os.environ['EVFIRST'] == '0':
+        if is_start:
+          metric_evaluate = False
+    else:
+      if is_start:
+        metric_evaluate = True
+
+  if step == 0 or 'QUICK' in os.environ:
     metric_evaluate = False
 
   #print('------------1step', step, 'pre metric_evaluate', metric_evaluate, hvd.rank())
