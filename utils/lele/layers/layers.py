@@ -704,13 +704,24 @@ class MaxPooling(nn.Module):
         if x_mask is None or x_mask.data.sum() == 0:
             return torch.max(x, 1)[0]
         else:
-            # x_mask = x_mask.unsqueeze(-1).expand(x.size())
-            # x.data.masked_fill_(x_mask.data, -float('inf'))
-            # return torch.max(x, 1)[0]
+            x_mask = x_mask.unsqueeze(-1).expand(x.size())
+            x.data.masked_fill_(x_mask.data, -float('inf'))
+            return torch.max(x, 1)[0]
             # # https://medium.com/@sonicboom8/sentiment-analysis-with-variable-length-sequences-in-pytorch-6241635ae130
             # # shold be same as above or use F.adaptive_max_pool1d and slightly slower
-            lengths = (1 - x_mask).sum(1)
-            return torch.cat([torch.max(i[:l], dim=0)[0].view(1,-1) for i,l in zip(x, lengths)], dim=0) 
+            # lengths = (1 - x_mask).sum(1)
+            # return torch.cat([torch.max(i[:l], dim=0)[0].view(1,-1) for i,l in zip(x, lengths)], dim=0) 
+        
+class SumPooling(nn.Module):
+    def forward(self, x, x_mask):
+        if x_mask is None or x_mask.data.sum() == 0:
+            return torch.sum(x, 1)
+        else:            
+            # lengths = (1 - x_mask).sum(1)
+            # return torch.cat([torch.sum(i[:l], dim=0).view(1,-1) for i,l in zip(x, lengths)], dim=0) 
+            x_mask = x_mask.unsqueeze(-1).expand(x.size())
+            x.data.masked_fill_(x_mask.data, 0.)
+            return torch.sum(x, 1)
 
 class TopKPooling(nn.Module):
     def __init__(self, top_k=2):
@@ -866,6 +877,8 @@ class Pooling(nn.Module):
         return MaxPooling()
       elif name == 'mean':
         return MeanPooling()
+      elif name == 'sum':
+        return SumPooling()
       elif name == 'attention' or name == 'att':
         return NonLinearSeqAttnPooling(input_size)
       elif name == 'linear_attention' or name == 'linear_att' or name == 'latt':

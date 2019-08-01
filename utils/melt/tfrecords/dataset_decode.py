@@ -6,8 +6,7 @@
 #          \date   2016-08-15 20:13:06.751843
 #   \Description  @TODO https://github.com/tensorflow/tensorflow/tree/r0.10/tensorflow/contrib/slim/python/slim/data/
 # ==============================================================================
-
-  
+ 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -63,6 +62,8 @@ def inputs(files,
            Dataset=None,
            batch_parse=False, #by default will be line parse
            hvd_shard=True,
+           training=False,
+           simple_parse=False,
            name='input'):
   """Reads input data num_epochs times.
   for sparse input here will do:
@@ -123,11 +124,23 @@ def inputs(files,
   great article http://d0evi1.com/tensorflow/datasets_performance/
   https://www.tensorflow.org/versions/master/performance/datasets_performance
   """
+  use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  
   # Choose to use cpu outside input function like in dataset.py
   #with tf.device('/cpu:0'):
   if isinstance(files, str):
     files = gezi.list_files(files)
   assert len(files) > 0
+
+  if use_horovod and not hvd_shard and training:
+    assert len(files) % hvd.size() == 0, '{} {} {}'.format(len(files), files, hvd.size())
+    files_ = []
+    for i in range(len(files)):
+      if i % hvd.size() == hvd.rank():
+        files_.append(files[i])
+    files = files_
+    print('----------train-files', files)
+    #exit(0)
 
   if not num_threads:
     try:
@@ -138,6 +151,17 @@ def inputs(files,
       num_threads = 12
       logging.info('num_threads set by default', num_threads)
 
+
+  def shard(dataset):
+      return dataset.shard(hvd.size(), hvd.rank())
+
+  if simple_parse and training:
+    dataset = Dataset(files)
+    if use_horovod and hvd_shard:
+      dataset = shard(dataset)
+    dataset = dataset.repeat(num_epochs).shuffle(batch_size * 1024).batch(batch_size).map(decode_fn, num_parallel_calls=num_threads).prefetch(9)
+    return dataset.make_one_shot_iterator()
+    
   if not min_after_dequeue: 
     min_after_dequeue = melt.tfrecords.read.MIN_AFTER_QUEUE
 
@@ -170,29 +194,26 @@ def inputs(files,
     num_prefetch_batches = num_threads + 3
   
   if buffer_size is None:
+    # ... Too small ? but 1024 will cause starup slow
     buffer_size = min_after_dequeue + num_prefetch_batches * batch_size
-
-  def shard(dataset):
-    return dataset.shard(hvd.size(), hvd.rank())
-
-  use_horovod =  hvd_shard and 'OMPI_COMM_WORLD_RANK' in os.environ
+    #buffer_size = 1024 * batch_size
     
   with tf.name_scope(name):
     # https://github.com/tensorflow/tensorflow/issues/14857
     Dataset = Dataset or tf.data.TFRecordDataset
     if not shuffle_files:
       dataset = Dataset(files)
-      if use_horovod:
+      if use_horovod and hvd_shard:
         dataset = shard(dataset)
     else:
       num_files = len(files)
       if num_files == 1:
         dataset = Dataset(files)
-        if use_horovod:
+        if use_horovod and hvd_shard:
           dataset = shard(dataset)
       else:
         dataset = tf.data.Dataset.list_files(files)
-        if use_horovod:
+        if use_horovod and hvd_shard:
           dataset = shard(dataset)
         # TODO still need shuffle here ?
         #https://www.tensorflow.org/api_docs/python/tf/data/Dataset#shuffle

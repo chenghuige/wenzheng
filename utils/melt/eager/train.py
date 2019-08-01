@@ -617,6 +617,7 @@ def train(Dataset,
     optimizer = hvd.DistributedOptimizer(optimizer,
                                         named_parameters=model.named_parameters(),
                                         compression=compression)
+
   for epoch in range(start_epoch, num_epochs):
     melt.set_global('epoch', '%.4f' % (epoch))
 
@@ -635,11 +636,12 @@ def train(Dataset,
 
       #print(x, y)
 
-      def loss_fn_(model, x, y):
-        if 'training' in inspect.getargspec(model.call).args:
+      def loss_fn_(x, y):
+        if not FLAGS.torch and 'training' in inspect.getargspec(model.call).args:
           y_ = model(x, training=True)
         else:
           y_ = model(x)
+          print(y_)
         return loss_fn(y, y_)
       
       if not FLAGS.torch:
@@ -659,9 +661,9 @@ def train(Dataset,
       else:
         optimizer.zero_grad()
         if 'training' in inspect.getargspec(loss_fn_).args:
-          loss = loss_fn_(model, x, y, training=True)
+          loss = loss_fn_(x, y, training=True)
         else:
-          loss = loss_fn_(model, x, y)
+          loss = loss_fn_(x, y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(),
                                        FLAGS.clip_gradients)
@@ -699,7 +701,7 @@ def train(Dataset,
           if FLAGS.torch:
             x, y = to_torch(x, y)
             model.eval()
-          valid_loss = loss_fn_(model, x, y)
+          valid_loss = loss_fn_(x, y)
           epoch_valid_loss_avg(valid_loss)
           if FLAGS.torch:
             model.train()

@@ -133,7 +133,8 @@ flags.DEFINE_string('learning_rate_values', None, 'like 0.1,0.05,0.005')
 flags.DEFINE_string('learning_rate_step_boundaries', None, 'like 10000,20000')
 flags.DEFINE_string('learning_rate_epoch_boundaries', None, 'like 10,30 or 10.5,30.6')
 flags.DEFINE_integer('num_learning_rate_weights', 0, '')
-flags.DEFINE_float('warmup_proportion', 0.1, '')
+flags.DEFINE_float('warmup_proportion', 0.1, '0.1')
+flags.DEFINE_float('warmup_epochs', None, '')
 flags.DEFINE_integer('warmup_steps', None, 'if set then warmup proportion not on effect, can be set like 2000')
 flags.DEFINE_float('num_decay_epochs', None, '')
 
@@ -263,6 +264,8 @@ flags.DEFINE_boolean('test_aug', False, '')
 
 flags.DEFINE_integer('batch_size_dim', 0, '')
 
+flags.DEFINE_boolean('simple_parse', False, '')
+
 # from bert run_classifier.py
 flags.DEFINE_boolean('use_tpu', False, '')
 tf.flags.DEFINE_string(
@@ -288,6 +291,8 @@ flags.DEFINE_integer(
 # use horovod to do multiple gpu / server 
 flags.DEFINE_boolean('use_horovod', False, '')
 flags.DEFINE_boolean('horovod_eval', True, 'wether using multiple gpu for eval and infer, hvd.allgather not work for tf ... currently, mpi4py ok')
+flags.DEFINE_boolean('horovod_shard', True, 'only consider train, valid/test always shard, if not shard then each rank got 1/n files')
+flags.DEFINE_boolean('horovod_scale', False, '')
 
 
 inited = None 
@@ -309,8 +314,10 @@ def init():
     if FLAGS.torch:
       import torch
       torch.cuda.set_device(hvd.local_rank())
-    # FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
-    # print('using horovod multipy learning rate by {} to {}'.format(hvd.size(), FLAGS.learning_rate))
+    
+    if FLAGS.horovod_scale:
+      FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
+      print('using horovod multipy learning rate by {} to {}'.format(hvd.size(), FLAGS.learning_rate))
 
   if 'TPU' in os.environ and int(os.environ['TPU']) == 1:
     FLAGS.use_tpu = True
@@ -810,8 +817,15 @@ def train_flow(ops,
     optimizer = yellowfin.YellowFinOptimizer
   elif FLAGS.optimizer == 'bert':
     num_train_steps = int(
-      num_train_examples / melt.batch_size() * (FLAGS.num_decay_epochs or num_epochs))
-    num_warmup_steps = FLAGS.warmup_steps or int(num_train_steps * FLAGS.warmup_proportion) 
+      num_steps_per_epoch * (FLAGS.num_decay_epochs or num_epochs))
+    if FLAGS.warmup_steps:
+      num_warmup_steps = FLAGS.warmup_steps 
+      if FLAGS.use_horovod:
+        num_warmup_steps = int(num_warmup_steps / hvd.size())
+    elif FLAGS.warmup_epochs:
+      num_warmup_steps = num_steps_per_epoch * FLAGS.warmup_steps 
+    elif FLAGS.warmup_proportion:
+      num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion) 
     logging.info('num_train_steps', num_train_steps, 'num_warmup_steps', num_warmup_steps, 'warmup_proportion', FLAGS.warmup_proportion)
     optimizer, learning_rate = melt.training.bert.optimization.create_optimizer(
         global_step, FLAGS.learning_rate, num_train_steps, num_warmup_steps, FLAGS.min_learning_rate)
@@ -1275,7 +1289,8 @@ def train(Dataset,
   num_folds = FLAGS.num_folds or len(inputs) + 1
 
   dataset = dataset or Dataset('train')
-  iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False)
+  iter = dataset.make_batch(batch_size, inputs, repeat=True, initializable=False, hvd_shard=FLAGS.horovod_shard, simple_parse=FLAGS.simple_parse)
+
   num_examples = dataset.num_examples_per_epoch('train') 
   num_all_examples = num_examples
   if num_examples:

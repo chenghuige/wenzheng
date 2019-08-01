@@ -70,13 +70,14 @@ class Dataset(object):
                  initializable=False,
                  repeat=None,
                  return_iterator=True,
-                 hvd_shard=None):
+                 hvd_shard=None,
+                 simple_parse=False):
     """Read the images and labels from 'filenames'."""
     #with tf.device('/cpu:0'):
-    hvd_shard = hvd_shard or self.hvd_shard
-    batch_size = batch_size or self.batch_size
+    hvd_shard = hvd_shard if hvd_shard is not None else self.hvd_shard
+    batch_size = batch_size if batch_size is not None else self.batch_size
     self.batch_size = batch_size
-    filenames = filenames or self.filenames
+    filenames = filenames if filenames is not None else self.filenames
     logging.info(self.subset, 'num files', len(filenames))
     assert filenames, self.subset
     min_queue_examples = 20000
@@ -137,7 +138,9 @@ class Dataset(object):
         name=self.subset,
         Dataset=self.InputDataset,
         batch_parse=self.batch_parse,
-        hvd_shard=hvd_shard) 
+        hvd_shard=hvd_shard,
+        training=self.subset == 'train',
+        simple_parse=simple_parse) 
 
       return self.adjust(result)
 
