@@ -606,16 +606,28 @@ def log_full(text, array):
   log(text, array)
   print(np.unique(array), file=sys.stderr)
 
-def env_has(name, val=1):
-  return name in os.environ and int(os.environ[name]) == val
+def env_has(name):
+  return name in os.environ and os.environ[name] != '0'
 
 def env_get(name):
   if name in os.environ:
     return os.environ[name]
   else:
     return None
-
+  
 def env_set(name, val=1):
+  os.environ[name] = str(val)
+  
+def has_env(name):
+  return name in os.environ and os.environ[name] != '0'
+
+def get_env(name):
+  if name in os.environ:
+    return os.environ[name]
+  else:
+    return None
+  
+def set_env(name, val=1):
   os.environ[name] = str(val)
 
 def env_val(name, default=None):

@@ -91,7 +91,7 @@ def tf_flow(process_once, model_dir=None, num_steps=None, sess=None):
   sess.close()
   return step
  
-def _get_model_path(model_dir, save_model):
+def _get_model_path(model_dir, save_model=False):
   if os.path.exists(model_dir + '.index') and os.path.exists(model_dir + '.meta'):
     # input is real model path
     return model_dir
@@ -331,11 +331,6 @@ def tf_train_flow(train_once_fn,
           #for finetune from loading other model init
           if init_fn is not None:
             init_fn(sess)
-        
-  if gezi.env_has('METRIC'):
-    l = metric_eval_fn(model_path)
-    print(list(zip(l[1], l[0])))
-    exit(0)
 
   #sess.run(tf.assign(global_step, tf.constant(global_step_val, dtype=tf.int64)))
   try:
@@ -351,18 +346,28 @@ def tf_train_flow(train_once_fn,
   except Exception:
     pass
   
+  if use_horovod:
+    bcast = hvd.broadcast_global_variables(0)
+    sess.run(bcast) 
+
+  # before below
+  if gezi.has_env('METRIC'):
+    # safe for using horovod
+    model_path_ = _get_model_path(model_dir_)
+    l = metric_eval_fn(model_path_)
+    if not use_horovod or hvd.rank() == 0:
+      print(list(zip(l[1], l[0])))
+    exit(0)
+
   if model_dir_:
     #if save_interval_epochs and num_steps_per_epoch and num_steps >= 0:
     epoch_dir = os.path.join(model_dir_, 'epoch')
-    gezi.try_mkdir(epoch_dir)
+    if not use_horovod or hvd.rank() == 0:
+      gezi.try_mkdir(epoch_dir)
     checkpoint_path = os.path.join(model_dir_, 'model.ckpt')
   
   coord = tf.train.Coordinator()
   threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-  if use_horovod:
-    bcast = hvd.broadcast_global_variables(0)
-    sess.run(bcast)
 
   #tf.train.write_graph(sess.graph_def, model_dir, 'train.pbtxt')
   only_one_step = False
@@ -433,7 +438,6 @@ def tf_train_flow(train_once_fn,
                            ## TODO FIXME this line will cause   tensorflow.python.framework.errors_impl.NotFoundError: Resource localhost/save_counter/N10tensorflow3VarE does not exist. 
                           )
 
-
       #first = False
 
       if only_one_step:
@@ -444,33 +448,47 @@ def tf_train_flow(train_once_fn,
 
       if save_model and step and model_dir:
         #step 0 is also saved! actually train one step and save
-        if step % save_interval_steps == 0:
+        is_step_save = step % save_interval_steps == 0
+        is_epoch_save = save_interval_steps and num_steps_per_epoch and fixed_step % int(num_steps_per_epoch * save_interval_epochs) == 0
+
+        is_step_save = is_step_save or is_epoch_save
+
+        if is_step_save:
           timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path), False)
           model_path_ = _get_checkpoint_path(checkpoint_path, fixed_step, num_steps_per_epoch)
           saver.save(sess, model_path_, global_step=step)
           if freeze_graph:
             melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
-          #if log_dir != model_dir:
-          #  assert log_dir
-          #  command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
-          #  print(command, file=sys.stderr)
-          #  os.system(command)
+          if log_dir != model_dir:
+           assert log_dir
+           command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
+           print(command, file=sys.stderr)
+           os.system(command)
           timer.print_elapsed()
   
-        if save_interval_steps and num_steps_per_epoch and fixed_step % int(num_steps_per_epoch * save_interval_epochs) == 0:
+        if is_epoch_save:
           # TODO only epoch in name not sep ?
           epoch_saved_step = step
           model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
           model_step_path = model_path_ + '-' + str(step)
+          timer = gezi.Timer('epoch save to {}'.format(model_path_))
           epoch_saver.save(sess, model_path_, global_step=step)
-          #epoch_saver.save(sess, model_path_)
+          #logging.info(timer.elapsed())
+          timer.print_elapsed()
           
-          ## TODO FIXME do not support tf.keras save currently with horovod
-          # if model:
-          #   #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
-          #   # TODO FIXME if restart will save from 1... again..
-          #   checkpoint.save(checkpoint_prefix, session=sess)
-          #   #print(sess.run(checkpoint.save_counter))
+          # TODO FIXME if add keras save below wil hang, might due to rank 0 save so slower then others
+          # fixed by adding allreduce on each loop end
+          # [1,0]<stderr>:Stalled ranks:
+          # [1,0]<stderr>:0: [HorovodAllreduce_Const_9_0]
+          if model and not use_horovod:
+          #if model:          
+            #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
+            # TODO FIXME if restart will save from 1... again..
+            timer = gezi.Timer('keras epoch save to {}'.format(checkpoint_prefix))
+            checkpoint.save(checkpoint_prefix, session=sess)
+            #print(sess.run(checkpoint.save_counter))
+            #logging.info(timer.elapsed())
+            timer.print_elapsed()
             
           if freeze_graph:
             melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
@@ -484,6 +502,7 @@ def tf_train_flow(train_once_fn,
             except Exception:
               logging.info(traceback.format_exc())  
 
+          ## metric eval move to train_once which means you first save then eval, so might need 1 more step
           # if metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0:
           #   model_step_path = model_path_ + '-' + str(step)
           #   try:
@@ -501,6 +520,8 @@ def tf_train_flow(train_once_fn,
       #if max_num_epochs and num_steps_per_epoch and fixed_step // num_steps_per_epoch >= max_num_epochs:
       if max_num_epochs and num_steps_per_epoch and fixed_step / num_steps_per_epoch > max_num_epochs:
         raise tf.errors.OutOfRangeError(None, None,'Reached max num epochs of %d'%max_num_epochs)
+      ## will hange with allreduce
+      #sess.run(hvd.allreduce(tf.constant(0)))
   #except tf.errors.OutOfRangeError, e:
   except tf.errors.OutOfRangeError:
     # if run 2 epoch and we have just epoch saved, do not need to save only 1 step more model
@@ -509,15 +530,18 @@ def tf_train_flow(train_once_fn,
       saver.save(sess, model_path_, global_step=step)
       if freeze_graph:
         melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
+      ## this is for train which save files to hdfs then HACK (set log_dir different then model_dir log save to local and sync to model_dir when saving model)
       if log_dir != model_dir:
         assert log_dir
         command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
         print(command, file=sys.stderr)
         os.system(command)
     if only_one_step:
+      # TODO strange logging.info will not show to screen if using horovod
       logging.info('Done one step')
       exit(0)
     
+    ## since we have saved model then eval no need to do here, expect for train with specific steps but not common use
     # if (step - epoch_saved_step > 1) and metric_eval_fn is not None:
     #   metric_eval_fn(model_path=model_step_path)
     

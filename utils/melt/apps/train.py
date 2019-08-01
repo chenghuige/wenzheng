@@ -323,6 +323,9 @@ def init():
   if 'MODEL_DIR' in os.environ:
     FLAGS.model_dir = os.environ['MODEL_DIR']
 
+  if 'METRIC' in os.environ and os.environ['METRIC'] == 'epoch':
+    FLAGS.model_dir = os.path.join(FLAGS.model_dir, 'epoch')
+
   if 'DOUBLE_BATCH' in os.environ:
     FLAGS.batch_size *= 2
     if FLAGS.batch_sizes:
