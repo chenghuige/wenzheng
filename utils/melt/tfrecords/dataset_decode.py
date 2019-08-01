@@ -62,7 +62,7 @@ def inputs(files,
            Dataset=None,
            batch_parse=False, #by default will be line parse
            hvd_shard=True,
-           training=False,
+           training=True,
            simple_parse=False,
            name='input'):
   """Reads input data num_epochs times.

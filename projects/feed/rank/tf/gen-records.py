@@ -48,7 +48,7 @@ def build_features(infile):
       if len(fields) > 4:
         label = int(fields[0])
         id = '{}\t{}'.format(fields[2], fields[3])
-        feat_id, feat_field, feat_value = dataset.get_feat_set(fields)
+        feat_id, feat_field, feat_value = dataset.get_feat(fields[4:])
         assert len(feat_id) == len(feat_value), "len(feat_id) == len(feat_value) -----------------"
         assert len(feat_id) == len(feat_field)
 

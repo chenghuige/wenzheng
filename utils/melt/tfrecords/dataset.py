@@ -48,15 +48,18 @@ class Dataset(object):
     self.hvd_shard = hvd_shard
 
   def get_filenames(self):
-    if self.subset in ['train', 'valid', 'test']:
-      if self.subset == 'train':
-        return gezi.list_files(FLAGS.train_input)
-      elif self.subset == 'valid':
-        return gezi.list_files(FLAGS.valid_input)
-      elif self.subset == 'test':
-        return gezi.list_files(FLAGS.test_input)
-    else:
-      raise ValueError('Invalid data subset "%s"' % self.subset)
+    try:
+      if self.subset in ['train', 'valid', 'test']:
+        if self.subset == 'train':
+          return gezi.list_files(FLAGS.train_input)
+        elif self.subset == 'valid':
+          return gezi.list_files(FLAGS.valid_input)
+        elif self.subset == 'test':
+          return gezi.list_files(FLAGS.test_input)
+      else:
+        raise ValueError('Invalid data subset "%s"' % self.subset)
+    except Exception:
+      return None
 
   def parser(self, example):
     pass
