@@ -1,22 +1,22 @@
-#model=WideDeep
-model=Deep
-#model=Wide
-    #--valid_input=../input/valid \
-python ./torch-train.py \
+model=WideDeep
+python ./train.py \
+    --mlp_drop=0.5 \
+    --mlp_dims=1024 \
+    --simple_parse=1 \
     --valid_multiplier=10 \
-    --deep_final_act=0 \
-    --mlp_dims=50 \
-    --mlp_drop=0.2 \
     --field_emb=1 \
-    --pooling=max \
+    --field_dict_size=81 \
+    --field_concat=1 \
+    --deep_final_act=0 \
+    --pooling=sum \
     --dense_activation=relu \
     --model=$model \
     --num_epochs=2 \
     --eager=0 \
     --valid_interval_epochs=0.1 \
-    --train_input=../input/train \
-    --valid_input=../input/valid \
-    --model_dir=../input/model/torch.$model.best.v0 \
+    --train_input=../input/train/* \
+    --valid_input=../input/valid/* \
+    --model_dir=../input/model/fconcat2 \
     --batch_size=512 \
     --max_feat_len=100 \
     --optimizer=bert \

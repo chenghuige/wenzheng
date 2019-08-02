@@ -74,8 +74,9 @@ class Deep(nn.Module):
     values = input['value']
     fields = input['field']
 
-    print(ids)
-    exit(0)
+    #print('ids', ids)
+    #print('values', values)
+    #print('fields', fields)
 
     ids_mask = ids.eq(0)
     
@@ -84,6 +85,7 @@ class Deep(nn.Module):
     #     x = self.emb(ids)
     # else:
     x = self.emb(ids)
+    #print('x', x)
     if FLAGS.field_emb:
       x = torch.cat([x, self.field_emb(fields)], -1)
 
@@ -104,13 +106,16 @@ class Deep(nn.Module):
         assert FLAGS.index_addone, 'can not calc length for like 0,1,2,0,0,0'
         x = self.pooling(x, ids_mask)
 
+    #print('x after pooling', x)
     if self.mlp:
       x = self.mlp(x)
+      #print('x after mlp', x)
       x = F.dropout(F.relu(x), p=FLAGS.mlp_drop, training=self.training)
-    
+      #print('x after dropout', x)
     x = self.dense(x)
     x = x.squeeze(-1)
 
+    #exit(0)
     #-----FIXME why large value ?
     return x
 
