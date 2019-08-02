@@ -28,11 +28,14 @@ except Exception:
 
 # TODO
 # #https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/utils/data_reader.py
-def padded_batch(dataset, batch_size, padded_shapes=None):
+def padded_batch(d, batch_size, padded_shapes=None):
   padded_shapes = padded_shapes or dict(
       [(name, [None] * len(shape))
-       for name, shape in dataset.output_shapes.items()])
-  return dataset.padded_batch(batch_size, padded_shapes)
+       for name, shape in d.output_shapes.items()])
+  return d.padded_batch(batch_size, padded_shapes)
+
+def shard(d):
+  return d.shard(hvd.size(), hvd.rank())
 
 def inputs(files, 
            decode_fn, 
@@ -62,9 +65,10 @@ def inputs(files,
            Dataset=None,
            batch_parse=False, #by default will be line parse
            hvd_shard=True,
+           shard_by_files=False,
            training=True,
            simple_parse=False,
-           repeat_then_shuffle=True,
+           repeat_then_shuffle=False,
            name='input'):
   """Reads input data num_epochs times.
   for sparse input here will do:
@@ -120,14 +124,14 @@ def inputs(files,
   shuffle_batch: batch or shuffle_batch
   batch_join: wether to use multiple reader or use one reader mutlitple thread
   fix_random: if True make at most random which can fix random result
-  allow_smaller_final_batch: set True usefull if you want verify on small dataset
+  allow_smaller_final_batch: set True usefull if you want verify on small d
 
-  great article http://d0evi1.com/tensorflow/datasets_performance/
-  https://www.tensorflow.org/versions/master/performance/datasets_performance
+  great article http://d0evi1.com/tensorflow/ds_performance/
+  https://www.tensorflow.org/versions/master/performance/ds_performance
   """
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
   
-  # Choose to use cpu outside input function like in dataset.py
+  # Choose to use cpu outside input function like in d.py
   #with tf.device('/cpu:0'):
   if isinstance(files, str):
     files = gezi.list_files(files)
@@ -152,16 +156,12 @@ def inputs(files,
       num_threads = 12
       logging.info('num_threads set by default', num_threads)
 
-
-  def shard(dataset):
-      return dataset.shard(hvd.size(), hvd.rank())
-
   if simple_parse and training:
-    dataset = Dataset(files)
+    d = Dataset(files)
     if use_horovod and hvd_shard:
-      dataset = shard(dataset)
-    dataset = dataset.repeat(num_epochs).shuffle(batch_size * 1024).batch(batch_size).map(decode_fn, num_parallel_calls=num_threads).prefetch(9)
-    return dataset.make_one_shot_iterator()
+      d = shard(d)
+    d = d.repeat(num_epochs).shuffle(batch_size * 1024).batch(batch_size).map(decode_fn, num_parallel_calls=num_threads).prefetch(9)
+    return d.make_one_shot_iterator()
     
   if not min_after_dequeue: 
     min_after_dequeue = melt.tfrecords.read.MIN_AFTER_QUEUE
@@ -202,49 +202,51 @@ def inputs(files,
   with tf.name_scope(name):
     # https://github.com/tensorflow/tensorflow/issues/14857
     Dataset = Dataset or tf.data.TFRecordDataset
-    if not shuffle_files:
-      dataset = Dataset(files)
+    if not shuffle_files or len(files) == 1:
+      d = Dataset(files)
       if use_horovod and hvd_shard:
-        dataset = shard(dataset)
+        d = shard(d)
     else:
-      num_files = len(files)
-      if num_files == 1:
-        dataset = Dataset(files)
-        if use_horovod and hvd_shard:
-          dataset = shard(dataset)
-      else:
-        dataset = tf.data.Dataset.list_files(files, shuffle=True, seed=seed)
-        if use_horovod and hvd_shard:
-          dataset = shard(dataset)
+      d = tf.data.Dataset.list_files(files)
+      # here shard by files, not work good, especially for text line dataset with hrovod
+      if use_horovod and shard_by_files:
+        d = shard(d)
+      if shuffle_files:
+        d = d.shuffle(len(files), seed=seed)
+        d = d.interleave(Dataset,
+                        cycle_length=num_threads, block_length=1)
+      if use_horovod and not shard_by_files:
+        d = shard(d)
 
-        repeat_then_shuffle = True
-#         Be sure to shard before you use any randomizing operator (such as shuffle).
-# Generally it is best if the shard operator is used early in the dataset pipeline. For example, when reading from a set of TFRecord files, shard before converting the dataset to input samples. This avoids reading every file on every worker. The following is an example of an efficient sharding strategy within a complete pipeline:
-# d = Dataset.list_files(pattern)
-# d = d.shard(num_workers, worker_index)
-# d = d.repeat(num_epochs)
-# d = d.shuffle(shuffle_buffer_size)
-# d = d.interleave(tf.data.TFRecordDataset,
-#                  cycle_length=num_readers, block_length=1)
-# d = d.map(parser_fn, num_parallel_calls=num_map_threads)
+      #repeat_then_shuffle = True
+      ## below on tf doc, but shard by files will cause problem, especially horovod mutlitple gpu, still not fully understand
+      # Be sure to shard before you use any randomizing operator (such as shuffle).
+      # Generally it is best if the shard operator is used early in the d pipeline. For example, when reading from a set of TFRecord files, shard before converting the d to input samples. This avoids reading every file on every worker. The following is an example of an efficient sharding strategy within a complete pipeline:
+      # d = Dataset.list_files(pattern)
+      # d = d.shard(num_workers, worker_index)
+      # d = d.repeat(num_epochs)
+      # d = d.shuffle(shuffle_buffer_size)
+      # d = d.interleave(tf.data.TFRecordDataset,
+      #                  cycle_length=num_readers, block_length=1)
+      # d = d.map(parser_fn, num_parallel_calls=num_map_threads)
 
-        # # TODO still need shuffle here ?
-        # #https://www.tensorflow.org/api_docs/python/tf/data/Dataset#shuffle
-        # dataset = dataset.shuffle(num_files)\
-        #                  .apply(tf.contrib.data.parallel_interleave(
-        #                         Dataset, 
-        #                         cycle_length=num_threads))
+      # # # TODO still need shuffle here ?
+      # # #https://www.tensorflow.org/api_docs/python/tf/data/Dataset#shuffle
+      # d = d.shuffle(num_files)\
+      #                   .apply(tf.contrib.data.parallel_interleave(
+      #                         Dataset, 
+      #                         cycle_length=num_threads))
 
-      if repeat and repeat_then_shuffle:
-        dataset = dataset.repeat(num_epochs)
+    if repeat and repeat_then_shuffle:
+      d = d.repeat(num_epochs)
 
     # must batch then map if use pyfunc which you might use batch_parse, here batch_parse means batch parse otherwise slower but simple and powerfull...
     if not batch_parse:
-      dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
+      d = d.map(decode_fn, num_parallel_calls=num_threads)
 
     try:
-      #shapes = dataset._output_shapes 
-      shapes = tf.data.get_output_shapes(dataset)
+      #shapes = d._output_shapes 
+      shapes = tf.data.get_output_shapes(d)
     except Exception:
       shapes = None
     
@@ -252,52 +254,52 @@ def inputs(files,
     
     ## Has bug.. seems as least not work with bucket not sure without bucket ok or not
     if balance_pos_neg:
-      # https://stackoverflow.com/questions/46938530/produce-balanced-mini-batch-with-dataset-api/49283371#49283371
-      ds_pos = dataset.filter(pos_filter_fn).repeat()
-      ds_neg = dataset.filter(neg_filter_fn)
+      # https://stackoverflow.com/questions/46938530/produce-balanced-mini-batch-with-d-api/49283371#49283371
+      ds_pos = d.filter(pos_filter_fn).repeat()
+      ds_neg = d.filter(neg_filter_fn)
 
       # def _concat(x, y):
       #   return tf.cond(tf.random_uniform(()) > 0.5, lambda: x, lambda: y)
-      # dataset = tf.data.Dataset.zip((ds_pos, ds_neg))
-      # dataset = dataset.map(_concat)
+      # d = tf.data.Dataset.zip((ds_pos, ds_neg))
+      # d = d.map(_concat)
 
-      dataset = tf.data.Dataset.zip((ds_pos, ds_neg))
+      d = tf.data.Dataset.zip((ds_pos, ds_neg))
       # Each input element will be converted into a two-element `Dataset` using
       # `Dataset.from_tensors()` and `Dataset.concatenate()`, then `Dataset.flat_map()`
       # will flatten the resulting `Dataset`s into a single `Dataset`.
-      dataset = dataset.flat_map(
+      d = d.flat_map(
           lambda ex_pos, ex_neg: tf.data.Dataset.from_tensors(ex_pos).concatenate(
               tf.data.Dataset.from_tensors(ex_neg)))
 
     #https://github.com/tensorflow/tensorflow/issues/14451
     # count_fn for over sample
     if count_fn is not None:
-      dataset = dataset.flat_map(
+      d = d.flat_map(
         lambda x, y : tf.data.Dataset.from_tensors((x, y)).repeat(tf.to_int64(count_fn(x, y))))
 
     # filter fn for under sample
     # if under_sample_filter_fn is not None:
-    #   dataset = dataset.filter(under_sample_filter_fn)
+    #   d = d.filter(under_sample_filter_fn)
       
     if filter_fn is not None:
-      dataset = dataset.filter(filter_fn)
+      d = d.filter(filter_fn)
   
     if shuffle_batch:
       logging.info('shuffle with buffer_size', buffer_size, 'seed', seed)
-      dataset = dataset.shuffle(buffer_size=buffer_size, seed=seed)
+      d = d.shuffle(buffer_size=buffer_size, seed=seed)
 
     # shuffle then repeat
     if repeat and not repeat_then_shuffle:
-      dataset = dataset.repeat(num_epochs)
+      d = d.repeat(num_epochs)
 
-    dataset = dataset.interleave(Dataset,
-                          cycle_length=num_threads, block_length=16)
+    # d = d.interleave(Dataset,
+    #                       cycle_length=num_threads, block_length=16)
 
 
-    # https://stackoverflow.com/questions/46444018/meaning-of-buffer-size-in-dataset-map-dataset-prefetch-and-dataset-shuffle
-    #dataset = dataset.prefetch(buffer_size)
-    dataset = dataset.prefetch(num_prefetch_batches * batch_size)
-    #dataset = dataset.prefetch(num_prefetch_batches)
+    # https://stackoverflow.com/questions/46444018/meaning-of-buffer-size-in-d-map-d-prefetch-and-d-shuffle
+    #d = d.prefetch(buffer_size)
+    d = d.prefetch(num_prefetch_batches * batch_size)
+    #d = d.prefetch(num_prefetch_batches)
 
     # #https://github.com/HKUST-KnowComp/R-Net/blob/master/util.py
     # #https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/utils/data_reader.py
@@ -335,17 +337,17 @@ def inputs(files,
           return bucket_id
 
         if not bucket_batch_sizes:
-          def batching_fn(bucket_id, grouped_dataset):
-              return grouped_dataset.padded_batch(batch_size, padded_shapes=(shapes))
+          def batching_fn(bucket_id, grouped_d):
+              return grouped_d.padded_batch(batch_size, padded_shapes=(shapes))
 
           ## TODO larger window better hsku squad doing this like below, shuffle can be better ?
           ## NOTICE!! shuffle may be slow start fill queue can remove not hurt performance ?
-          dataset = dataset.apply(tf.contrib.data.group_by_window(
+          d = d.apply(tf.contrib.data.group_by_window(
             example_to_bucket_id, batching_fn, window_size=5 * batch_size)).shuffle((len(boundaries) + 1) * 25)
 
           ## tenor2tensor doing this, no shuffle ? also it seems like window_func for different bounds
           ## with different batch_size ?
-          # dataset = dataset.apply(
+          # d = d.apply(
           #   tf.contrib.data.group_by_window(example_to_bucket_id, batching_fn, batch_size)).shuffle((len(boundaries) + 1) * 25)
         else:
           # TEST OK 
@@ -364,27 +366,27 @@ def inputs(files,
             window_size *= 5
             return window_size
 
-          def batching_fn(bucket_id, grouped_dataset):
+          def batching_fn(bucket_id, grouped_d):
             batch_sizes = tf.constant(bucket_batch_sizes, dtype=tf.int64)
             batch_size = batch_sizes[bucket_id]
-            #return padded_batch(grouped_dataset, batch_size, padded_shapes=None)
-            return grouped_dataset.padded_batch(batch_size, padded_shapes=(shapes))
+            #return padded_batch(grouped_d, batch_size, padded_shapes=None)
+            return grouped_d.padded_batch(batch_size, padded_shapes=(shapes))
 
           # shuffle will make start slower might fill
-          dataset = dataset.apply(tf.contrib.data.group_by_window(
+          d = d.apply(tf.contrib.data.group_by_window(
             example_to_bucket_id, batching_fn, None, window_size_fn)).shuffle((len(boundaries) + 1) * 25)      
     else:
       # no bucket
       if dynamic_pad and not batch_parse:
-        dataset = dataset.padded_batch(batch_size, padded_shapes=(shapes), drop_remainder=drop_remainder)
+        d = d.padded_batch(batch_size, padded_shapes=(shapes), drop_remainder=drop_remainder)
       else:
-        dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+        d = d.batch(batch_size, drop_remainder=drop_remainder)
         if batch_parse:
-          dataset = dataset.map(decode_fn, num_parallel_calls=num_threads)
+          d = d.map(decode_fn, num_parallel_calls=num_threads)
 
     # if not allow_smaller_final_batch:
-    #   # https://github.com/tensorflow/tensorflow/issues/13745 dataset.apply(tf.contrib.data.batch_and_drop_remainder(10)).
-    #   dataset = dataset.filter(lambda x, *args, **kw: tf.equal(tf.shape(x)[0], batch_size))
+    #   # https://github.com/tensorflow/tensorflow/issues/13745 d.apply(tf.contrib.data.batch_and_drop_remainder(10)).
+    #   d = d.filter(lambda x, *args, **kw: tf.equal(tf.shape(x)[0], batch_size))
 
   # TODO save iterator ?
   ## Create saveable object from iterator.
@@ -395,10 +397,10 @@ def inputs(files,
     #try:
     if tf.executing_eagerly():
       # TODO store iterator for eager
-      return dataset
+      return d
     else:
       if repeat and not initializable:
-        iterator = dataset.make_one_shot_iterator() 
+        iterator = d.make_one_shot_iterator() 
         saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
         tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
         if return_iterator:
@@ -406,13 +408,13 @@ def inputs(files,
         ops = iterator.get_next()
         return ops
       else:
-        iterator = dataset.make_initializable_iterator()
+        iterator = d.make_initializable_iterator()
         saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
         tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
         return iterator
     # except Exception:
     #   if repeat and not initializable:
-    #     iterator = dataset.make_one_shot_iterator()
+    #     iterator = d.make_one_shot_iterator()
     #     saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
     #     tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
     #     if return_iterator:
@@ -421,7 +423,7 @@ def inputs(files,
     #     return ops
     #   else:
     #     # if not repeat then need to init iterator each epoch
-    #     iterator = dataset.make_initializable_iterator()
+    #     iterator = d.make_initializable_iterator()
     #     saveable = tf.contrib.data.make_saveable_from_iterator(iterator)
     #     tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable)
     #     return iterator         

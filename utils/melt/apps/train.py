@@ -527,6 +527,9 @@ def init():
 
   if 'BUFFER_SIZE' in os.environ:
     FLAGS.min_after_dequeue = int(os.environ['BUFFER_SIZE'])
+  
+  if 'BUFFER' in os.environ:
+    FLAGS.min_after_dequeue = int(os.environ['BUFFER'])
 
   FLAGS.buffer_size = max(FLAGS.buffer_size, FLAGS.min_after_dequeue)
   logging.info('buffer_size:{}'.format(FLAGS.buffer_size))
