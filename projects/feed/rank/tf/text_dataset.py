@@ -118,7 +118,7 @@ class Dataset(melt.tfrecords.Dataset):
       for i, feat_line in enumerate(feat_list):
         # python 3 need decode
         fields = feat_line.decode().split('\t')
-        assert len(fields) > self.start
+        assert len(fields) > self.start, fields
         #fields = feat_line.split('\t')
         labels[i] = float(fields[0])
         ids[i] = '{}\t{}'.format(fields[2], fields[3])

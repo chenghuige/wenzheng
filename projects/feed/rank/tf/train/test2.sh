@@ -12,9 +12,9 @@ python ./train.py \
     --num_epochs=2 \
     --eager=0 \
     --valid_interval_epochs=0.1 \
-    --train_input=../input/tfrecord/train \
+    --train_input=../input/tfrecord/train.old \
     --valid_input=../input/tfrecord/valid \
-    --model_dir=../input/model/$model.best.v0.horovod.record.lrnoscale \
+    --model_dir=../input/model/test2 \
     --batch_size=512 \
     --max_feat_len=100 \
     --optimizer=bert \

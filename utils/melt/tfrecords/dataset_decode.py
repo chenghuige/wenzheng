@@ -64,6 +64,7 @@ def inputs(files,
            hvd_shard=True,
            training=True,
            simple_parse=False,
+           repeat_then_shuffle=True,
            name='input'):
   """Reads input data num_epochs times.
   for sparse input here will do:
@@ -212,16 +213,30 @@ def inputs(files,
         if use_horovod and hvd_shard:
           dataset = shard(dataset)
       else:
-        dataset = tf.data.Dataset.list_files(files)
+        dataset = tf.data.Dataset.list_files(files, shuffle=True, seed=seed)
         if use_horovod and hvd_shard:
           dataset = shard(dataset)
-        # TODO still need shuffle here ?
-        #https://www.tensorflow.org/api_docs/python/tf/data/Dataset#shuffle
-        dataset = dataset.shuffle(num_files)\
-                         .apply(tf.contrib.data.parallel_interleave(
-                                Dataset, 
-                                cycle_length=num_threads))
 
+        repeat_then_shuffle = True
+#         Be sure to shard before you use any randomizing operator (such as shuffle).
+# Generally it is best if the shard operator is used early in the dataset pipeline. For example, when reading from a set of TFRecord files, shard before converting the dataset to input samples. This avoids reading every file on every worker. The following is an example of an efficient sharding strategy within a complete pipeline:
+# d = Dataset.list_files(pattern)
+# d = d.shard(num_workers, worker_index)
+# d = d.repeat(num_epochs)
+# d = d.shuffle(shuffle_buffer_size)
+# d = d.interleave(tf.data.TFRecordDataset,
+#                  cycle_length=num_readers, block_length=1)
+# d = d.map(parser_fn, num_parallel_calls=num_map_threads)
+
+        # # TODO still need shuffle here ?
+        # #https://www.tensorflow.org/api_docs/python/tf/data/Dataset#shuffle
+        # dataset = dataset.shuffle(num_files)\
+        #                  .apply(tf.contrib.data.parallel_interleave(
+        #                         Dataset, 
+        #                         cycle_length=num_threads))
+
+      if repeat and repeat_then_shuffle:
+        dataset = dataset.repeat(num_epochs)
 
     # must batch then map if use pyfunc which you might use batch_parse, here batch_parse means batch parse otherwise slower but simple and powerfull...
     if not batch_parse:
@@ -272,8 +287,12 @@ def inputs(files,
       dataset = dataset.shuffle(buffer_size=buffer_size, seed=seed)
 
     # shuffle then repeat
-    if repeat:
+    if repeat and not repeat_then_shuffle:
       dataset = dataset.repeat(num_epochs)
+
+    dataset = dataset.interleave(Dataset,
+                          cycle_length=num_threads, block_length=16)
+
 
     # https://stackoverflow.com/questions/46444018/meaning-of-buffer-size-in-dataset-map-dataset-prefetch-and-dataset-shuffle
     #dataset = dataset.prefetch(buffer_size)

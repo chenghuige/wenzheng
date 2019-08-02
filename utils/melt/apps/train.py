@@ -1480,6 +1480,7 @@ def train(Dataset,
   #   status.initialize_or_restore(sess)
   #   checkpoint.save(checkpoint_prefix)
 
+  assert num_examples
   if FLAGS.use_horovod:
     num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size()))
 
