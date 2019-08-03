@@ -20,7 +20,7 @@ import gezi
 
 dataset = None 
 
-def evaluate(y, y_, model_path=None):
+def evaluate(y, y_):
   y_ = gezi.sigmoid(y_)
   auc = roc_auc_score(y, y_)
   loss = log_loss(y, y_)

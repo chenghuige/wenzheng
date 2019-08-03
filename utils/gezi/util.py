@@ -673,3 +673,8 @@ def to_list(item):
   if not isinstance(item, (list, tuple)):
     return [item]
   return item
+
+def repeat(iter):
+  while True:
+    for x in iter:
+      yield x

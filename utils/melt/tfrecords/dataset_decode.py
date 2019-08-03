@@ -157,6 +157,7 @@ def inputs(files,
       logging.info('num_threads set by default', num_threads)
 
   if simple_parse and training:
+    # for multiple gpu horovod run seem this much better, might due to repeat then shuffle better TODO 
     d = Dataset(files)
     if use_horovod and hvd_shard:
       d = shard(d)

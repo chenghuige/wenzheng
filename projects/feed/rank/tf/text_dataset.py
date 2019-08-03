@@ -44,28 +44,26 @@ class Dataset(melt.tfrecords.Dataset):
     self.start = 4
 
   def load_feature_files(self):
-      self.field_id = {}
-      ifs = open(FLAGS.feat_file_path, 'r')
-      while True:
-          line = ifs.readline()
-          if line == '':
-              break
-          line = line.rstrip()
-          fields = line.split('\t')
-          assert len(fields) == 2
-          #----------- +1
-          #fid = int(fields[1]) - 1 + FLAGS.index_addone
-          #fid = int(fields[1]) - 1 + self.index_addone
-          fid = int(fields[1]) 
+    self.field_id = {}
+    for line in open(FLAGS.feat_file_path, 'r')
+      if line == '':
+        break
+      line = line.rstrip()
+      fields = line.split('\t')
+      assert len(fields) == 2
+      #----------- +1
+      #fid = int(fields[1]) - 1 + FLAGS.index_addone
+      #fid = int(fields[1]) - 1 + self.index_addone
+      fid = int(fields[1]) 
 
-          tokens = fields[0].split('\a')
-          if tokens[0] not in self.field_id:
-              #----------- +1
-              #self.field_id[tokens[0]] = len(self.field_id) + self.index_addone
-              self.field_id[tokens[0]] = len(self.field_id)  + 1
-          self.feat_to_field[fid] = self.field_id[tokens[0]]
-      print('----num fields', len(self.field_id))
-      ifs.close()
+      tokens = fields[0].split('\a')
+      if tokens[0] not in self.field_id:
+        #----------- +1
+        #self.field_id[tokens[0]] = len(self.field_id) + self.index_addone
+        self.field_id[tokens[0]] = len(self.field_id)  + 1
+      self.feat_to_field[fid] = self.field_id[tokens[0]]
+    print('----num fields', len(self.field_id))
+    ifs.close()
 
   def get_feat(self, fields):
     num_features = len(fields) 
@@ -142,7 +140,6 @@ class Dataset(melt.tfrecords.Dataset):
   
       return feat_ids, feat_fields, feat_values, labels, ids
 
-    
   def batch_parse_(self, string_line):
     feat_ids, feat_fields, feat_values, labels, ids = \
         tf.py_func(self.parse_batch, [string_line],

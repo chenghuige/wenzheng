@@ -128,6 +128,7 @@ def train_once(sess,
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(train_once.summary_writer, projector_config)
     
     # if eval ops then should have bee rank 0
+    eval_str = ''
     if eval_ops:
       #if deal_eval_results_fn is None and eval_names is not None:
       #  deal_eval_results_fn = lambda x: melt.print_results(x, eval_names)
@@ -153,8 +154,9 @@ def train_once(sess,
         # @TODO user print should also use logging as a must ?
         #print(gezi.now_time(), epoch_str, 'eval_step: %d'%step, 'eval_metrics:', end='')  
         eval_names_ = melt.adjust_names(eval_loss, eval_names)
-        if not use_horovod or hvd.rank() == 0:
-          logging.info2('{} eval_step:{} eval_metrics:{}'.format(epoch_str, step, melt.parse_results(eval_loss, eval_names_)))
+        #if not use_horovod or hvd.rank() == 0:
+        #  logging.info2('{} eval_step:{} eval_metrics:{}'.format(epoch_str, step, melt.parse_results(eval_loss, eval_names_)))
+        eval_str = 'valid:{}'.format(melt.parse_results(eval_loss, eval_names_))
         
         # if deal_eval_results_fn is not None:
         #   eval_stop = deal_eval_results_fn(eval_results)
@@ -324,7 +326,7 @@ def train_once(sess,
           epoch_time_info = ''
         else:
           hours_per_epoch = num_steps_per_epoch / interval_steps * elapsed / 3600
-          epoch_time_info = ' 1epoch:[{:.2f}h]'.format(hours_per_epoch)
+          epoch_time_info = '1epoch:[{:.2f}h]'.format(hours_per_epoch)
         info.write('elapsed:[{:.3f}] batch_size:[{}]{} batches/s:[{:.2f}] insts/s:[{:.2f}] {} lr:[{:.8f}]'.format(
                       elapsed, batch_size, gpu_info, steps_per_second, instances_per_second, epoch_time_info, learning_rate))
 
@@ -334,7 +336,7 @@ def train_once(sess,
         #info.write('train_avg_metric:{} '.format(melt.parse_results(train_average_loss, names_)))
         info.write(' train:{} '.format(melt.parse_results(train_average_loss, names_)))
         #info.write('train_avg_loss: {} '.format(train_average_loss))
-      
+      info.write(eval_str)
       #print(gezi.now_time(), epoch_str, 'train_step:%d'%step, info.getvalue(), end=' ') 
       logging.info2('{} {} {}'.format(epoch_str, 'step:%d'%step, info.getvalue()))
       

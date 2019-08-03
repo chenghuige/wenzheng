@@ -46,8 +46,6 @@ def main(_):
 
   loss_fn = nn.BCEWithLogitsLoss()
 
-  print('--------------', model, Dataset, loss_fn)
-
   fit(Dataset,
       model,  
       loss_fn,

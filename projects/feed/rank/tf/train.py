@@ -39,8 +39,6 @@ def main(_):
 
   loss_fn = tf.losses.sigmoid_cross_entropy if not FLAGS.rank_loss else loss.binary_crossentropy_with_ranking
 
-  print('--------------', model, Dataset, loss_fn)
-
   fit(Dataset,
       model,  
       loss_fn,

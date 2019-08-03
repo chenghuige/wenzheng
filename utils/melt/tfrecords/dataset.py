@@ -62,7 +62,7 @@ class Dataset(object):
       return None
 
   def parser(self, example):
-    pass
+    raise NotImplementedError
 
   def adjust(self, result):
     return result

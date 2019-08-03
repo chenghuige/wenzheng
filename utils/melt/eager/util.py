@@ -26,10 +26,11 @@ import inspect
 
 def grad(model, x, y, loss_fn):
   with tf.GradientTape() as tape:
-    if 'training' in inspect.getargspec(loss_fn).args:
-      loss = loss_fn(model, x, y, training=True)
+    if 'training' in inspect.getargspec(model.call).args:
+      y_ = model(x, training=True)
     else:
-      loss = loss_fn(model, x, y)
+      y_ = model(x)
+    loss = loss_fn(y, y_)
   # TODO eager or tf 2.0 support horovod
   # tape = hvd.DistributedGradientTape(tape)
   return loss, tape.gradient(loss, model.trainable_variables)

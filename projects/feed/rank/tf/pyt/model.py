@@ -55,16 +55,19 @@ class Deep(nn.Module):
     if FLAGS.field_emb:
       self.field_emb = nn.Embedding(FLAGS.field_dict_size + 1, FLAGS.hidden_size)
       self.emb_dim += FLAGS.hidden_size
-    
+
+    olen = self.emb_dim    
     if not FLAGS.mlp_dims:
       self.mlp = None
     else:
       dims = [int(x) for x in FLAGS.mlp_dims.split(',')]
       self.mlp = nn.Linear(self.emb_dim, dims[0])
       # self.mlp = melt.layers.Mlp(dims, activation=FLAGS.dense_activation, drop_rate=FLAGS.mlp_drop)
+      olen = dims[-1]
 
     act = FLAGS.dense_activation if FLAGS.deep_final_act else None
-    self.dense = nn.Linear(dims[0], 1)
+
+    self.dense = nn.Linear(olen, 1)
 
     if FLAGS.pooling != 'allsum':
       self.pooling = self.pooling = lele.layers.Pooling(FLAGS.pooling)         
@@ -73,9 +76,6 @@ class Deep(nn.Module):
     ids = input['index']
     values = input['value']
     fields = input['field']
-
-    print(ids)
-    exit(0)
 
     ids_mask = ids.eq(0)
     

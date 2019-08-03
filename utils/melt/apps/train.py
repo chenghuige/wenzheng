@@ -91,7 +91,7 @@ flags.DEFINE_boolean('restore_from_latest', True, 'more safe to restore from rec
 
 #--------show
 flags.DEFINE_integer('interval_steps', 100, '')
-flags.DEFINE_integer('eval_interval_steps', 1000, """for training suggest 10000, 
+flags.DEFINE_integer('eval_interval_steps', 100,  """for training suggest 10000, 
                                                      you can check evaluate interval time 
                                                      and evaluate once time the ratio below 0.1""")
 flags.DEFINE_integer('metric_eval_interval_steps', 0, 'if > 0 need to be eval_interval_steps * n')
@@ -1275,7 +1275,8 @@ def train(Dataset,
     num_gpus = 1
 
   batch_size_per_gpu = FLAGS.batch_size
-  print('batch_size', batch_size, 'batch_size_per_gpu', batch_size_per_gpu, 'num_gpus', num_gpus)
+  logging.info(model, Dataset, loss_fn)
+  logging.info('batch_size', batch_size, 'batch_size_per_gpu', batch_size_per_gpu, 'num_gpus', num_gpus)
 
   if num_gpus > 1:
     assert not FLAGS.batch_sizes, 'Not support batch sizes for num gpus > 1, TODO'
@@ -1371,6 +1372,8 @@ def train(Dataset,
     if 'training' in inspect.getargspec(model.call).args:
       y_ = model(x, training=True)
     else:
+      if hasattr(model, 'train'):
+        model.train()
       y_ = model(x)
     loss = loss_fn(y, y_)
     return loss
@@ -1405,6 +1408,8 @@ def train(Dataset,
       valid_names = [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:]
     if eval_fn:
       def valid_fn(i):
+        if hasattr(model, 'eval'):
+          model.eval()
         valid_predict = model(valid_x[i])
         return valid_x[i], valid_y[i], valid_predict
 
@@ -1436,6 +1441,8 @@ def train(Dataset,
     test_x, test_y = melt.split_batch(test_batch, batch_size_, num_gpus, training=False)
 
     def infer_fn(i):
+      if hasattr(model, 'eval'):
+        model.eval()
       test_predict = model(test_x[i])
       return test_x[i], test_predict
 
