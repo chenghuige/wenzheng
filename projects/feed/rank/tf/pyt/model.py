@@ -39,12 +39,12 @@ class Wide(nn.Module):
     values = input['value']
 
     x = self.emb(ids)
-    x = x.squeeze(-1)
-    # strage, eval for wide only addval will got worse result
-    if FLAGS.wide_addval:
-      x = x * values
+    # x = x.squeeze(-1)
+    # # strage, eval for wide only addval will got worse result
+    # if FLAGS.wide_addval:
+    #   x = x * values
     x = x.sum(1)
-    x = x + self.bias
+    # x = x + self.bias
     return x  
 
 class Deep(nn.Module):
@@ -84,6 +84,7 @@ class Deep(nn.Module):
     #     x = self.emb(ids)
     # else:
     x = self.emb(ids)
+    #print('x', x)
     if FLAGS.field_emb:
       x = torch.cat([x, self.field_emb(fields)], -1)
 
@@ -104,13 +105,16 @@ class Deep(nn.Module):
         assert FLAGS.index_addone, 'can not calc length for like 0,1,2,0,0,0'
         x = self.pooling(x, ids_mask)
 
+    #print('x after pooling', x)
     if self.mlp:
       x = self.mlp(x)
+      #print('x after mlp', x)
       x = F.dropout(F.relu(x), p=FLAGS.mlp_drop, training=self.training)
-    
+      #print('x after dropout', x)
     x = self.dense(x)
     x = x.squeeze(-1)
 
+    #exit(0)
     #-----FIXME why large value ?
     return x
 
