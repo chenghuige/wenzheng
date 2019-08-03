@@ -855,7 +855,8 @@ def train(Dataset,
 
     timer.print_elapsed()
     
-    if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:
+    if valid_dataset and global_step.numpy() % int(num_steps_per_epoch * (epoch + 1) * FLAGS.valid_inverval_epochs) == 0:
+    #if valid_dataset and (epoch + 1) % FLAGS.valid_interval_epochs == 0:
       if FLAGS.torch:
         model.eval()
 

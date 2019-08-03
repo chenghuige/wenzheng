@@ -39,12 +39,12 @@ class Wide(nn.Module):
     values = input['value']
 
     x = self.emb(ids)
-    x = x.squeeze(-1)
-    # strage, eval for wide only addval will got worse result
-    if FLAGS.wide_addval:
-      x = x * values
+    # x = x.squeeze(-1)
+    # # strage, eval for wide only addval will got worse result
+    # if FLAGS.wide_addval:
+    #   x = x * values
     x = x.sum(1)
-    x = x + self.bias
+    # x = x + self.bias
     return x  
 
 class Deep(nn.Module):

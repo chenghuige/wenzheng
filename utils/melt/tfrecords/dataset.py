@@ -86,16 +86,16 @@ class Dataset(object):
     min_queue_examples = 20000
     allow_smaller_final_batch = True
     if repeat is None:
-      if tf.executing_eagerly():
-        repeat = False # if True will not consider epoch stop using for... loop forever for item in dataset..
+      # if tf.executing_eagerly():
+      #   repeat = False # if True will not consider epoch stop using for... loop forever for item in dataset..
+      # else:
+      #   # for eval in num_gpus > 1 then set repeat = True so final batch with full batch
+      #   # TODO 
+      num_gpus = melt.num_gpus() if not 'OMPI_COMM_WORLD_RANK' in os.environ else 1
+      if self.subset == 'train' or num_gpus > 1:
+        repeat = True
       else:
-        # for eval in num_gpus > 1 then set repeat = True so final batch with full batch
-        # TODO 
-        num_gpus = melt.num_gpus() if not 'OMPI_COMM_WORLD_RANK' in os.environ else 1
-        if self.subset == 'train' or num_gpus > 1:
-          repeat = True
-        else:
-          repeat = False
+        repeat = False
 
     if self.subset == 'train':
       shuffle_files=True 
