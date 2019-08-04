@@ -17,8 +17,9 @@ import os
 
 import torch
 from torch.utils.data import Dataset, ConcatDataset
-from ..text_dataset import Dataset as TD 
-#from projects.feed.rank.tf import text_dataset
+## TODO relative path ...?
+#from ..text_dataset import Dataset as TD 
+#from projects.feed.rank.tf.text_dataset import Dataset as TD
 
 import subprocess
 import linecache
@@ -31,14 +32,14 @@ class TextDataset(Dataset):
 
   def __getitem__(self, idx):
     line = linecache.getline(self._filename, idx + 1)
-    feat_id, feat_field, feat_value, [label], [id] = self.td.parse_line(line)
+    feat_id, feat_field, feat_value, [label], [id] = self.td.parse_line2(line)
     return {'index': feat_id, 'field': feat_field, 'value': feat_value, 'id': id}, label
     
   def __len__(self):
     return self._total_data
 
-def get_dataset(files):
-  datasets = [TextDataset(x) for x in files]
+def get_dataset(files, td):
+  datasets = [TextDataset(x, td) for x in files]
   return ConcatDataset(datasets)
 
 if __name__=="__main__":

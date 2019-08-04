@@ -32,7 +32,7 @@ class Dataset(object):
   def __init__(self, 
                subset=None,
                batch_size=None,
-               InputDataset=None, 
+               Type=None, 
                batch_parse=False,
                hvd_shard=True):
     self.subset = subset
@@ -40,7 +40,7 @@ class Dataset(object):
     self.pos_filter_fn = None
     self.neg_filter_fn = None 
     self.count_fn = None
-    self.InputDataset = InputDataset
+    self.Type = Type
     self.batch_parse = batch_parse
     self.batch_size = batch_size or FLAGS.batch_size
     self.hvd_shard = hvd_shard
@@ -140,7 +140,7 @@ class Dataset(object):
         neg_filter_fn=self.neg_filter_fn if subset == 'train' else None,
         count_fn=self.count_fn if subset == 'train' else None,
         name=subset,
-        Dataset=self.InputDataset,
+        Dataset=self.Type,
         batch_parse=self.batch_parse,
         hvd_shard=hvd_shard,
         training=subset == 'train',

@@ -48,6 +48,8 @@ except Exception:
 
 
 def torch_(x):
+  if FLAGS.torch_only:
+    return x
   for dim in x.shape:
     if dim == 0:
       return x
@@ -62,6 +64,8 @@ def torch_(x):
   return x
 
 def to_torch(x, y=None):
+  if FLAGS.torch_only:
+    return x.to(device), y.to(device)
   if y is not None:
     y = torch_(y)
 
@@ -309,9 +313,13 @@ def load_torch_model(model, path):
 
   return checkpoint
  
-def train(Dataset, 
-          model, 
-          loss_fn, 
+def train(model, 
+          loss_fn,
+          Dataset=None,  
+          dataset=None,
+          valid_dataset=None,
+          valid_dataset2=None,
+          test_dataset=None,
           evaluate_fn=None, 
           inference_fn=None,
           eval_fn=None,
@@ -327,9 +335,6 @@ def train(Dataset,
           optimizer=None,
           param_groups=None,
           init_fn=None,
-          dataset=None,
-          valid_dataset=None,
-          test_dataset=None,
           sep=','):
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
 
@@ -370,49 +375,51 @@ def train(Dataset,
   #batch_size_ = batch_size if not FLAGS.batch_sizes else int(FLAGS.batch_sizes.split(',')[-1])
   batch_size_ = FLAGS.eval_batch_size or batch_size
 
-  if FLAGS.fold is not None:
-    inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold) and not x.endswith('%d.tfrecord' % FLAGS.fold)]
-    # if FLAGS.valid_input:
-    #   inputs += [x for x in gezi.list_files(FLAGS.valid_input) if not x.endswith('%d.record' % FLAGS.fold)]
-  logging.info('inputs', len(inputs), inputs[:100])
+  if dataset is None:
+    if FLAGS.fold is not None:
+      inputs = [x for x in inputs if not x.endswith('%d.record' % FLAGS.fold) and not x.endswith('%d.tfrecord' % FLAGS.fold)]
+      # if FLAGS.valid_input:
+      #   inputs += [x for x in gezi.list_files(FLAGS.valid_input) if not x.endswith('%d.record' % FLAGS.fold)]
+    logging.info('inputs', len(inputs), inputs[:100])
   num_folds = FLAGS.num_folds or len(inputs) + 1
 
   if dataset is None:
-    train_dataset_ = Dataset('train')
-    train_dataset = train_dataset_.make_batch(batch_size, inputs, simple_parse=FLAGS.simple_parse)
-    num_examples = train_dataset_.num_examples_per_epoch('train') 
-    dataset = train_dataset_
+    dataset = Dataset('train')
+    assert len(inputs) > 0
+    train_dataset = dataset.make_batch(batch_size, inputs, simple_parse=FLAGS.simple_parse)
+    num_examples = dataset.num_examples_per_epoch('train') 
   else:
-    tain_dataset = dataset
+    assert FLAGS.torch_only, 'only torch only currently support input dataset not Dataset class type, because we do not have len function there'
+    train_dataset = dataset
     num_examples = len(train_dataset)
 
   num_all_examples = num_examples
 
-  valid_inputs = None
-  if FLAGS.valid_input:
-    valid_inputs = gezi.list_files(FLAGS.valid_input)
+  if valid_dataset is None:
+    valid_inputs = None
+    if FLAGS.valid_input:
+      valid_inputs = gezi.list_files(FLAGS.valid_input)
+    else:
+      if FLAGS.fold is not None:
+        #valid_inputs = [x for x in all_inputs if x not in inputs]
+        if not FLAGS.test_aug:
+          valid_inputs = [x for x in all_inputs if not 'aug' in x and x not in inputs]
+        else:
+          valid_inputs = [x for x in all_inputs if 'aug' in x and x not in inputs]
+
+    logging.info('valid_inputs', valid_inputs)
+
+  num_valid_examples = None
+  if valid_dataset is not None:
+    num_valid_examples = len(valid_dataset)
   else:
-    if FLAGS.fold is not None:
-      #valid_inputs = [x for x in all_inputs if x not in inputs]
-      if not FLAGS.test_aug:
-        valid_inputs = [x for x in all_inputs if not 'aug' in x and x not in inputs]
-      else:
-        valid_inputs = [x for x in all_inputs if 'aug' in x and x not in inputs]
-
-  logging.info('valid_inputs', valid_inputs)
-
-  if valid_inputs:
-    if valid_dataset is None:
-      valid_dataset_ = valid_dataset or dataset
-      valid_dataset = valid_dataset_.make_batch(batch_size_, valid_inputs, subset='valid', hvd_shard=FLAGS.horovod_eval )
-      valid_dataset2 = valid_dataset_.make_batch(batch_size, valid_inputs, subset='valid', repeat=True, initializable=False, hvd_shard=False)
+    if valid_inputs:
+      valid_dataset = dataset.make_batch(batch_size_, valid_inputs, subset='valid', hvd_shard=FLAGS.horovod_eval )
+      valid_dataset2 = dataset.make_batch(batch_size, valid_inputs, subset='valid', repeat=True, initializable=False, hvd_shard=False)
       valid_dataset2_iter = iter(valid_dataset2)
     else:
-      # need to copy internal using deepcopy ? copy.copy ok ?
-      valid_dataset2 = gezi.repeat(copy.deepcopy(valid_dataset))
-  else:
-    valid_datsset = None
-    valid_dataset2 = None
+      valid_datsset = None
+      valid_dataset2 = None
 
   if num_examples:
     if FLAGS.fold is not None:
@@ -424,36 +431,39 @@ def train(Dataset,
   if use_horovod and num_examples:
     num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size()))
 
-  num_valid_examples = None
-  if FLAGS.valid_input:
-    num_valid_examples = valid_dataset_.num_examples_per_epoch('valid')
-    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None   
-  else:
-    if FLAGS.fold is not None:
-      if num_examples:
-        num_valid_examples = int(num_all_examples * (1 / num_folds))
-        num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
-      else:
-        num_valid_steps_per_epoch = None
+  if num_valid_examples is None:
+    if FLAGS.valid_input:
+      num_valid_examples = dataset.num_examples_per_epoch('valid')
+      num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None   
+    else:
+      if FLAGS.fold is not None:
+        if num_examples:
+          num_valid_examples = int(num_all_examples * (1 / num_folds))
+          num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_)
+        else:
+          num_valid_steps_per_epoch = None
   if use_horovod and FLAGS.horovod_eval and num_valid_examples:
       num_valid_steps_per_epoch = -(-num_valid_examples // (batch_size_ * hvd.size()))
   logging.info('num_valid_examples:', num_valid_examples)
 
-  if FLAGS.test_input:
-    test_inputs = gezi.list_files(FLAGS.test_input)
-    #test_inputs = [x for x in test_inputs if not 'aug' in x]
-    logging.info('test_inputs', test_inputs)
-  else:
-    test_inputs = None
+  if test_dataset is None:
+    if FLAGS.test_input:
+      test_inputs = gezi.list_files(FLAGS.test_input)
+      #test_inputs = [x for x in test_inputs if not 'aug' in x]
+      logging.info('test_inputs', test_inputs)
+    else:
+      test_inputs = None
   
   num_test_examples = None
-  if test_inputs:
-    test_dataset_ = test_dataset or dataset
-    test_dataset = test_dataset_.make_batch(batch_size_, test_inputs, subset='test') 
-    num_test_examples = test_dataset_.num_examples_per_epoch('test')
-    num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
+  if test_dataset is not None:
+    num_test_examples = len(test_dataset)
   else:
-    test_dataset = None
+    if test_inputs:
+      test_dataset = dataset.make_batch(batch_size_, test_inputs, subset='test') 
+      num_test_examples = dataset.num_examples_per_epoch('test')
+    else:
+      test_dataset = None
+  num_test_steps_per_epoch = -(-num_test_examples // batch_size_) if num_test_examples else None
   if use_horovod and FLAGS.horovod_eval and num_test_examples:
       num_test_steps_per_epoch = -(-num_test_examples // (batch_size_ * hvd.size()))
   logging.info('num_test_examples:', num_test_examples)
@@ -655,8 +665,8 @@ def train(Dataset,
                              num_valid_steps_per_epoch, num_valid_examples,
                              suffix=valid_suffix, sep=sep)
     if names:
-      logging.info2('epoch:%d/%d' % (start_epoch, num_epochs), 
-                    ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
+      logging.info2('epoch:%.2f/%d step:%d' % (global_step.numpy() / num_steps_per_epoch, num_epochs, global_step.numpy()), 
+                    ['%s:%.4f' % (name, val) for name, val in zip(names, vals)])
   
     if FLAGS.work_mode == 'valid' or gezi.get_env('METRIC') == '1':
       exit(0)
@@ -739,10 +749,17 @@ def train(Dataset,
   valid_loss_avg = Mean()
 
   num_epochs = num_epochs if num_epochs else 0
-  loops = min(num_epochs, 1)
+  loops = min(num_epochs, 1) if FLAGS.torch_only else 1
   for _ in range(loops):
     for i, (x, y) in enumerate(train_dataset):
       #print('-------------------', i)
+      print(len(x['index']), len(x['value']), len(x['id']))
+      print(x['index'][0].size(), x['index'][1].size(), y.size())
+      print(x['value'][0].size(), x['value'][1].size(), y.size())
+      print(x['id'][0], x['id'][1], y.size())
+      if i == 3:
+        exit(0)
+      continue
 
       if FLAGS.torch:
         x, y = to_torch(x, y)
@@ -995,4 +1012,8 @@ def train(Dataset,
                     num_test_steps_per_epoch, num_test_examples, suffix=infer_suffix, sep=sep)
         else:
           inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
+
+      if num_epochs and (global_step.numpy() % num_steps_per_epoch) == 0 and int(global_step.numpy() / num_steps_per_epoch) == num_epochs:
+        logging.info(f'Finshed training of {num_epochs} epochs')
+        exit(0)
 

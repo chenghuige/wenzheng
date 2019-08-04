@@ -260,6 +260,7 @@ flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
                                         """)
 
 flags.DEFINE_boolean('torch', False, '')
+flags.DEFINE_boolean('torch_only', False, '')
 flags.DEFINE_boolean('torch_lr', False, '')
 flags.DEFINE_boolean('torch_finetune', False, '')
 flags.DEFINE_boolean('torch_load_optimizer', True, '')
@@ -303,6 +304,10 @@ inited = None
 
 def init():
   assert FLAGS.valid_interval_steps % FLAGS.interval_steps == 0
+
+  if FLAGS.torch_only:
+    FLAGS.torch = True
+
   # TODO actually FLAGS.use_horovod is not needed as we can infer from environ
   if 'OMPI_COMM_WORLD_RANK' in os.environ:
     FLAGS.use_horovod = True
@@ -1236,9 +1241,13 @@ def inference(ops, iterator, num_steps, num_examples,
       else:
         write_fn(ids, predicts, ofile)
 
-def train(Dataset, 
-          model, 
+def train(model, 
           loss_fn, 
+          Dataset=None,
+          dataset=None,
+          valid_dataset=None,
+          valid_dataset2=None,
+          test_dataset=None,
           evaluate_fn=None, 
           inference_fn=None,
           eval_fn=None,
@@ -1253,9 +1262,6 @@ def train(Dataset,
           valid_suffix='.valid',
           infer_suffix='.infer',
           write_streaming=False,
-          dataset=None,
-          valid_dataset=None,
-          test_dataset=None,
           optimizer=None,
           sep=','):
   if Dataset is None:
@@ -1517,9 +1523,6 @@ def train(Dataset,
 
 def get_train():
   train = melt.eager.train if tf.executing_eagerly() else melt.apps.train
-  # # TODO should just use melt.eager.train if in future no oom bug for eager + torch
-  if FLAGS.torch and not tf.executing_eagerly():
-    train = melt.torch.train
   return train
 
 def get_fit():

@@ -24,7 +24,7 @@ import numpy as np
 
 from config import *
 
-class Dataset(melt.tfrecords.Dataset):
+class Dataset(melt.Dataset):
   def __init__(self, subset='valid'):
     super(Dataset, self).__init__(subset)
     # only support line parse not batch parse since here parse_single_example

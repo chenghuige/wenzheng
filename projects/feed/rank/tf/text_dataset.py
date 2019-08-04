@@ -20,14 +20,15 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 import melt 
+logging = melt.logging
 import numpy as np
 
 from config import *
 
-class Dataset(melt.tfrecords.Dataset):
+class Dataset(melt.Dataset):
   def __init__(self, subset='train'):
     super(Dataset, self).__init__(subset)
-    self.InputDataset = tf.data.TextLineDataset
+    self.Type = tf.data.TextLineDataset
     self.batch_parse = FLAGS.batch_parse
     self.index_addone = int(FLAGS.index_addone)
     assert self.index_addone
@@ -37,7 +38,6 @@ class Dataset(melt.tfrecords.Dataset):
     self.feat_to_field = {}
     self.load_feature_files()
     self.batch_size = melt.batch_size() 
-    print('----------------', subset, self.batch_size)
     #---np.float32 much slower.. 1.0 -> 1.5h per epoch..
     self.float_fn = float if self.batch_parse else np.float32
 
@@ -63,7 +63,7 @@ class Dataset(melt.tfrecords.Dataset):
         #self.field_id[tokens[0]] = len(self.field_id) + self.index_addone
         self.field_id[tokens[0]] = len(self.field_id)  + 1
       self.feat_to_field[fid] = self.field_id[tokens[0]]
-    print('----num fields', len(self.field_id))
+    logging.info('----num fields', len(self.field_id))
 
   def get_feat(self, fields):
     num_features = len(fields) 
@@ -85,6 +85,15 @@ class Dataset(melt.tfrecords.Dataset):
   #-----------by this way decode line by line , more powerfull, but slower if batch parse then you must have fixed batch size! 1epoch:[2.69h] batch parse 2.03h
   def parse_line(self, line):
     fields = line.decode().split('\t')
+    #need np.float32 if float32 tf complain double .., but np.lofat32 is much slower then float
+    label = np.float32(fields[0])
+    id = '{}\t{}'.format(fields[2], fields[3])
+    feat_id, feat_field, feat_value = self.get_feat(fields[self.start:])
+    # need [label] consider tfrecord generation
+    return feat_id, feat_field, feat_value, [label], [id]
+
+  def parse_line2(self, line):
+    fields = line.split('\t')
     #need np.float32 if float32 tf complain double .., but np.lofat32 is much slower then float
     label = np.float32(fields[0])
     id = '{}\t{}'.format(fields[2], fields[3])

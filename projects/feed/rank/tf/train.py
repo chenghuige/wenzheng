@@ -26,8 +26,8 @@ import evaluate as ev
 import loss
 
 def main(_):
-  melt.apps.init()
-  fit = melt.apps.get_fit()
+  melt.init()
+  fit = melt.get_fit()
 
   FLAGS.eval_batch_size = 512 * FLAGS.valid_multiplier
   print('---------eval_batch_size', FLAGS.eval_batch_size)
@@ -39,9 +39,9 @@ def main(_):
 
   loss_fn = tf.losses.sigmoid_cross_entropy if not FLAGS.rank_loss else loss.binary_crossentropy_with_ranking
 
-  fit(Dataset,
-      model,  
+  fit(model,  
       loss_fn,
+      Dataset,
       eval_fn=ev.evaluate,
       valid_write_fn=ev.valid_write,
       write_valid=FLAGS.write_valid)   
