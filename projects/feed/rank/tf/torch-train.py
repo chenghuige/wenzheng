@@ -51,7 +51,8 @@ def main(_):
       loss_fn,
       eval_fn=ev.evaluate,
       valid_write_fn=ev.valid_write,
-      write_valid=FLAGS.write_valid)   
+      #write_valid=FLAGS.write_valid)   
+      write_valid=True)
 
 if __name__ == '__main__':
   tf.app.run()  

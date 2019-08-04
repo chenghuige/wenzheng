@@ -39,15 +39,16 @@ import melt.utils.logging as logging
 #import logging
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 tfe = tf.contrib.eager
 
 if sys.version_info > (3,):
   long = int
 
-flags = tf.app.flags
-#import gflags as flags
-FLAGS = flags.FLAGS
+import traceback
 
 # new tf seems to try to use absl which has def of log_dir TODO
 try:
@@ -58,10 +59,13 @@ except Exception:
 
 try:
   import horovod.tensorflow as hvd
+  #import horovod.torch as hvd
+  #hvd.init()
   import mpi4py
   from mpi4py import MPI
   comm = MPI.COMM_WORLD
 except Exception:
+  print(traceback.format_exc(), file=sys.stderr)
   print('---------no horovod support for mutliple gpu, notice we use mpi4py for some allgather op for eval')
   pass
 
@@ -91,10 +95,10 @@ flags.DEFINE_boolean('restore_from_latest', True, 'more safe to restore from rec
 
 #--------show
 flags.DEFINE_integer('interval_steps', 100, '')
-flags.DEFINE_integer('eval_interval_steps', 100,  """for training suggest 10000, 
+flags.DEFINE_integer('valid_interval_steps', 100,  """for training suggest 10000, 
                                                      you can check evaluate interval time 
                                                      and evaluate once time the ratio below 0.1""")
-flags.DEFINE_integer('metric_eval_interval_steps', 0, 'if > 0 need to be eval_interval_steps * n')
+flags.DEFINE_integer('metric_eval_interval_steps', 0, 'if > 0 need to be valid_interval_steps * n')
 flags.DEFINE_boolean('metric_eval', True, '')
 
 flags.DEFINE_float('train_interval_epochs', 1, '')
@@ -298,6 +302,7 @@ flags.DEFINE_boolean('horovod_scale', False, '')
 inited = None 
 
 def init():
+  assert FLAGS.valid_interval_steps % FLAGS.interval_steps == 0
   # TODO actually FLAGS.use_horovod is not needed as we can infer from environ
   if 'OMPI_COMM_WORLD_RANK' in os.environ:
     FLAGS.use_horovod = True
@@ -307,14 +312,11 @@ def init():
 
   if FLAGS.use_horovod:
     mpi4py.rc.initialize = False
-    hvd.init()
-    assert hvd.mpi_threads_supported()
-    assert hvd.size() == comm.Get_size()
-
-    if FLAGS.torch:
-      import torch
-      torch.cuda.set_device(hvd.local_rank())
-    
+    if not FLAGS.torch:
+      hvd.init()
+      assert hvd.mpi_threads_supported()
+      assert hvd.size() == comm.Get_size()
+        
     if FLAGS.horovod_scale:
       FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
       print('using horovod multipy learning rate by {} to {}'.format(hvd.size(), FLAGS.learning_rate))
@@ -438,11 +440,11 @@ def init():
 
   if 'EVAL_STEP' in os.environ:
     FLAGS.metric_eval_interval_steps = int(os.environ['EVAL_STEP'])
-    FLAGS.eval_interval_steps = int(os.environ['EVAL_STEP'])
+    FLAGS.valid_interval_steps = int(os.environ['EVAL_STEP'])
 
   if 'EVAL_STEPS' in os.environ:
     FLAGS.metric_eval_interval_steps = int(os.environ['EVAL_STEPS'])
-    FLAGS.eval_interval_steps = int(os.environ['EVAL_STEPS'])
+    FLAGS.valid_interval_steps = int(os.environ['EVAL_STEPS'])
 
   if 'LEARNING_RATE_DECAY_FACTOR' in os.environ:
     FLAGS.learning_rate_decay_factor = int(os.environ['LEARNING_RATE_DECAY_FACTOR'])
@@ -824,9 +826,9 @@ def train_flow(ops,
     if FLAGS.warmup_steps:
       num_warmup_steps = FLAGS.warmup_steps 
       if FLAGS.use_horovod:
-        num_warmup_steps = int(num_warmup_steps / hvd.size())
+        num_warmup_steps = max(int(num_warmup_steps / hvd.size()), 1)
     elif FLAGS.warmup_epochs:
-      num_warmup_steps = num_steps_per_epoch * FLAGS.warmup_steps 
+      num_warmup_steps = num_steps_per_epoch * FLAGS.warmup_epochs
     elif FLAGS.warmup_proportion:
       num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion) 
     logging.info('num_train_steps', num_train_steps, 'num_warmup_steps', num_warmup_steps, 'warmup_proportion', FLAGS.warmup_proportion)
@@ -909,7 +911,7 @@ def train_flow(ops,
      else FLAGS.save_interval_hours * 3600 
 
   interval_steps=FLAGS.interval_steps
-  eval_interval_steps=FLAGS.eval_interval_steps
+  valid_interval_steps=FLAGS.valid_interval_steps
   metric_eval_interval_steps=FLAGS.metric_eval_interval_steps
   save_model=FLAGS.save_model 
   save_interval_steps = FLAGS.save_interval_steps 
@@ -937,8 +939,8 @@ def train_flow(ops,
     ops = None
     logging.info('running test only mode')
     interval_steps = 0
-    eval_interval_steps = 1
-    metric_eval_interval_steps /= FLAGS.eval_interval_steps
+    valid_interval_steps = 1
+    metric_eval_interval_steps /= FLAGS.valid_interval_steps
     save_model = False
   elif FLAGS.work_mode.startswith('metric') or FLAGS.work_mode.startswith('eval') or FLAGS.work_mode.startswith('valid') or gezi.env_has('METRIC'):
     #TODO name is a bit cofusing for mode, eval or metric means using metric evaluation
@@ -950,8 +952,8 @@ def train_flow(ops,
     else:
       logging.info('running metric eval only mode')
     interval_steps = 0 
-    eval_interval_steps = 1
-    metric_eval_interval_steps /= FLAGS.eval_interval_steps    
+    valid_interval_steps = 1
+    metric_eval_interval_steps /= FLAGS.valid_interval_steps    
     save_model = False
     assert metric_eval_fn is not None 
 
@@ -996,7 +998,7 @@ def train_flow(ops,
              gen_eval_feed_dict_fn=gen_eval_feed_dict_fn,
              deal_eval_results_fn=deal_eval_results_fn,
              interval_steps=interval_steps,
-             eval_interval_steps=eval_interval_steps,
+             valid_interval_steps=valid_interval_steps,
              eval_loops=FLAGS.eval_loops,
              num_epochs=num_epochs,
              num_steps=num_steps,
@@ -1102,6 +1104,8 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
     ids = np.array(ids)
     predicts = np.array(predicts)
     labels = np.array(labels)
+    assert len(predicts) > 0, 'all ids are empty string ? we ignore these instance with empty id'
+    assert len(predicts) == num_examples
   else:
     try:
       # concat list so like [[512,], [512,]...] -> [512 * num_batchs]
@@ -1111,10 +1115,6 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
       ids = ['0'] * num_examples
     predicts = np.concatenate(predictions_list)[:num_examples]
     labels = np.concatenate(labels_list)[:num_examples]
-
-  if FLAGS.use_horovod:
-    assert len(predicts) > 0, 'all ids are empty string ? we ignore these instance with empty id'
-    assert len(predicts) == num_examples
 
   if model_path and write and (not FLAGS.use_horovod or hvd.rank() == 0):
     ofile = model_path +  suffix
@@ -1145,7 +1145,7 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
   else:
     vals, names = eval_fn(labels, predicts)
 
-  if model_path:
+  if model_path and (not FLAGS.use_horovod or hvd.rank() == 0):
     with open(model_path + '.valid.metrics', 'w') as out:
       for val, name in zip(vals, names):
         print(name, val, sep='\t', file=out)
@@ -1317,11 +1317,11 @@ def train(Dataset,
         valid_inputs = [x for x in all_inputs if 'aug' in x and x not in inputs]
 
   if valid_inputs:
-    valid_dataset = valid_dataset or Dataset('valid')
+    valid_dataset = valid_dataset or dataset
     valid_batch_size = FLAGS.eval_batch_size or batch_size
     # valid iter2 for valid op
-    valid_iter2 = valid_dataset.make_batch(valid_batch_size, valid_inputs, repeat=True, initializable=False, hvd_shard=False)
-    valid_iter = valid_dataset.make_batch(valid_batch_size, valid_inputs, hvd_shard=FLAGS.horovod_eval)
+    valid_iter2 = valid_dataset.make_batch(batch_size, valid_inputs, subset='valid', repeat=True, initializable=False, hvd_shard=False)
+    valid_iter = valid_dataset.make_batch(valid_batch_size, valid_inputs, subset='valid', hvd_shard=FLAGS.horovod_eval)
   else:
     valid_dataset = None
   
@@ -1349,9 +1349,9 @@ def train(Dataset,
   
   num_test_examples = None
   if test_inputs:
-    test_dataset = test_dataset or Dataset('test')
+    test_dataset = test_dataset or dataset
     test_batch_size = FLAGS.eval_batch_size or batch_size
-    test_iter = test_dataset.make_batch(test_batch_size, test_inputs, hvd_shard=FLAGS.horovod_eval)
+    test_iter = test_dataset.make_batch(test_batch_size, test_inputs, subset='test', hvd_shard=FLAGS.horovod_eval)
     num_test_examples = test_dataset.num_examples_per_epoch('test')
     num_test_steps_per_epoch = -(-num_test_examples // test_batch_size) if num_test_examples else None
   else:

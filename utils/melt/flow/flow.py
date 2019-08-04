@@ -51,8 +51,8 @@ def tf_flow(process_once, model_dir=None, num_steps=None, sess=None):
   else:
     melt.restore(sess, model_dir)
 
-  coord = tf.train.Coordinator()
-  threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+  # coord = tf.train.Coordinator()
+  # threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
   # try:
   #   # dataset
@@ -74,7 +74,8 @@ def tf_flow(process_once, model_dir=None, num_steps=None, sess=None):
   #   print('tf_flow using queue')
   try:
     step = 0
-    while not coord.should_stop():
+    #while not coord.should_stop():
+    while True:
       stop = process_once(sess, step)
       if stop is True:
         print('Early stop running %d stpes'%(step))
@@ -84,9 +85,9 @@ def tf_flow(process_once, model_dir=None, num_steps=None, sess=None):
         raise tf.errors.OutOfRangeError(None, None, 'Reached max num steps')
   except tf.errors.OutOfRangeError:
     print('Done training for %d steps.' % (step))
-  finally:
-    coord.request_stop()
-  coord.join(threads)
+  # finally:
+  #   coord.request_stop()
+  # coord.join(threads)
 
   sess.close()
   return step
@@ -366,8 +367,8 @@ def tf_train_flow(train_once_fn,
       gezi.try_mkdir(epoch_dir)
     checkpoint_path = os.path.join(model_dir_, 'model.ckpt')
   
-  coord = tf.train.Coordinator()
-  threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+  # coord = tf.train.Coordinator()
+  # threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
   #tf.train.write_graph(sess.graph_def, model_dir, 'train.pbtxt')
   only_one_step = False
@@ -414,7 +415,8 @@ def tf_train_flow(train_once_fn,
     best_epoch_eval_loss = 1e20
     num_allowed_bad_epochs = 4 #allow 5 non decrease eval loss epochs  before stop
     epoch_saved_step = 0
-    while not coord.should_stop():
+    #while not coord.should_stop():
+    while True:
       model_step_path = None
       if model_dir_:
         model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
@@ -553,10 +555,11 @@ def tf_train_flow(train_once_fn,
       logging.info('Should not stop, but stopped at epoch: %.3f'%(fixed_step / num_steps_per_epoch))
       logging.info(traceback.format_exc())
       #raise e
-  finally:
-    coord.request_stop()
+  # finally:
+  #   coord.request_stop()
 
-  coord.join(threads, stop_grace_period_secs=5)
+  # coord.join(threads, stop_grace_period_secs=5)
+
   #FIMXE due to use melt.get_session(global not handle del well)
   #Done training for 3090020 steps.
   #Exception TypeError: "'NoneType' object is not callable" in <bound method Session.__del__ of <tensorflow.python.client.session.Session object at 0x7f6cf33cd450>> ignored
@@ -584,19 +587,20 @@ def tf_test_flow(test_once, model_dir='./model',
   summary_op = tf.merge_all_summaries()
   summary_writer = tf.train.SummaryWriter(model_dir, sess.graph)
 
-  coord = tf.train.Coordinator()
-  threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+  # coord = tf.train.Coordinator()
+  # threads = tf.train.start_queue_runners(sess=sess, coord=coord)
   try:
     step = 0
-    while not coord.should_stop():
+    #while not coord.should_stop():
+    while True:
       test_once(sess, step)
       step += 1
       if num_steps and step == num_steps:
         raise tf.errors.OutOfRangeError(None, None, 'Reached max num steps')
   except tf.errors.OutOfRangeError:
     print('Done testing for %d epochs, %d steps.' % (num_epochs, step))
-  finally:
-    # When done, ask the threads to stop.
-    coord.request_stop()
-  # Wait for threads to finish.
-  coord.join(threads)
+  # finally:
+  #   # When done, ask the threads to stop.
+  #   coord.request_stop()
+  # # Wait for threads to finish.
+  # coord.join(threads)

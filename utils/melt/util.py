@@ -338,7 +338,8 @@ global or inside function global sess will cause this but not big problem for co
       config=tf.ConfigProto(allow_soft_placement=allow_soft_placement, 
                             log_device_placement=log_device_placement,
                             device_count=device_count)    
-    if FLAGS.use_horovod:
+    use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+    if use_horovod:
       config.gpu_options.allow_growth = True
       import horovod.keras as hvd
       config.gpu_options.visible_device_list = str(hvd.local_rank())  

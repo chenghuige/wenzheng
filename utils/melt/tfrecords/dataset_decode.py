@@ -12,6 +12,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
 
 import gezi
 import melt
@@ -20,11 +22,7 @@ logging = melt.logging
 import sys
 import os
 import numpy as np
-
-try:
-  import horovod.tensorflow as hvd
-except Exception:
-  pass
+import inspect
 
 # TODO
 # #https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/utils/data_reader.py
@@ -33,9 +31,6 @@ def padded_batch(d, batch_size, padded_shapes=None):
       [(name, [None] * len(shape))
        for name, shape in d.output_shapes.items()])
   return d.padded_batch(batch_size, padded_shapes)
-
-def shard(d):
-  return d.shard(hvd.size(), hvd.rank())
 
 def inputs(files, 
            decode_fn, 
@@ -130,7 +125,15 @@ def inputs(files,
   https://www.tensorflow.org/versions/master/performance/ds_performance
   """
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
-  
+  if use_horovod:
+    if FLAGS.torch:
+      import horovod.torch as hvd
+    else:
+      import horovod.tensorflow as hvd
+
+  def shard(d):
+    return d.shard(hvd.size(), hvd.rank())
+
   # Choose to use cpu outside input function like in d.py
   #with tf.device('/cpu:0'):
   if isinstance(files, str):
@@ -155,6 +158,12 @@ def inputs(files,
     except Exception:
       num_threads = 12
       logging.info('num_threads set by default', num_threads)
+
+  if 'batch_size' in inspect.getargspec(decode_fn).args:
+    decode_fn_ = decode_fn
+    def decode_function(example):
+      return decode_fn_(example, batch_size)
+    decode_fn = decode_function
 
   if simple_parse and training:
     # for multiple gpu horovod run seem this much better, might due to repeat then shuffle better TODO 

@@ -32,19 +32,23 @@ class Wide(nn.Module):
   def __init__(self):
     super(Wide, self).__init__()
     self.emb = nn.Embedding(FLAGS.feature_dict_size + 1, 1)
-    self.bias = torch.zeros(1, requires_grad=True).cuda()
+    #self.bias = torch.zeros(1, requires_grad=True).cuda()
+    # https://discuss.pytorch.org/t/tensors-are-on-different-gpus/1450/28 
+    # without below multiple gpu will fail
+    # RuntimeError: binary_op(): expected both inputs to be on same device, but input a is on cuda:0 and input b is on cuda:7 
+    self.bias = nn.Parameter(torch.zeros(1))
 
   def forward(self, input):
     ids = input['index']
     values = input['value']
 
     x = self.emb(ids)
-    # x = x.squeeze(-1)
-    # # strage, eval for wide only addval will got worse result
-    # if FLAGS.wide_addval:
-    #   x = x * values
+    x = x.squeeze(-1)
+    # strange, eval for wide only addval will got worse result
+    if FLAGS.wide_addval:
+      x = x * values
     x = x.sum(1)
-    # x = x + self.bias
+    x = x + self.bias
     return x  
 
 class Deep(nn.Module):

@@ -1,5 +1,5 @@
-#model=WideDeep
-model=Deep
+model=WideDeep
+#model=Deep
 #model=Wide
     #--valid_input=../input/valid \
 python ./torch-train.py \
@@ -9,7 +9,7 @@ python ./torch-train.py \
     --mlp_dims=50 \
     --mlp_drop=0.2 \
     --field_emb=1 \
-    --pooling=max \
+    --pooling=sum \
     --dense_activation=relu \
     --model=$model \
     --num_epochs=2 \
@@ -23,6 +23,6 @@ python ./torch-train.py \
     --optimizer=bert \
     --min_learning_rate=1e-6 \
     --warmup_steps=1000 \
-    --learning_rate=0.001 \
+    --learning_rate=0.002 \
     --feat_file_path=../input/feature_index \
     --field_file_path=../input/feat_fields.old

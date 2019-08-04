@@ -74,7 +74,7 @@ class SummaryWriter(object):
         self.writer.add_summary(summary, step)
         self.writer.flush() 
         
-    def histo_summary(self, tag, values, step, bins=1000):
+    def history_summary(self, tag, values, step, bins=1000):
         """Log a histogram of the tensor of values."""
 
         # Create a histogram using numpy

@@ -37,6 +37,7 @@ class Dataset(melt.tfrecords.Dataset):
     self.feat_to_field = {}
     self.load_feature_files()
     self.batch_size = melt.batch_size() 
+    print('----------------', subset, self.batch_size)
     #---np.float32 much slower.. 1.0 -> 1.5h per epoch..
     self.float_fn = float if self.batch_parse else np.float32
 
@@ -45,7 +46,7 @@ class Dataset(melt.tfrecords.Dataset):
 
   def load_feature_files(self):
     self.field_id = {}
-    for line in open(FLAGS.feat_file_path, 'r')
+    for line in open(FLAGS.feat_file_path, 'r'):
       if line == '':
         break
       line = line.rstrip()
@@ -63,7 +64,6 @@ class Dataset(melt.tfrecords.Dataset):
         self.field_id[tokens[0]] = len(self.field_id)  + 1
       self.feat_to_field[fid] = self.field_id[tokens[0]]
     print('----num fields', len(self.field_id))
-    ifs.close()
 
   def get_feat(self, fields):
     num_features = len(fields) 
@@ -92,9 +92,9 @@ class Dataset(melt.tfrecords.Dataset):
     # need [label] consider tfrecord generation
     return feat_id, feat_field, feat_value, [label], [id]
 
-  def line_parse_(self, string_line):
+  def line_parse_(self, line):
     feat_id, feat_field, feat_value, label, id = \
-        tf.py_func(self.parse_line, [string_line],
+        tf.py_func(self.parse_line, [line],
                     [tf.int64, tf.int64, tf.float32, tf.float32, tf.string])
     feat_id.set_shape([None])
     feat_field.set_shape([None])
@@ -105,57 +105,69 @@ class Dataset(melt.tfrecords.Dataset):
     return {'index': feat_id, 'field': feat_field, 'value': feat_value, 'id': tf.squeeze(id, -1)}, tf.squeeze(label, -1)
 
   # https://stackoverflow.com/questions/52284951/tensorflow-py-func-typeerror-with-tf-data-dataset-output
-  def parse_batch(self, feat_list):
-      feat_ids = np.zeros((self.batch_size, self.max_feat_len), dtype=np.int64)
-      feat_fields = np.zeros((self.batch_size, self.max_feat_len), dtype=np.int64)
-      feat_values = np.zeros((self.batch_size, self.max_feat_len), dtype=np.float32)
-      labels = np.zeros(self.batch_size, dtype=np.float32)
-      ids = [''] * self.batch_size # ''means not effective id, usefull for batch_parse + not repeat final batch with padding elments
+  def parse_batch(self, feat_list, batch_size):
+  # def parse_batch(self, feat_list):
+  #   batch_size = self.batch_size
+    feat_ids = np.zeros((batch_size, self.max_feat_len), dtype=np.int64)
+    feat_fields = np.zeros((batch_size, self.max_feat_len), dtype=np.int64)
+    feat_values = np.zeros((batch_size, self.max_feat_len), dtype=np.float32)
+    labels = np.zeros(batch_size, dtype=np.float32)
+    ids = [''] * batch_size # ''means not effective id, usefull for batch_parse + not repeat final batch with padding elments
 
-      cur_max_feat_len = 0
-      for i, feat_line in enumerate(feat_list):
-        # python 3 need decode
-        fields = feat_line.decode().split('\t')
-        assert len(fields) > self.start, fields
-        #fields = feat_line.split('\t')
-        labels[i] = float(fields[0])
-        ids[i] = '{}\t{}'.format(fields[2], fields[3])
+    cur_max_feat_len = 0
+    for i, feat_line in enumerate(feat_list):
+      # python 3 need decode
+      fields = feat_line.decode().split('\t')
+      assert len(fields) > self.start, fields
+      #fields = feat_line.split('\t')
+      labels[i] = float(fields[0])
+      ids[i] = '{}\t{}'.format(fields[2], fields[3])
 
-        feat_id, feat_field, feat_value = self.get_feat(fields[self.start:])
-        #assert len(feat_id) == len(feat_value), "len(feat_id) == len(feat_value) -----------------"
-        trunc_len = min(len(feat_id), self.max_feat_len)
-        #---也许是因为批量写速度比逐个访问numpy数组位置快(原地逐个访问)
-        feat_ids[i, :trunc_len] = feat_id[:trunc_len]
-        feat_fields[i, :trunc_len] = feat_field[:trunc_len]
-        feat_values[i, :trunc_len] = feat_value[:trunc_len]
-        cur_max_feat_len = max(cur_max_feat_len, trunc_len)
-  
-      ## even here [:i, :cur..] still final batch size is same not small 
-      # feat_ids = feat_ids[:i, :cur_max_feat_len]
-      # feat_fields = feat_fields[:i, :cur_max_feat_len]
-      # feat_values = feat_values[:i, :cur_max_feat_len]
-      feat_ids = feat_ids[:, :cur_max_feat_len]
-      feat_fields = feat_fields[:, :cur_max_feat_len]
-      feat_values = feat_values[:, :cur_max_feat_len]
-  
-      return feat_ids, feat_fields, feat_values, labels, ids
+      feat_id, feat_field, feat_value = self.get_feat(fields[self.start:])
+      #assert len(feat_id) == len(feat_value), "len(feat_id) == len(feat_value) -----------------"
+      trunc_len = min(len(feat_id), self.max_feat_len)
+      #---也许是因为批量写速度比逐个访问numpy数组位置快(原地逐个访问)
+      feat_ids[i, :trunc_len] = feat_id[:trunc_len]
+      feat_fields[i, :trunc_len] = feat_field[:trunc_len]
+      feat_values[i, :trunc_len] = feat_value[:trunc_len]
+      cur_max_feat_len = max(cur_max_feat_len, trunc_len)
 
-  def batch_parse_(self, string_line):
+    ## even here [:i, :cur..] still final batch size is same not small 
+    # feat_ids = feat_ids[:i, :cur_max_feat_len]
+    # feat_fields = feat_fields[:i, :cur_max_feat_len]
+    # feat_values = feat_values[:i, :cur_max_feat_len]
+    feat_ids = feat_ids[:, :cur_max_feat_len]
+    feat_fields = feat_fields[:, :cur_max_feat_len]
+    feat_values = feat_values[:, :cur_max_feat_len]
+
+    return feat_ids, feat_fields, feat_values, labels, ids
+
+  def batch_parse_(self, line, batch_size):
+  #def batch_parse_(self, line):
+    # batch_size = self.batch_size
+    #tf.py_func(self.parse_batch, [line, batch_size], 
+    #tf.py_func(self.parse_batch, [line],
     feat_ids, feat_fields, feat_values, labels, ids = \
-        tf.py_func(self.parse_batch, [string_line],
+        tf.py_func(self.parse_batch, [line, batch_size],
                     [tf.int64, tf.int64, tf.float32, tf.float32, tf.string])
 
     #---for pyfunc you need to set shape.. otherwise first dim unk strange for keras layer TODO FIXME
-    feat_ids.set_shape((self.batch_size, None))
-    feat_fields.set_shape((self.batch_size, None))
-    feat_values.set_shape((self.batch_size, None))
+    feat_ids.set_shape((batch_size, None))
+    feat_fields.set_shape((batch_size, None))
+    feat_values.set_shape((batch_size, None))
 
     return {'index': feat_ids, 'field': feat_fields, 'value': feat_values, 'id': ids}, labels
 
-  def parse(self, string_line):
+  def parse(self, line, batch_size):
     if self.batch_parse:
-      return self.batch_parse_(string_line)
+      return self.batch_parse_(line, batch_size)
     else:
-      return self.line_parse_(string_line)
+      return self.line_parse_(line)
+
+  # def parse(self, line):
+  #   if self.batch_parse:
+  #     return self.batch_parse_(line)
+  #   else:
+  #     return self.line_parse_(line)
 
   

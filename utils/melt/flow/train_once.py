@@ -50,7 +50,7 @@ def train_once(sess,
                eval_names=None, 
                gen_eval_feed_dict_fn=None, 
                deal_eval_results_fn=melt.print_results, 
-               eval_interval_steps=100, 
+               valid_interval_steps=100, 
                print_time=True, 
                print_avg_loss=True, 
                model_dir=None, 
@@ -101,9 +101,10 @@ def train_once(sess,
   if eval_names:
     eval_names = ['eval/' + x for x in eval_names]
 
-  is_eval_step = is_start or eval_interval_steps and step % eval_interval_steps == 0
+  is_eval_step = is_start or valid_interval_steps and step % valid_interval_steps == 0
   summary_str = []
 
+  eval_str = ''
   if is_eval_step:
     # deal with summary
     if log_dir:
@@ -128,7 +129,7 @@ def train_once(sess,
         tf.contrib.tensorboard.plugins.projector.visualize_embeddings(train_once.summary_writer, projector_config)
     
     # if eval ops then should have bee rank 0
-    eval_str = ''
+    
     if eval_ops:
       #if deal_eval_results_fn is None and eval_names is not None:
       #  deal_eval_results_fn = lambda x: melt.print_results(x, eval_names)
@@ -168,7 +169,7 @@ def train_once(sess,
         if not use_horovod or hvd.rank() == 0:
           melt.set_global('eval_loss', melt.parse_results(eval_loss, eval_names_))
 
-    elif interval_steps != eval_interval_steps:
+    elif interval_steps != valid_interval_steps:
       #print()
       pass
 
@@ -295,14 +296,10 @@ def train_once(sess,
     if print_avg_loss:
       if not hasattr(train_once, 'avg_loss'):
         train_once.avg_loss = AvgScore()
-        if interval_steps != eval_interval_steps:
-          train_once.avg_loss2 = AvgScore()
       #assume results[0] as train_op return, results[1] as loss
       loss = gezi.get_singles(results)
       train_once.avg_loss.add(loss)
-      if interval_steps != eval_interval_steps:
-        train_once.avg_loss2.add(loss)
-    
+
     steps_per_second = None
     instances_per_second = None 
     hours_per_epoch = None
@@ -313,8 +310,8 @@ def train_once(sess,
       train_average_loss = train_once.avg_loss.avg_score()
       if print_time:
         duration = timer.elapsed()
-        duration_str = 'duration:{:.3f} '.format(duration)
-        melt.set_global('duration', '%.3f' % duration)
+        duration_str = 'duration:{:.2f} '.format(duration)
+        melt.set_global('duration', '%.2f' % duration)
         info.write(duration_str)
         elapsed = train_once.timer.elapsed()
         steps_per_second = interval_steps / elapsed
@@ -327,7 +324,7 @@ def train_once(sess,
         else:
           hours_per_epoch = num_steps_per_epoch / interval_steps * elapsed / 3600
           epoch_time_info = '1epoch:[{:.2f}h]'.format(hours_per_epoch)
-        info.write('elapsed:[{:.3f}] batch_size:[{}]{} batches/s:[{:.2f}] insts/s:[{:.2f}] {} lr:[{:.8f}]'.format(
+        info.write('elapsed:[{:.2f}] batch_size:[{}]{} batches/s:[{:.2f}] insts/s:[{:.2f}] {} lr:[{:.6f}]'.format(
                       elapsed, batch_size, gpu_info, steps_per_second, instances_per_second, epoch_time_info, learning_rate))
 
       if print_avg_loss:
@@ -360,36 +357,38 @@ def train_once(sess,
         else:
           for summary_str in summary_strs:
             train_once.summary_writer.add_summary(summary_str, step)
-          suffix = 'eval' if not eval_names else ''
+          suffix = 'valid' if not eval_names else ''
+          # loss/valid
           melt.add_summarys(summary, eval_results, eval_names_, suffix=suffix)
 
         if ops is not None:
           try:
+            # loss/train_avg
             melt.add_summarys(summary, train_average_loss, names_, suffix='train_avg') 
           except Exception:
             pass
           ##optimizer has done this also
           melt.add_summary(summary, learning_rate, 'learning_rate')
-          melt.add_summary(summary, melt.batch_size(), 'batch_size')
-          melt.add_summary(summary, melt.epoch(), 'epoch')
+          melt.add_summary(summary, melt.batch_size(), 'batch_size', prefix='other')
+          melt.add_summary(summary, melt.epoch(), 'epoch', prefix='other')
           if steps_per_second:
-            melt.add_summary(summary, steps_per_second, 'steps_per_second')
+            melt.add_summary(summary, steps_per_second, 'steps_per_second', prefix='perf')
           if instances_per_second:
-            melt.add_summary(summary, instances_per_second, 'instances_per_second') 
+            melt.add_summary(summary, instances_per_second, 'instances_per_second', prefix='perf') 
           if hours_per_epoch:
-            melt.add_summary(summary, hours_per_epoch, 'hours_per_epoch')
+            melt.add_summary(summary, hours_per_epoch, 'hours_per_epoch', prefix='perf')
 
         if metric_evaluate:
           #melt.add_summarys(summary, evaluate_results, evaluate_names, prefix='eval')
-          prefix = 'step/valid'
+          prefix = 'step_eval'
           if model_path:
-            prefix = 'epoch/valid'
+            prefix = 'eval'
             if not hasattr(train_once, 'epoch_step'):
               train_once.epoch_step = 1
             else:
               train_once.epoch_step += 1
             step = train_once.epoch_step
-            
+          # eval/loss eval/auc ..
           melt.add_summarys(summary, evaluate_results, evaluate_names, prefix=prefix)
         
         train_once.summary_writer.add_summary(summary, step)
@@ -401,9 +400,9 @@ def train_once(sess,
         train_once.summary_writer.add_summary(summary_str, step)
       #summary.ParseFromString(evaluate_summaries)
       summary_writer = train_once.summary_writer
-      prefix = 'step/valid'
+      prefix = 'step_eval'
       if model_path:
-        prefix = 'epoch/valid'
+        prefix = 'eval'
         if not hasattr(train_once, 'epoch_step'):
           ## TODO.. restart will get 1 again..
           #epoch_step = tf.Variable(0, trainable=False, name='epoch_step')
