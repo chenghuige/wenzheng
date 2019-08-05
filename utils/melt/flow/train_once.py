@@ -312,7 +312,7 @@ def train_once(sess,
         duration = timer.elapsed()
         duration_str = 'duration:{:.2f} '.format(duration)
         melt.set_global('duration', '%.2f' % duration)
-        info.write(duration_str)
+        #info.write(duration_str)
         elapsed = train_once.timer.elapsed()
         steps_per_second = interval_steps / elapsed
         batch_size = melt.batch_size()

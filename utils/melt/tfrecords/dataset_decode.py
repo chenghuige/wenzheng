@@ -153,7 +153,8 @@ def inputs(files,
   if not num_threads:
     try:
       import multiprocessing
-      num_threads = multiprocessing.cpu_count()
+      #num_threads = int(multiprocessing.cpu_count() * 0.6)
+      num_threads = multiprocessing.cpu_count() 
       logging.info('num_threads as multiprocessing.cpu_count', num_threads)
     except Exception:
       num_threads = 12

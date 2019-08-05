@@ -593,7 +593,12 @@ def train(model,
         optimizer = torch.optim.Adamax(param_groups if param_groups else model.parameters(), lr=FLAGS.learning_rate)
         if use_horovod:
           optimizer = hvd.DistributedOptimizer(optimizer)
-
+          optimizer_ = optimizer
+    else:
+      if use_horovod:
+        optimizer = hvd.DistributedOptimizer(optimizer)
+        optimizer_ = optimizer
+    
     start_epoch = 0  
     latest_path = latest_checkpoint + '.pyt' if latest_checkpoint else os.path.join(FLAGS.model_dir, 'latest.pyt')
     if not os.path.exists(latest_path):
@@ -753,6 +758,10 @@ def train(model,
   #-------------------------start training
   if hasattr(model, 'train'):
     model.train()
+
+  if use_horovod:
+    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    hvd.broadcast_optimizer_state(optimizer_, root_rank=0)
 
   timer = gezi.Timer()
   loss_avg = Mean()

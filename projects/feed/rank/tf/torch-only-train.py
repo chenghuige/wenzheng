@@ -53,7 +53,8 @@ def main(_):
   train_ds = get_dataset(train_files, td)
   
   import multiprocessing
-  num_threads = multiprocessing.cpu_count()
+  #--easy to be Killed .. if large workers
+  num_threads = int(multiprocessing.cpu_count() * 0.3)
   logging.info('num_threads as multiprocessing.cpu_count', num_threads)
   
   train_dl = DataLoader(train_ds, FLAGS.batch_size, shuffle=True, num_workers=num_threads, collate_fn=lele.DictPadCollate())
