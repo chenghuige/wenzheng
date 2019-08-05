@@ -39,9 +39,9 @@ class Wide(nn.Module):
     self.bias = nn.Parameter(torch.zeros(1))
 
   def forward(self, input):
-    print('--------------', input['index'][0])
-    print(len(input['index']), len(input['index'][0]))
-    exit(0)
+    # print('--------------', input['index'][0])
+    # print(len(input['index']), len(input['index'][0]))
+    # exit(0)
     ids = input['index']
     values = input['value']
 

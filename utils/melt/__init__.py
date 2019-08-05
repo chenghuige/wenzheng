@@ -2,12 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+warnings.simplefilter("ignore", RuntimeWarning) 
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 try:
   import matplotlib
   matplotlib.use('Agg')
 except Exception:
   pass
-
 
 import tensorflow as tf 
 import traceback

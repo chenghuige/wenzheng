@@ -15,14 +15,15 @@ from __future__ import print_function
 import sys 
 import os
 
+import subprocess
+import linecache
+
 import torch
 from torch.utils.data import Dataset, ConcatDataset
 ## TODO relative path ...?
 #from ..text_dataset import Dataset as TD 
 #from projects.feed.rank.tf.text_dataset import Dataset as TD
-
-import subprocess
-import linecache
+from torch.nn.utils.rnn import pack_sequence
 
 class TextDataset(Dataset):
   def __init__(self, filename, td):
@@ -34,6 +35,7 @@ class TextDataset(Dataset):
     line = linecache.getline(self._filename, idx + 1)
     feat_id, feat_field, feat_value, [label], [id] = self.td.parse_line2(line)
     return {'index': feat_id, 'field': feat_field, 'value': feat_value, 'id': id}, label
+    #return feat_id, label
     
   def __len__(self):
     return self._total_data

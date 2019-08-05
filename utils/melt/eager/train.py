@@ -55,7 +55,9 @@ def torch_(x):
       return x
 
   x = x.numpy()
-  if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
+  # TODO..
+  #if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
+  if type(x) != np.str_:
     x = torch.from_numpy(x)
     #if torch.cuda.is_available():
       #x = x.cuda()
@@ -65,12 +67,18 @@ def torch_(x):
 
 def to_torch(x, y=None):
   if FLAGS.torch_only:
-    return x.to(device), y.to(device)
+    for key in x:
+      if type(x[key][0]) != np.str_:
+        x[key] = x[key].to(device)
+    return x, y.to(device)
   if y is not None:
     y = torch_(y)
 
-  for key in x:
-    x[key] = torch_(x[key])
+  if not isinstance(x, dict):
+    x = torch_(x)
+  else:
+    for key in x:
+      x[key] = torch_(x[key])
   if y is None:
     return x
   else:
@@ -391,7 +399,7 @@ def train(model,
   else:
     assert FLAGS.torch_only, 'only torch only currently support input dataset not Dataset class type, because we do not have len function there'
     train_dataset = dataset
-    num_examples = len(train_dataset)
+    num_examples = len(train_dataset.dataset)
 
   num_all_examples = num_examples
 
@@ -411,7 +419,9 @@ def train(model,
 
   num_valid_examples = None
   if valid_dataset is not None:
-    num_valid_examples = len(valid_dataset)
+    num_valid_examples = len(valid_dataset.dataset)
+    num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None   
+    valid_dataset2_iter = iter(valid_dataset2)
   else:
     if valid_inputs:
       valid_dataset = dataset.make_batch(batch_size_, valid_inputs, subset='valid', hvd_shard=FLAGS.horovod_eval )
@@ -456,7 +466,7 @@ def train(model,
   
   num_test_examples = None
   if test_dataset is not None:
-    num_test_examples = len(test_dataset)
+    num_test_examples = len(test_dataset.dataset)
   else:
     if test_inputs:
       test_dataset = dataset.make_batch(batch_size_, test_inputs, subset='test') 
@@ -752,15 +762,6 @@ def train(model,
   loops = min(num_epochs, 1) if FLAGS.torch_only else 1
   for _ in range(loops):
     for i, (x, y) in enumerate(train_dataset):
-      #print('-------------------', i)
-      print(len(x['index']), len(x['value']), len(x['id']))
-      print(x['index'][0].size(), x['index'][1].size(), y.size())
-      print(x['value'][0].size(), x['value'][1].size(), y.size())
-      print(x['id'][0], x['id'][1], y.size())
-      if i == 3:
-        exit(0)
-      continue
-
       if FLAGS.torch:
         x, y = to_torch(x, y)
         if is_dynamic_opt:

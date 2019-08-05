@@ -25,6 +25,9 @@ from gezi.word_counter import WordCounter
 from gezi.ngram import *
 from gezi.hash import *
 
+import warnings
+warnings.simplefilter("ignore", RuntimeWarning) 
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 #if using baidu segmentor set encoding='gbk'
 encoding='utf8' 

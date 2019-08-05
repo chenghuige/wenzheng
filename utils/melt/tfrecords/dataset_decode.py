@@ -186,12 +186,12 @@ def inputs(files,
     batch_join = False  #check can be True ?
 
     shuffle_batch = True
-    num_threads = 1
+    #num_threads = 1
 
   if fix_sequence:
     no_random = True 
     allow_smaller_final_batch = True
-    num_threads = 1
+    #num_threads = 1
 
   if no_random:
     shuffle_files = False
