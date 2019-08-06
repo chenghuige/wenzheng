@@ -31,6 +31,7 @@ import numpy as np
 import inspect
 import traceback
 import copy
+import itertools
 
 import gezi
 import melt
@@ -352,6 +353,7 @@ def train(model,
   logging.info('Dataset', Dataset, 'dataset', dataset, 'valid_dataset', valid_dataset, 'test_dataset', test_dataset, loss_fn)
 
   if FLAGS.torch:
+    logging.info(model) # keras will show model after first training step
     torch.manual_seed(FLAGS.seed or 0)
     if torch.cuda.device_count():
       torch.cuda.manual_seed(FLAGS.seed or 0)
@@ -395,7 +397,8 @@ def train(model,
   if dataset is None:
     dataset = Dataset('train')
     assert len(inputs) > 0
-    train_dataset = dataset.make_batch(batch_size, inputs, simple_parse=FLAGS.simple_parse)
+    # for eager train, here still repat True right now, but if set None wil by defualt return False for eager similar as pytorch
+    train_dataset = dataset.make_batch(batch_size, inputs, repeat=True, simple_parse=FLAGS.simple_parse)
     num_examples = dataset.num_examples_per_epoch('train') 
   else:
     assert FLAGS.torch_only, 'only torch only currently support input dataset not Dataset class type, because we do not have len function there'
@@ -420,16 +423,17 @@ def train(model,
 
   num_valid_examples = None
   if valid_dataset is not None:
+    # mainly for torch now
     num_valid_examples = len(valid_dataset.dataset)
     num_valid_steps_per_epoch = -(-num_valid_examples // batch_size_) if num_valid_examples else None   
-    valid_dataset2_iter = iter(valid_dataset2)
+    valid_dataset2_iter = itertools.cycle(valid_dataset2)
   else:
     if valid_inputs:
-      valid_dataset = dataset.make_batch(batch_size_, valid_inputs, subset='valid', hvd_shard=FLAGS.horovod_eval )
+      valid_dataset = dataset.make_batch(batch_size_, valid_inputs, subset='valid',  hvd_shard=FLAGS.horovod_eval )
       valid_dataset2 = dataset.make_batch(batch_size, valid_inputs, subset='valid', repeat=True, initializable=False, hvd_shard=False)
       valid_dataset2_iter = iter(valid_dataset2)
     else:
-      valid_datsset = None
+      valid_dataset = None
       valid_dataset2 = None
 
   if num_examples:
@@ -761,16 +765,30 @@ def train(model,
     model.train()
 
   if use_horovod:
-    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-    hvd.broadcast_optimizer_state(optimizer_, root_rank=0)
+    if FLAGS.use_torch:
+      hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+      hvd.broadcast_optimizer_state(optimizer_, root_rank=0)
+    if not FLAGS.torch_only:
+      # if use torch dataset, can get len directly for distributed train
+      num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size()))
+      if FLAGS.horovod_eval:
+        # multiple gpu eval
+        num_valid_steps_per_epoch = -(-num_valid_examples // (batch_size_ * hvd.size()))
+        num_test_steps_per_epoch = -(-num_test_examples // (batch_size_ * hvd.size()))
 
   timer = gezi.Timer()
   loss_avg = Mean()
-  valid_loss_avg = Mean()
 
-  num_epochs = num_epochs if num_epochs else 0
-  loops = min(num_epochs, 1) if FLAGS.torch_only else 1
-  for _ in range(loops):
+  # for eager right now is repeat mode, so not need for epoch, but we can stop at inter loop last check global step and exit
+  if not num_epochs:
+    num_epochs = 1024 # not stop if not manu set num epochs
+  for epoch in range(start_epoch, start_epoch + num_epochs):
+    # FLAGS.torch only will not use eager, FLAGS.torch still use eager tf reading
+    if FLAGS.torch_only:
+      if train_dataset.sampler and hasattr(train_dataset.sampler, 'set_epoch'):
+        # if not set each epoch shuffle same seed..
+        train_dataset.sampler.set_epoch(epoch)
+
     for i, (x, y) in enumerate(train_dataset):
       if FLAGS.torch:
         x, y = to_torch(x, y)
@@ -963,15 +981,13 @@ def train(model,
               for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate.numpy()
 
-      if i == 0:
+      if i == 0 and epoch == start_epoch:
         try:
           if not FLAGS.torch:
             logging.info(model.summary())
             # #tf.keras.utils.plot_model(model, to_file='/home/gezi/model.png', show_shapes=False, show_layer_names=True, rankdir='TB')
             # import keras
             # keras.utils.plot_model(model, to_file='/home/gezi/model.png', show_shapes=False, show_layer_names=True, rankdir='LR', expand_nested=True, dpi=96)
-          else:
-            logging.info(model)
         except Exception:
           traceback.print_exc()
           logging.info('Fail to do model.summary() may be you have layer define in init but not used in call')
@@ -1024,7 +1040,7 @@ def train(model,
         else:
           inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
 
-      if num_epochs and (global_step.numpy() % num_steps_per_epoch) == 0 and int(global_step.numpy() / num_steps_per_epoch) == num_epochs:
+      if num_epochs and (global_step.numpy() % num_steps_per_epoch) == 0 and int(global_step.numpy() / num_steps_per_epoch) >= num_epochs:
         logging.info(f'Finshed training of {num_epochs} epochs')
         exit(0)
 

@@ -28,7 +28,7 @@ from torch.nn.utils.rnn import pack_sequence
 class TextDataset(Dataset):
   def __init__(self, filename, td):
     self._filename = filename
-    self._total_data = int(subprocess.check_output("wc -l " + filename, shell=True).split()[0]) - 1
+    self._total_data = int(subprocess.check_output("wc -l " + filename, shell=True).split()[0]) 
     self.td = td 
 
   def __getitem__(self, idx):
@@ -43,6 +43,7 @@ class TextDataset(Dataset):
 def get_dataset(files, td):
   datasets = [TextDataset(x, td) for x in files]
   return ConcatDataset(datasets)
+
 
 if __name__=="__main__":
   pass

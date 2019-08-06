@@ -26,6 +26,9 @@ from melt.utils import logging
 #import logging
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+
 from tensorflow.keras import backend as K
 
 import gezi
@@ -70,6 +73,11 @@ def train_once(sess,
                use_horovod=False,
                ):
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  if use_horovod:
+    if FLAGS.torch:
+      import horovod.torch as hvd
+    else:
+      import horovod.tensorflow as hvd
 
   #is_start = False # force not to evaluate at first step
   #print('-----------------global_step', sess.run(tf.train.get_or_create_global_step()))

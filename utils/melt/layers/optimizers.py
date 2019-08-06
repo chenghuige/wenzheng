@@ -36,6 +36,8 @@ from tensorflow.python.training import training as train
 
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
 
 """
 copy from tensorflow.contrib.layers.python.layers.optimerzers.py version 0.10
@@ -241,6 +243,10 @@ def optimize_loss(losses,
       opt = tf.contrib.tpu.CrossShardOptimizer(opt)
     assert not (use_tpu and use_horovod)
     if use_horovod:
+      if FLAGS.torch:
+        import horovod.torch as hvd
+      else:
+        import horovod.tensorflow as hvd
       #https://blog.csdn.net/qq_16234613/article/details/96186398
          # we enable compression only for fp16
       #import horovod.tensorflow as hvd

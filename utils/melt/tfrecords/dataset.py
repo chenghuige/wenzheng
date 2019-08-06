@@ -97,6 +97,9 @@ class Dataset(object):
         repeat = True
       else:
         repeat = False
+      if tf.executing_eagerly() and num_gpus == 1:
+        # let tf eager similary to pytorch
+        repeat = False
 
     if subset == 'train':
       shuffle_files=True 

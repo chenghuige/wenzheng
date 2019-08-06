@@ -246,8 +246,8 @@ flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
                                            setting to 1 may be faster but less randomness
                                         """)
 
-flags.DEFINE_boolean('torch', False, '')
-flags.DEFINE_boolean('torch_only', False, '')
+flags.DEFINE_boolean('torch', False, 'torch_model Wether use torch model, if true and not torch_only, tf eager read, torch model')
+flags.DEFINE_boolean('torch_only', False, 'torch_read Wether use torch reader, if true, torch read, torch model')
 flags.DEFINE_boolean('torch_lr', False, '')
 flags.DEFINE_boolean('torch_finetune', False, '')
 flags.DEFINE_boolean('torch_load_optimizer', True, '')
@@ -318,14 +318,14 @@ def init():
     global hvd
     mpi4py.rc.initialize = False
     if not FLAGS.torch:
-      import horovod.torch as hvd 
+      import horovod.tensorflow as hvd 
       hvd.init()
       assert hvd.mpi_threads_supported()
       assert hvd.size() == comm.Get_size()
       import torch 
       torch.cuda.set_device(hvd.local_rank())
     else:
-      import horovod.tensorflow as hvd
+      import horovod.torch as hvd
       hvd.init()
       assert hvd.mpi_threads_supported()
       assert hvd.size() == comm.Get_size()
@@ -1336,6 +1336,7 @@ def train(model,
     valid_batch_size = FLAGS.eval_batch_size or batch_size
     # valid iter2 for valid op
     valid_iter2 = valid_dataset.make_batch(batch_size, valid_inputs, subset='valid', repeat=True, initializable=False, hvd_shard=False)
+    # here not set repeat to False, for if multiple gpu might repeat is True we can stop using num steps
     valid_iter = valid_dataset.make_batch(valid_batch_size, valid_inputs, subset='valid', hvd_shard=FLAGS.horovod_eval)
   else:
     valid_dataset = None

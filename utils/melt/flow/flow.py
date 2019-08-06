@@ -17,6 +17,9 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+
 import tensorflow.contrib.slim as slim
 from tensorflow.contrib import tpu
 try:
@@ -153,6 +156,11 @@ def tf_train_flow(train_once_fn,
   similary flow as tf_flow, but add model try reload and save
   """
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  if use_horovod:
+    if FLAGS.torch:
+      import horovod.torch as hvd
+    else:
+      import horovod.tensorflow as hvd
 
   model_dir_ = model_dir
   if use_horovod and hvd.rank() != 0:
