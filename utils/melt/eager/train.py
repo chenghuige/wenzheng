@@ -782,6 +782,8 @@ def train(model,
   # for eager right now is repeat mode, so not need for epoch, but we can stop at inter loop last check global step and exit
   if not num_epochs:
     num_epochs = 1024 # not stop if not manu set num epochs
+
+  #----------------------------------------main loop here
   for epoch in range(start_epoch, start_epoch + num_epochs):
     # FLAGS.torch only will not use eager, FLAGS.torch still use eager tf reading
     if FLAGS.torch_only:

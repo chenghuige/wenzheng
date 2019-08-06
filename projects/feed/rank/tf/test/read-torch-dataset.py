@@ -50,9 +50,11 @@ sampler = torch.utils.data.distributed.DistributedSampler(
 #             sampler, num_replicas=hvd.size(), rank=hvd.rank(),
 #             shuffle=True)
 
+#collate_fn = lele.DictPadCollate2()
+collate_fn = lele.DictPadCollate()
 
 dl = DataLoader(ds, 2, 
-                collate_fn=lele.DictPadCollate(),
+                collate_fn=collate_fn,
                 sampler=sampler)
 
 print(len(ds), len(dl), len(dl.dataset))
@@ -65,26 +67,25 @@ for epoch in range(2):
       print('epoch', epoch, 'i', i, 'j', j, x['id'][j])
 
     # #print('--------------', d)
-    # print(x['index'].shape)
-    # print(x['field'].shape)
-    # print(x['value'].shape)
-    # print(x['id'].shape)
+    # print(x['index'].shape, x['index'].dtype)
+    # print(x['field'].shape, x['field'].dtype)
+    # print(x['value'].shape, x['value'].dtype)
+    # print(x['id'].shape, x['id'].dtype)
     # print(y.shape)
-    #print(x)
+    # print(x)
     # for key in x:
     #   print(key, type(x[key][0]), type(x[key]), x[key][0].dtype)
       
-    #x, y = to_torch(x, y)
     # if i == 2:
     #   break
 
 
-dl = DataLoader(ds, 2, 
-                collate_fn=lele.DictPadCollate())
-import itertools
-d = itertools.cycle(dl)
-for i in range(20):
-  x, y = next(d)
-  print(x['id'])
+# dl = DataLoader(ds, 2, 
+#                 collate_fn=lele.DictPadCollate())
+# import itertools
+# d = itertools.cycle(dl)
+# for i in range(20):
+#   x, y = next(d)
+#   print(x['id'])
 
-print('================ end')
+# print('================ end')

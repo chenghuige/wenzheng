@@ -159,6 +159,7 @@ def inputs(files,
     except Exception:
       num_threads = 12
       logging.info('num_threads set by default', num_threads)
+  #num_threads = 12
 
   if 'batch_size' in inspect.getargspec(decode_fn).args:
     decode_fn_ = decode_fn

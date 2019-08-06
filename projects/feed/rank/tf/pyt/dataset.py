@@ -23,7 +23,7 @@ from torch.utils.data import Dataset, ConcatDataset
 ## TODO relative path ...?
 #from ..text_dataset import Dataset as TD 
 #from projects.feed.rank.tf.text_dataset import Dataset as TD
-from torch.nn.utils.rnn import pack_sequence
+#from torch.nn.utils.rnn import pack_sequence
 
 class TextDataset(Dataset):
   def __init__(self, filename, td):
@@ -33,9 +33,13 @@ class TextDataset(Dataset):
 
   def __getitem__(self, idx):
     line = linecache.getline(self._filename, idx + 1)
+    # lis, list, list, scalar, scalar
     feat_id, feat_field, feat_value, [label], [id] = self.td.parse_line2(line)
-    return {'index': feat_id, 'field': feat_field, 'value': feat_value, 'id': id}, label
-    #return feat_id, label
+    ## this will use lele.DictPadCollate
+    #return {'index': feat_id, 'field': feat_field, 'value': feat_value, 'id': id}, label
+    ## this will use lele.DictPadCollate2 but this is slow..
+    return {'index': torch.tensor(feat_id), 'field': torch.tensor(feat_field), 'value': torch.tensor(feat_value), 'id': id}, torch.tensor(label)
+    
     
   def __len__(self):
     return self._total_data

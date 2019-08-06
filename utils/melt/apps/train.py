@@ -242,7 +242,7 @@ flags.DEFINE_integer('global_epoch', None, '')
 
 flags.DEFINE_boolean('eager', False, '')
 
-flags.DEFINE_integer('num_threads', 12, """threads for reading input tfrecords,
+flags.DEFINE_integer('num_threads', 0, """threads for reading input tfrecords,
                                            setting to 1 may be faster but less randomness
                                         """)
 

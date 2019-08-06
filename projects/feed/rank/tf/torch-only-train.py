@@ -51,20 +51,22 @@ def main(_):
   train_files = gezi.list_files(FLAGS.train_input)
   train_ds = get_dataset(train_files, td)
   
-  import multiprocessing
-  #--easy to be Killed .. if large workers
-  num_threads = int(multiprocessing.cpu_count() * 0.3)
-  logging.info('num_threads as multiprocessing.cpu_count', num_threads)
-  num_threads = 12 
+  ## speed up a bit with pin_memory==True
+  ## num_workers 1 is very slow especially for validation, seems 4 workers is enough, large number dangerous sometimes 12 ok sometimes hang, too much resource seems
 
-  # speed up a lot with pin_memory==True
-  kwargs = {'num_workers': 12, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  #kwargs = {'num_workers': 12, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  kwargs = {'num_workers': 6, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  #kwargs = {'num_workers': 12, 'pin_memory': False, 'collate_fn': lele.DictPadCollate()}
   
   train_dl = DataLoader(train_ds, FLAGS.batch_size, shuffle=True, **kwargs)
+
+  kwargs['num_workers'] = 24
   #logging.info('num train examples', len(train_ds), len(train_dl))
   valid_files = gezi.list_files(FLAGS.valid_input)
   valid_ds = get_dataset(valid_files, td)
   valid_dl = DataLoader(valid_ds, FLAGS.eval_batch_size, **kwargs)
+
+  kwargs['num_workers'] = 6
   valid_dl2 = DataLoader(valid_ds, FLAGS.batch_size, **kwargs)
   #logging.info('num valid examples', len(valid_ds), len(valid_dl))
 
