@@ -37,7 +37,7 @@ import melt
 logging = melt.logging
 
 try:
-  import horovod.tensorflow as hvd
+  #import horovod.tensorflow as hvd
   #import horovod.torch as hvd
   #hvd.init()
   import mpi4py
@@ -56,8 +56,8 @@ def torch_(x):
 
   x = x.numpy()
   # TODO..
-  #if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
-  if type(x) != np.str_:
+  if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
+  #if type(x) != np.str_:
     x = torch.from_numpy(x)
     #if torch.cuda.is_available():
       #x = x.cuda()
@@ -69,6 +69,7 @@ def to_torch(x, y=None):
   if FLAGS.torch_only:
     for key in x:
       if type(x[key][0]) != np.str_:
+      #if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
         x[key] = x[key].to(device)
     return x, y.to(device)
   if y is not None:
@@ -142,7 +143,7 @@ def evaluate(model, dataset, eval_fn, model_path=None,
     #   labels_lis = [x.detach().numpy() for x in labels_list]
 
   if FLAGS.use_horovod and FLAGS.horovod_eval:
-    import horovod.torch as hvd
+    #import horovod.torch as hvd
     #print('----------------------before hvd reduce')
     # TODO check eager mode ok...
     tensor = tf.constant(0) if not FLAGS.torch else torch.zeros(0)
@@ -262,7 +263,7 @@ def inference(model, dataset, model_path,
 
   if not write_streaming:
     if FLAGS.use_horovod and FLAGS.horovod_eval:
-      import horovod.torch as hvd
+      #import horovod.torch as hvd
       #print('----------------------before hvd reduce')
       tensor = tf.constant(0) if not FLAGS.torch else torch.zeros(0)
       hvd.allreduce(tensor)
@@ -355,13 +356,13 @@ def train(model,
     if torch.cuda.device_count():
       torch.cuda.manual_seed(FLAGS.seed or 0)
     if use_horovod:
-      import horovod.torch as hvd
-      hvd.init()
-      #print('-----------------', hvd, hvd.size())
-      assert hvd.mpi_threads_supported()
-      assert hvd.size() == comm.Get_size()
-      # hvd.init already done on apps.train.py init
-      torch.cuda.set_device(hvd.local_rank())
+      pass
+      # import horovod.torch as hvd
+      # hvd.init()
+      # #print('-----------------', hvd, hvd.size())
+      # assert hvd.mpi_threads_supported()
+      # assert hvd.size() == comm.Get_size()
+      # torch.cuda.set_device(hvd.local_rank())
     # https://pytorch.org/tutorials/beginner/blitz/data_parallel_tutorial.html
     else:
       if torch.cuda.device_count() > 1:

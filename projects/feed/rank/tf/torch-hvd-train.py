@@ -8,34 +8,41 @@
 # ==============================================================================
 
   
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-import multiprocessing
+import sys 
 import os
-import sys
 
 import tensorflow as tf
+flags = tf.app.flags
+FLAGS = flags.FLAGS
 
-import evaluate as ev
-import gezi
-import lele
-import loss
-import melt
-import pyt.model as base
 import torch
-from dataset import *
-from pyt.dataset import *
-from pyt.model import *
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
-flags = tf.app.flags
-FLAGS = flags.FLAGS
+from pyt.dataset import *
+from dataset import *
+from pyt.model import *
+import pyt.model as base
+import evaluate as ev
+import loss
 
-
-
+import melt
 logging = melt.logging
+import gezi
+import lele
+
+#import horvod.torch as hvd
+# hvd.init()
+# # Horovod: pin GPU to local rank.
+# torch.cuda.set_device(hvd.local_rank())
+# seed = 1024
+# torch.cuda.manual_seed(seed)
+
 
 def main(_):
   FLAGS.torch_only = True
@@ -67,17 +74,18 @@ def main(_):
   valid_dl2 = DataLoader(valid_ds, FLAGS.batch_size, collate_fn=lele.DictPadCollate(), num_workers=num_threads)
   #logging.info('num valid examples', len(valid_ds), len(valid_dl))
 
-  fit(model,  
-      loss_fn,
-      dataset=train_dl,
-      valid_dataset=valid_dl,
-      valid_dataset2=valid_dl2,
-      eval_fn=ev.evaluate,
-      valid_write_fn=ev.valid_write,
-      #write_valid=FLAGS.write_valid)   
-      write_valid=False,
-     )
+  # fit(model,  
+  #     loss_fn,
+  #     dataset=train_dl,
+  #     valid_dataset=valid_dl,
+  #     valid_dataset2=valid_dl2,
+  #     eval_fn=ev.evaluate,
+  #     valid_write_fn=ev.valid_write,
+  #     #write_valid=FLAGS.write_valid)   
+  #     write_valid=False,
+  #    )
 
 
 if __name__ == '__main__':
   tf.app.run()  
+  

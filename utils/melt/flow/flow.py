@@ -20,7 +20,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.contrib import tpu
 try:
-  import horovod.tensorflow as hvd
+  #import horovod.tensorflow as hvd
   from mpi4py import MPI
   comm = MPI.COMM_WORLD
 except Exception:

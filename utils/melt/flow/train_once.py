@@ -32,10 +32,10 @@ import gezi
 from gezi import Timer, AvgScore 
 import melt
 
-try:
-  import horovod.tensorflow as hvd
-except Exception:
-  pass
+# try:
+#   import horovod.tensorflow as hvd
+# except Exception:
+#   pass
 
 projector_config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
 

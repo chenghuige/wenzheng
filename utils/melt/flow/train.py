@@ -27,10 +27,10 @@ from melt.flow.train_once import train_once
 from melt.flow.flow import tf_flow
 from melt.flow.flow import tf_train_flow
 
-try:
-  import horovod.tensorflow as hvd
-except Exception:
-  pass
+# try:
+#   import horovod.tensorflow as hvd
+# except Exception:
+#   pass
 
 #from melt.util import print_results
 #@TODO inside melt can not use melt.print_reults must use melt.util.print_results

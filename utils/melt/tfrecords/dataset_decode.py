@@ -125,11 +125,11 @@ def inputs(files,
   https://www.tensorflow.org/versions/master/performance/ds_performance
   """
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
-  if use_horovod:
-    if FLAGS.torch:
-      import horovod.torch as hvd
-    else:
-      import horovod.tensorflow as hvd
+  # if use_horovod:
+  #   if FLAGS.torch:
+  #     import horovod.torch as hvd
+  #   else:
+  #     import horovod.tensorflow as hvd
 
   def shard(d):
     return d.shard(hvd.size(), hvd.rank())

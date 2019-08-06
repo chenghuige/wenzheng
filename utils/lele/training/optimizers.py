@@ -18,7 +18,6 @@ FLAGS = flags.FLAGS
 
 import sys 
 import os
-import melt
 
 # http://nlp.seas.harvard.edu/2018/04/03/attention.html
 
@@ -70,7 +69,6 @@ class BertOpt:
     "Optim wrapper that implements rate."
     def __init__(self, lr, min_lr, num_train_steps, warmup, optimizer):
         self.optimizer = optimizer
-        import melt
         self._step = 0
         self.warmup = warmup
         self._rate = 0
@@ -97,12 +95,6 @@ class BertOpt:
         warmup_percent_done = step / self.warmup
         warmup_learning_rate = self.lr * warmup_percent_done
 
-        # decay by eval value ?
-       
-        if melt.epoch() >= 9 and FLAGS.num_epochs > 9:
-          self.min_lr = self.ori_min_lr * ((FLAGS.num_epochs - melt.epoch()) / (FLAGS.num_epochs - 5))
-        #print('-----------------', melt.epoch(), melt.epoch() > 9, self.min_lr, self.ori_min_lr)
-        
         is_warmup = step < self.warmup
         learning_rate = lr_poly(self.lr, step, self.num_train_steps, self.min_lr, 1.)
         learning_rate = ((1.0 - is_warmup) * learning_rate + is_warmup * warmup_learning_rate)
@@ -119,7 +111,6 @@ class BertOpt:
         return self.optimizer.load_state_dict(x)
 
 if __name__ == '__main__':
-  import melt
   import matplotlib.pyplot as plt 
   import numpy as np
 

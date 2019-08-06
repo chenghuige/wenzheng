@@ -37,11 +37,6 @@ from tensorflow.python.training import training as train
 
 import tensorflow as tf
 
-try:
-  import horovod.tensorflow as hvd
-except Exception:
-  pass
-
 """
 copy from tensorflow.contrib.layers.python.layers.optimerzers.py version 0.10
 """
@@ -248,7 +243,8 @@ def optimize_loss(losses,
     if use_horovod:
       #https://blog.csdn.net/qq_16234613/article/details/96186398
          # we enable compression only for fp16
-      from horovod.tensorflow.compression import Compression
+      #import horovod.tensorflow as hvd
+      #from horovod.tensorflow.compression import Compression
       # if use_fp16:
       #     compression = Compression.fp16
       # else:

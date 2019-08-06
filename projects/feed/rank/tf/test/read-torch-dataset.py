@@ -23,6 +23,11 @@ from pyt.dataset import *
 from text_dataset import Dataset as TD
 
 import numpy as np
+import horovod.torch as hvd
+#hvd.init()
+# torch.cuda.set_device(hvd.local_rank())
+# seed = 1024
+# torch.cuda.manual_seed(seed)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -66,23 +71,24 @@ def to_torch(x, y=None):
     return x, y
   
 
-files = gezi.list_files('../input/valid/*')
+files = gezi.list_files('../input/train.small/*')
 td = TD()
 ds = get_dataset(files, td)
-dl = DataLoader(ds, 5, collate_fn=lele.DictPadCollate())
+dl = DataLoader(ds, 2, collate_fn=lele.DictPadCollate())
 print(len(ds), len(dl), len(dl.dataset))
 for i, (x, y) in enumerate(dl):
-  print(i)
-  #print('--------------', d)
-  print(x['index'].shape)
-  print(x['field'].shape)
-  print(x['value'].shape)
-  print(x['id'].shape)
-  print(y.shape)
+  print(i, x['id'][0], x['value'][0])
+  # #print('--------------', d)
+  # print(x['index'].shape)
+  # print(x['field'].shape)
+  # print(x['value'].shape)
+  # print(x['id'].shape)
+  # print(y.shape)
   #print(x)
-  for key in x:
-    print(key, type(x[key][0]), type(x[key]), x[key][0].dtype)
+  # for key in x:
+  #   print(key, type(x[key][0]), type(x[key]), x[key][0].dtype)
     
   #x, y = to_torch(x, y)
-  if i == 5:
-    break
+  # if i == 2:
+  #   break
+print('================ end')

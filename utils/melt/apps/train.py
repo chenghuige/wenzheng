@@ -56,19 +56,6 @@ try:
                                         ''')
 except Exception:
   pass
-
-try:
-  import horovod.tensorflow as hvd
-  #import horovod.torch as hvd
-  #hvd.init()
-  import mpi4py
-  from mpi4py import MPI
-  comm = MPI.COMM_WORLD
-except Exception:
-  print(traceback.format_exc(), file=sys.stderr)
-  print('---------no horovod support for mutliple gpu, notice we use mpi4py for some allgather op for eval')
-  pass
-
 #-------input data
 flags.DEFINE_integer('batch_size', 32, 'Batch size. default as im2text default')
 flags.DEFINE_integer('eval_batch_size', None, 'Batch size fore eval')
@@ -273,17 +260,17 @@ flags.DEFINE_boolean('simple_parse', False, '')
 
 # from bert run_classifier.py
 flags.DEFINE_boolean('use_tpu', False, '')
-tf.flags.DEFINE_string(
+flags.DEFINE_string(
     "tpu_name", None,
     "The Cloud TPU to use for training. This should be either the name "
     "used when creating the Cloud TPU, or a grpc://ip.address.of.tpu:8470 "
     "url.")
-tf.flags.DEFINE_string(
+flags.DEFINE_string(
     "tpu_zone", None,
     "[Optional] GCE zone where the Cloud TPU is located in. If not "
     "specified, we will attempt to automatically detect the GCE project from "
     "metadata.")
-tf.flags.DEFINE_string(
+flags.DEFINE_string(
     "gcp_project", None,
     "[Optional] Project name for the Cloud TPU-enabled project. If not "
     "specified, we will attempt to automatically detect the GCE project from "
@@ -299,6 +286,18 @@ flags.DEFINE_boolean('horovod_eval', True, 'wether using multiple gpu for eval a
 flags.DEFINE_boolean('horovod_shard', True, 'only consider train, valid/test always shard, if not shard then each rank got 1/n files')
 flags.DEFINE_boolean('horovod_scale', False, '')
 
+
+try:
+  #import horovod.tensorflow as hvd
+  #import horovod.torch as hvd
+  #hvd.init()
+  import mpi4py
+  from mpi4py import MPI
+  comm = MPI.COMM_WORLD
+except Exception:
+  print(traceback.format_exc(), file=sys.stderr)
+  #print('---------no horovod support for mutliple gpu, notice we use mpi4py for some allgather op for eval')
+  pass
 
 inited = None 
 
@@ -316,12 +315,21 @@ def init():
     assert FLAGS.length_key, 'must set length key if using buckets'
 
   if FLAGS.use_horovod:
+    global hvd
     mpi4py.rc.initialize = False
     if not FLAGS.torch:
+      import horovod.torch as hvd 
       hvd.init()
       assert hvd.mpi_threads_supported()
       assert hvd.size() == comm.Get_size()
-        
+      import torch 
+      torch.cuda.set_device(hvd.local_rank())
+    else:
+      import horovod.tensorflow as hvd
+      hvd.init()
+      assert hvd.mpi_threads_supported()
+      assert hvd.size() == comm.Get_size()
+      
     if FLAGS.horovod_scale:
       FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
       print('using horovod multipy learning rate by {} to {}'.format(hvd.size(), FLAGS.learning_rate))
@@ -380,7 +388,8 @@ def init():
 
   #assert FLAGS.log_dir, 'you need to set log_dir or model_dir'
   os.system('mkdir -p %s' % FLAGS.log_dir)
-  logging.set_logging_path(FLAGS.log_dir)
+  logging.init(FLAGS.log_dir)
+  #logging.set_dir(FLAGS.log_dir)
   logging.info('model_dir', FLAGS.model_dir, 'log_dir', FLAGS.log_dir)
 
   if 'SCRATCH' in os.environ: 

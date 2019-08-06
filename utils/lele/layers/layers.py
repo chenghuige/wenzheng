@@ -13,8 +13,8 @@ from torch.autograd import Variable
 import math
 import random
 
-import melt
-logging = melt.logging
+import gezi
+logging = gezi.logging
 
 import lele
 
@@ -909,6 +909,8 @@ class Pooling(nn.Module):
     for i, pooling in enumerate(self.poolings):
       results.append(pooling(x, mask))
       if calc_word_scores:
+        import melt 
+        # TODO remove from melt
         self.word_scores.append(melt.get_words_importance(outputs, sequence_length, top_k=self.top_k, method=self.names[i]))
     
     return torch.cat(results, -1)

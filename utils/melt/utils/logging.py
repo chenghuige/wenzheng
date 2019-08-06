@@ -17,6 +17,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 import sys
+import os
 
 import logging
 import logging.handlers
@@ -41,7 +42,7 @@ log = _logger.log
 #warn = _logger.warn
 #warning = _logger.warning  
 
-#info2 = _logger2.info
+#info2 = _logger2.info 
 
 def info(*args):
   _logger.info(' '.join("{}".format(a) for a in args))
@@ -97,7 +98,7 @@ def _get_handler(file, formatter, split=True, split_bytime=False, mode = 'a', le
   file_handler.setFormatter(formatter)
   return file_handler
 
-def set_logging_path(path, file='log.html', logtostderr=True, logtofile=True, split=True, split_bytime=False, level=logging.INFO, mode='a'):
+def set_dir(path, file='log.html', logtostderr=True, logtofile=True, split=True, split_bytime=False, level=logging.INFO, mode='a'):
   global _logger, _logging_file
   if _logging_file is None:
     if not path:
@@ -131,9 +132,9 @@ def set_logging_path(path, file='log.html', logtostderr=True, logtofile=True, sp
     _logger.setLevel(level)
     _logger2.setLevel(level)
 
-def init(file='log.html', mode='a', logtostderr=False, logtofile=True, path='./', split=False, split_bytime=False, level=logging.INFO):
-  logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-  set_logging_path(path=path, mode=mode, file=file, logtostderr=logtostderr, logtofile=logtofile, split=split, split_bytime=split_bytime, level=level)
+def init(path, file='log.html', logtostderr=True, logtofile=True, split=True, split_bytime=False, level=logging.INFO, mode='a'):
+  #logging.basicConfig(level=logging.INFO, stream=sys.stdout) 
+  set_dir(path=path, mode=mode, file=file, logtostderr=logtostderr, logtofile=logtofile, split=split, split_bytime=split_bytime, level=level)
 
 def vlog(level, msg, *args, **kwargs):
   _logger.log(level, msg, *args, **kwargs)
