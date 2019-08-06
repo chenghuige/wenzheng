@@ -92,6 +92,12 @@ def evaluate(model, dataset, eval_fn, model_path=None,
              names=None, write_fn=None, write_streaming=False,
              num_steps=None, num_examples=None,
              suffix='.valid', sep=','):
+  if FLAGS.use_horovod:
+    if FLAGS.torch:
+      import horovod.torch as hvd
+    else:
+      import horovod.tensorflow as hvd
+
   if hasattr(model, 'eval'):
     model.eval()
   if not write_fn:
@@ -206,6 +212,11 @@ def inference(model, dataset, model_path,
               write_fn=None, write_streaming=False,
               num_steps=None, num_examples=None,
               suffix='.infer', sep=','):
+  if FLAGS.use_horovod:
+    if FLAGS.torch:
+      import horovod.torch as hvd
+    else:
+      import horovod.tensorflow as hvd
   if has_attr(model, 'eval'):
     model.eval()
   if not write_fn:
@@ -322,6 +333,50 @@ def load_torch_model(model, path):
   model.eval()
 
   return checkpoint
+
+def horovod_torch_deal_optimizer(optimizer, model):
+  import horovod.torch as hvd
+  hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+  optimizer = hvd.DistributedOptimizer(optimizer,
+                                       named_parameters=model.named_parameters())
+  return optimizer
+
+def get_torch_optimizer(optimizer, model, num_steps_per_epoch=None, param_groups=None):
+  use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  if use_horovod:
+    import horovod.torch as hvd
+  if optimizer is None:
+    import lele
+    is_dynamic_opt = True
+    if FLAGS.optimizer == 'noam':
+      optimizer = torch.optim.Adamax(model.parameters(), lr=0)
+      if use_horovod:
+        optimizer = horovod_torch_deal_optimizer(optimizer, model)
+      optimizer = lele.training.optimizers.NoamOpt(128, 2, 4000, optimizer)
+    elif FLAGS.optimizer == 'bert':
+      num_train_steps = int(num_steps_per_epoch * (FLAGS.num_decay_epochs or FLAGS.num_epochs))
+      if FLAGS.warmup_steps and use_horovod:
+        FLAGS.warmup_steps = max(int(FLAGS.warmup_steps / hvd.size()), 1)
+      num_warmup_steps = FLAGS.warmup_steps or int(num_steps_per_epoch * FLAGS.warmup_epochs) or int(num_train_steps * FLAGS.warmup_proportion) 
+      logging.info('num_train_steps', num_train_steps, 'num_warmup_steps', num_warmup_steps, 'warmup_proportion', FLAGS.warmup_proportion)
+      optimizer = torch.optim.Adamax(model.parameters(), lr=0)
+      if use_horovod:
+        optimizer = horovod_torch_deal_optimizer(optimizer, model)
+      optimizer = lele.training.optimizers.BertOpt(
+                          FLAGS.learning_rate, 
+                          FLAGS.min_learning_rate,
+                          num_train_steps,
+                          num_warmup_steps,
+                          optimizer
+                          )
+  else:
+    is_dynamic_opt = False
+    optimizer = torch.optim.Adamax(param_groups if param_groups else model.parameters(), lr=FLAGS.learning_rate)
+    if use_horovod:
+      optimizer = hvd.DistributedOptimizer(optimizer,
+                                           named_parameters=model.named_parameters())
+  return optimizer, is_dynamic_opt
+
  
 def train(model, 
           loss_fn,
@@ -347,6 +402,11 @@ def train(model,
           init_fn=None,
           sep=','):
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  if use_horovod:
+    if FLAGS.torch:
+      import horovod.torch as hvd
+    else:
+      import horovod.tensorflow as hvd
 
   if Dataset is None:
     assert dataset
@@ -357,18 +417,8 @@ def train(model,
     torch.manual_seed(FLAGS.seed or 0)
     if torch.cuda.device_count():
       torch.cuda.manual_seed(FLAGS.seed or 0)
-    if use_horovod:
-      pass
-      # import horovod.torch as hvd
-      # hvd.init()
-      # #print('-----------------', hvd, hvd.size())
-      # assert hvd.mpi_threads_supported()
-      # assert hvd.size() == comm.Get_size()
-      # torch.cuda.set_device(hvd.local_rank())
-    # https://pytorch.org/tutorials/beginner/blitz/data_parallel_tutorial.html
-    else:
-      if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
+    if torch.cuda.device_count() > 1 and not use_horovod:
+      model = torch.nn.DataParallel(model)
     model.to(device)
     
   input_ =  FLAGS.train_input 
@@ -490,17 +540,28 @@ def train(model,
   writer = summary.create_file_writer(FLAGS.log_dir)
   writer_train = summary.create_file_writer(FLAGS.log_dir)
   writer_valid = summary.create_file_writer(FLAGS.log_dir)
-  global_step = tf.train.get_or_create_global_step()
+  
+  if not FLAGS.torch:
+    global_step = tf.train.get_or_create_global_step()
+  else:
+    global_step = melt.GlobalStep(0)
+  
   ## RuntimeError: tf.summary.FileWriter is not compatible with eager execution. Use tf.contrib.summary instead.
   #logger = gezi.SummaryWriter(FLAGS.log_dir)
 
-  learning_rate = tfe.Variable(FLAGS.learning_rate, name="learning_rate")
+  if not FLAGS.torch:
+    learning_rate = tfe.Variable(FLAGS.learning_rate, name="learning_rate")
+  else:
+    learning_rate = melt.LearningRate(FLAGS.learning_rate)
   
-  tf.add_to_collection('learning_rate', learning_rate)
+  #tf.add_to_collection('learning_rate', learning_rate)
+  melt.add_global('learning_rate', learning_rate)
 
-  learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
+  #learning_rate_weight = tf.get_collection('learning_rate_weight')[-1]
+  learning_rate_weight = melt.get_global('learning_rate_weight')
   try:
-    learning_rate_weights = tf.get_collection('learning_rate_weights')[-1]
+    #learning_rate_weights = tf.get_collection('learning_rate_weights')[-1]
+    learning_rate_weights = melt.get_global('learning_rate_weights')
   except Exception:
     learning_rate_weights = None
 
@@ -568,69 +629,35 @@ def train(model,
     # TODO torch with learning rate adjust
       # https://github.com/horovod/horovod/blob/master/examples/pytorch_mnist.py
   # TODO full support for pytorch now not work
-    
-    if optimizer is None:
-      import lele
-      is_dynamic_opt = True
-      if FLAGS.optimizer == 'noam':
-        optimizer_ = torch.optim.Adamax(model.parameters(), lr=0)
-        if use_horovod:
-          optimizer_ = hvd.DistributedOptimizer(optimizer_)
-        optimizer = lele.training.optimizers.NoamOpt(128, 2, 4000, optimzier_)
-      elif FLAGS.optimizer == 'bert':
-        num_train_steps = int(num_steps_per_epoch * (FLAGS.num_decay_epochs or FLAGS.num_epochs))
-        if FLAGS.warmup_steps and use_horovod:
-          FLAGS.warmup_steps = max(int(FLAGS.warmup_steps / hvd.size()), 1)
-        num_warmup_steps = FLAGS.warmup_steps or int(num_steps_per_epoch * FLAGS.warmup_epochs) or int(num_train_steps * FLAGS.warmup_proportion) 
-        logging.info('num_train_steps', num_train_steps, 'num_warmup_steps', num_warmup_steps, 'warmup_proportion', FLAGS.warmup_proportion)
-        optimizer_ = torch.optim.Adamax(model.parameters(), lr=0)
-        if use_horovod:
-          optimizer_ = hvd.DistributedOptimizer(optimizer_)
-        optimizer = lele.training.optimizers.BertOpt(
-                            FLAGS.learning_rate, 
-                            FLAGS.min_learning_rate,
-                            num_train_steps,
-                            num_warmup_steps,
-                            optimizer_
-                            )
-      else:
-        is_dynamic_opt = False
-        optimizer = torch.optim.Adamax(param_groups if param_groups else model.parameters(), lr=FLAGS.learning_rate)
-        if use_horovod:
-          optimizer = hvd.DistributedOptimizer(optimizer)
-          optimizer_ = optimizer
-    else:
-      if use_horovod:
-        optimizer = hvd.DistributedOptimizer(optimizer)
-        optimizer_ = optimizer
-    
+    optimizer, is_dynamic_opt = get_torch_optimizer(optimizer, model, num_steps_per_epoch, param_groups)
+
     start_epoch = 0  
     latest_path = latest_checkpoint + '.pyt' if latest_checkpoint else os.path.join(FLAGS.model_dir, 'latest.pyt')
     if not os.path.exists(latest_path):
       latest_path = os.path.join(FLAGS.model_dir, 'latest.pyt')
     if os.path.exists(latest_path):
       logging.info('loading torch model from', latest_path)
-      checkpoint = torch.load(latest_path)
+      checkpoint = load_torch_model(model, latest_path)
       if not FLAGS.torch_finetune:
         start_epoch = checkpoint['epoch']
         step = checkpoint['step']
         global_step.assign(step + 1)
-      load_torch_model(model, latest_path)
       if FLAGS.torch_load_optimizer:
         optimizer.load_state_dict(checkpoint['optimizer'])
 
-    # TODO by this way restart can not change learning rate..
-    if learning_rate_weights is None:
-      checkpoint = tf.train.Checkpoint(
-          learning_rate=learning_rate, 
-          learning_rate_weight=learning_rate_weight,
-          global_step=global_step)
-    else:
-      checkpoint = tf.train.Checkpoint(
+    if not FLAGS.torch:
+      # TODO by this way restart can not change learning rate..
+      if learning_rate_weights is None:
+        checkpoint = tf.train.Checkpoint(
             learning_rate=learning_rate, 
             learning_rate_weight=learning_rate_weight,
-            learning_rate_weights=learning_rate_weights,
             global_step=global_step)
+      else:
+        checkpoint = tf.train.Checkpoint(
+              learning_rate=learning_rate, 
+              learning_rate_weight=learning_rate_weight,
+              learning_rate_weights=learning_rate_weights,
+              global_step=global_step)
 
     try:
       checkpoint.restore(latest_checkpoint)
@@ -765,16 +792,16 @@ def train(model,
     model.train()
 
   if use_horovod:
-    if FLAGS.use_torch:
+    if FLAGS.torch:
       hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-      hvd.broadcast_optimizer_state(optimizer_, root_rank=0)
+    # if using tf eager reading need to shink size 
     if not FLAGS.torch_only:
       # if use torch dataset, can get len directly for distributed train
-      num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size()))
+      num_steps_per_epoch = -(-num_examples // (batch_size * hvd.size())) if num_examples else None  
       if FLAGS.horovod_eval:
         # multiple gpu eval
-        num_valid_steps_per_epoch = -(-num_valid_examples // (batch_size_ * hvd.size()))
-        num_test_steps_per_epoch = -(-num_test_examples // (batch_size_ * hvd.size()))
+        num_valid_steps_per_epoch = -(-num_valid_examples // (batch_size_ * hvd.size())) if num_valid_examples else None
+        num_test_steps_per_epoch = -(-num_test_examples // (batch_size_ * hvd.size())) if num_test_examples else None
 
   timer = gezi.Timer()
   loss_avg = Mean()

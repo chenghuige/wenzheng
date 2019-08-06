@@ -1170,6 +1170,11 @@ def get_global_str(key):
     os.environ[key] = ''
   return os.environ[key]
 
+global_dict = {}
+def get_global(key):
+  return global_dict[key]
+
+
 def step():
   return get_global_int('step', 0.)
 
@@ -1201,6 +1206,9 @@ def duration():
 
 def set_global(key, value):
   os.environ[key] = str(value)
+
+def add_global(key, value):
+  global_dict[key] = value
 
 #def step():
 #  return melt.flow.global_step
@@ -1355,3 +1363,30 @@ def sparse2dense(features, key=None):
     for key, val in features.items():
       if isinstance(val, SparseTensor):
         sparse2dense_(features, key)
+
+
+class GlobalStep():
+  def __init__(self, step):
+    self.step = step
+
+  def assign(self, step):
+    self.step = step
+
+  def assign_add(self, step):
+    self.step += step
+
+  def numpy(self):
+    return self.step
+
+class LearningRate():
+  def __init__(self, lr):
+    self.lr = lr
+
+  def assign(self, lr):
+    self.lr = lr
+
+  def numpy(self):
+    return self.lr
+
+  def __mul__(self, scalar):
+    return self.lr * scalar

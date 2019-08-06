@@ -248,7 +248,7 @@ flags.DEFINE_integer('num_threads', 0, """threads for reading input tfrecords,
 
 flags.DEFINE_boolean('torch', False, 'torch_model Wether use torch model, if true and not torch_only, tf eager read, torch model')
 flags.DEFINE_boolean('torch_only', False, 'torch_read Wether use torch reader, if true, torch read, torch model')
-flags.DEFINE_boolean('torch_lr', False, '')
+flags.DEFINE_boolean('torch_lr', False, 'False might not work as tf learning rate problem')
 flags.DEFINE_boolean('torch_finetune', False, '')
 flags.DEFINE_boolean('torch_load_optimizer', True, '')
 
@@ -315,20 +315,17 @@ def init():
     assert FLAGS.length_key, 'must set length key if using buckets'
 
   if FLAGS.use_horovod:
-    global hvd
     mpi4py.rc.initialize = False
     if not FLAGS.torch:
       import horovod.tensorflow as hvd 
       hvd.init()
-      assert hvd.mpi_threads_supported()
-      assert hvd.size() == comm.Get_size()
-      import torch 
-      torch.cuda.set_device(hvd.local_rank())
     else:
+      import torch
       import horovod.torch as hvd
       hvd.init()
-      assert hvd.mpi_threads_supported()
-      assert hvd.size() == comm.Get_size()
+      torch.cuda.set_device(hvd.local_rank())
+    assert hvd.mpi_threads_supported()
+    assert hvd.size() == comm.Get_size()
       
     if FLAGS.horovod_scale:
       FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
@@ -412,14 +409,15 @@ def init():
   if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ or FLAGS.torch:
   #if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
     logging.info('-------------RUN IN EAGER MODE!')
-    if FLAGS.torch:
-      # by default tf will use all... and also set 0. not ok so set really small
-      #opts = tf.GPUOptions(per_process_gpu_memory_fraction=1e-5)
-      #conf = tf.ConfigProto(gpu_options=opts)
-      conf = tf.ConfigProto(device_count={'GPU': 0})
-      tf.enable_eager_execution(config=conf)
-    else:
-      tf.enable_eager_execution()
+    if not FLAGS.torch_only:
+      if FLAGS.torch:
+        # by default tf will use all... and also set 0. not ok so set really small
+        #opts = tf.GPUOptions(per_process_gpu_memory_fraction=1e-5)
+        #conf = tf.ConfigProto(gpu_options=opts)
+        config = tf.ConfigProto(device_count={'GPU': 0})
+        tf.enable_eager_execution(config=config)
+      else:
+        tf.enable_eager_execution()
 
   if 'BIG' in os.environ and int(os.environ['BIG']) == 1:
     if FLAGS.big_batch_size is not None:
@@ -599,18 +597,25 @@ def init():
       FLAGS.learning_rate_decay_factor = 0.5
 
   # TODO check if can all use tfe.Variable ?
-  if not tf.executing_eagerly():
+  if not tf.executing_eagerly() and not FLAGS.torch_only:
     learning_rate_weight = tf.get_variable('learning_rate_weight', initializer=tf.ones(shape=(), dtype=tf.float32), trainable=False)
     tf.add_to_collection('learning_rate_weight', learning_rate_weight)
     if FLAGS.num_learning_rate_weights > 0:
       learning_rate_weights = tf.get_variable('learning_rate_weights', initializer=tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), trainable=False)
       tf.add_to_collection('learning_rate_weights', learning_rate_weights)
   else:
-    learning_rate_weight = tfe.Variable(1., name='learning_rate_weight', trainable=False)
-    tf.add_to_collection('learning_rate_weight', learning_rate_weight)
-    if FLAGS.num_learning_rate_weights > 0:
-      learning_rate_weights = tfe.Variable(tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), name='learning_rate_weights', trainable=False)
-      tf.add_to_collection('learning_rate_weights', learning_rate_weights)
+    # will cause torch each process occupy all gpus...   TODO tf torch conflict!
+    if not FLAGS.torch:
+      learning_rate_weight = tfe.Variable(1., name='learning_rate_weight', trainable=False)
+      #tf.add_to_collection('learning_rate_weight', learning_rate_weight)
+      #melt.add_global('learning_rate_weight', learning_rate_weight)
+      if FLAGS.num_learning_rate_weights > 0:
+        learning_rate_weights = tfe.Variable(tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), name='learning_rate_weights', trainable=False)
+        #tf.add_to_collection('learning_rate_weights', learning_rate_weights)
+        melt.add_global('learning_rate_weights', learning_rate_weights)
+    else:
+      melt.add_global('learning_rate_weight', melt.LearningRate(1.))
+
 
   global inited
   inited = True
@@ -760,7 +765,8 @@ def train_flow(ops,
    variables_to_save might be used but will hack here since we also want to save like seq2seq/OptimizeLoss/
   """
   assert inited, 'Forget to call melt.apps.init() before using melt.apps.train_flow?'
-
+  if FLAGS.use_horovod:
+    import horovod.tensorflow as hvd
   if sess is None:
     sess = melt.get_session()
 
@@ -1061,6 +1067,9 @@ def evaluate(ops, iterator, num_steps, num_examples, eval_fn,
              model_path=None, names=None, write_fn=None, write_streaming=False,
              num_gpus=1, write=False,
              suffix='.valid', sep=',', sess=None):
+  use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  if use_horovod:
+    import horovod.tensorflow as hvd
   if not write_fn:
     write_streaming = True
   ids_list = []  
@@ -1170,6 +1179,9 @@ def inference(ops, iterator, num_steps, num_examples,
               model_path, names=None, debug_names=None,
               write_fn=None, write_streaming=False, num_gpus=1, 
               suffix='.infer', sep=',', sess=None):
+  use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  if use_horovod:
+    import horovod.tensorflow as hvd
   if not write_fn:
     write_streaming = True
   ids_list = []  
@@ -1288,6 +1300,7 @@ def train(model,
   #hack for horovod
   if FLAGS.use_horovod: 
     num_gpus = 1
+    import horovod.tensorflow as hvd
 
   batch_size_per_gpu = FLAGS.batch_size
   logging.info(model, Dataset, loss_fn)
@@ -1532,7 +1545,7 @@ def train(model,
              )
 
 def get_train():
-  train = melt.eager.train if tf.executing_eagerly() else melt.apps.train
+  train = melt.eager.train if tf.executing_eagerly() or FLAGS.torch_only else melt.apps.train
   return train
 
 def get_fit():

@@ -18,8 +18,11 @@ import traceback
 import sys
 print('tensorflow_version:', tf.__version__, file=sys.stderr) 
 
-import torch
-print('torch_version:', torch.__version__, file=sys.stderr) 
+try:
+  import torch
+  print('torch_version:', torch.__version__, file=sys.stderr) 
+except Exception:
+	print("torch not found")
 
 from melt.training import training as train 
 import melt.training 

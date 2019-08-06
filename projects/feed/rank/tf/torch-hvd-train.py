@@ -56,6 +56,8 @@ def train(epoch, model, loss_fn, train_loader, optimizer):
     # Horovod: set epoch to sampler for shuffling.
     train_loader.sampler.set_epoch(epoch)
     for batch_idx, (data, target) in enumerate(train_loader):
+        if batch_idx % 10 == 0:
+          logging.info('------------', batch_idx)
         for key in data:
           if type(data[key][0]) != np.str_:
             data[key] = data[key].cuda()
@@ -120,44 +122,36 @@ def main(_):
   train_files = gezi.list_files('../input/train/*')
   train_ds = get_dataset(train_files, td)
   
-  kwargs = {'num_workers': 4, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
-  #kwargs = {'num_workers': 1, 'pin_memory': False, 'collate_fn': lele.DictPadCollate()}
+  #kwargs = {'num_workers': 4, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  kwargs = {'num_workers': 0, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
 
   train_sampler = train_ds
   train_sampler = torch.utils.data.distributed.DistributedSampler(
     train_ds, num_replicas=hvd.size(), rank=hvd.rank())
   
   train_dl = DataLoader(train_ds, FLAGS.batch_size, sampler=train_sampler, **kwargs)
-
-  logging.info('train dl done')
   
   valid_files = gezi.list_files('../input/valid/*')
   valid_ds = get_dataset(valid_files, td)
 
   # support shuffle=False from version 1.2
   valid_sampler = torch.utils.data.distributed.DistributedSampler(
-    valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
-  logging.info('valid sampler done')
+      valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
+
   valid_sampler2 = torch.utils.data.distributed.DistributedSampler(
-    valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
-  logging.info('valid sampler2 done')
+      valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
   
   valid_dl = DataLoader(valid_ds, FLAGS.eval_batch_size, sampler=valid_sampler, **kwargs)
-  logging.info('valid dl done')
   valid_dl2 = DataLoader(valid_ds, FLAGS.batch_size, sampler=valid_sampler2, **kwargs)
-  logging.info('valid dl2 done')
 
 
   optimizer = optim.SGD(model.parameters(), lr=0.1)
   hvd.broadcast_parameters(model.state_dict(), root_rank=0)
   hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
-  logging.info('optimizer broadcast done')
-
   optimizer = hvd.DistributedOptimizer(optimizer,
-                                     named_parameters=model.named_parameters())
+                                       named_parameters=model.named_parameters())
 
-   logging.info('optimizer hvd done, now train')
   for epoch in range(2):
     train(epoch, model, loss_fn, train_dl, optimizer)
     test(model, loss_fn, valid_dl)
