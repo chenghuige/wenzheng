@@ -41,6 +41,7 @@ import melt
 logging = melt.logging
 import gezi
 import lele
+from tqdm import tqdm
 
 logging.init('/home/gezi/temp')
 
@@ -55,9 +56,7 @@ def train(epoch, model, loss_fn, train_loader, optimizer):
     model.train()
     # Horovod: set epoch to sampler for shuffling.
     train_loader.sampler.set_epoch(epoch)
-    for batch_idx, (data, target) in enumerate(train_loader):
-        if batch_idx % 10 == 0:
-          logging.info('------------', batch_idx)
+    for batch_idx, (data, target) in tqdm(enumerate(train_loader), total=len(train_loader), ascii=True):
         for key in data:
           if type(data[key][0]) != np.str_:
             data[key] = data[key].cuda()
@@ -105,10 +104,12 @@ def test(model, loss_fn, test_loader):
 
 def main(_):
   FLAGS.torch_only = True
+  
   melt.init()
   #fit = melt.get_fit()
 
   FLAGS.eval_batch_size = 512 * FLAGS.valid_multiplier
+  FLAGS.eval_batch_size = 512
 
   model_name = FLAGS.model
   model = getattr(base, model_name)() 
@@ -123,7 +124,13 @@ def main(_):
   train_ds = get_dataset(train_files, td)
   
   #kwargs = {'num_workers': 4, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
-  kwargs = {'num_workers': 0, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  #num_workers = int(16 / hvd.size())  
+  num_workers = 1  # set to 1 2 min to start might just set to 0 for safe
+  num_workers = 0 # 设置0 速度比1慢很多   启动都需要1分多。。
+  # pin_memory 影响不大 单gpu提升速度一点点 多gpu 主要是 num_workers  影响资源占有。。有可能启动不起来
+  # 多gpu pin_memory = False 反而速度更快。。
+  #kwargs = {'num_workers': num_workers, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}  
+  kwargs = {'num_workers': 1, 'pin_memory': False, 'collate_fn': lele.DictPadCollate()}
 
   train_sampler = train_ds
   train_sampler = torch.utils.data.distributed.DistributedSampler(
@@ -138,14 +145,16 @@ def main(_):
   valid_sampler = torch.utils.data.distributed.DistributedSampler(
       valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
 
-  valid_sampler2 = torch.utils.data.distributed.DistributedSampler(
-      valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
+  # valid_sampler2 = torch.utils.data.distributed.DistributedSampler(
+  #     valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
   
   valid_dl = DataLoader(valid_ds, FLAGS.eval_batch_size, sampler=valid_sampler, **kwargs)
-  valid_dl2 = DataLoader(valid_ds, FLAGS.batch_size, sampler=valid_sampler2, **kwargs)
+  
+  #valid_dl2 = DataLoader(valid_ds, FLAGS.batch_size, sampler=valid_sampler2, **kwargs)
 
 
-  optimizer = optim.SGD(model.parameters(), lr=0.1)
+  optimizer = optim.Adamax(model.parameters(), lr=0.1)
+  #optimizer = optim.SGD(model.parameters(), lr=0.1)
   hvd.broadcast_parameters(model.state_dict(), root_rank=0)
   hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 

@@ -204,7 +204,11 @@ def inputs(files,
   #drop_remainder = True
 
   if not num_prefetch_batches:
-    num_prefetch_batches = num_threads + 3
+    #num_prefetch_batches = num_threads + 3
+    if buffer_size is not None:
+      num_prefetch_batches = int(buffer_size / batch_size)
+    else:
+      num_prefetch_batches = 1024
   
   if buffer_size is None:
     # ... Too small ? but 1024 will cause starup slow

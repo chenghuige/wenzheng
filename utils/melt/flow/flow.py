@@ -38,6 +38,8 @@ import inspect
 import traceback
 import numpy as np
 
+from tqdm import tqdm
+
 def tf_flow(process_once, model_dir=None, num_steps=None, sess=None):
   """
   basic flow for tf records, allow most freedom for usage, if not tfrecords no need for flow
@@ -380,159 +382,160 @@ def tf_train_flow(train_once_fn,
 
   #tf.train.write_graph(sess.graph_def, model_dir, 'train.pbtxt')
   only_one_step = False
-  try:
-    if use_horovod:
-      ## TODO FIXME why bcast here not work ? simple test work see tests/bcast.py
-      #comm.bcast(pre_step, root=0)
-      temp = np.array([pre_step, fixed_pre_step])
-      comm.Bcast(temp, root=0)
-      pre_step = temp[0]
-      fixed_pre_step = temp[1]
-
-    step = start = pre_step + 1
-    fixed_step = fixed_pre_step + 1 
-
-    #first = True
-
-    #hack just for save one model after load
-    if num_steps < 0 or (num_steps and num_steps < step):
-      logging.info('just load and resave then exit')
-      model_path_ =  _get_checkpoint_path(checkpoint_path, step, num_steps_per_epoch, epoch=pre_epoch)
-      saver.save(sess, model_path_, global_step=step + 1)
-      if freeze_graph:
-        melt.freeze_graph(sess, model_path_, step + 1, output_collection_names, output_node_names)
-      sess.close()
-      exit(0)
-    
-    if num_epochs < 0:
-      only_one_step = True
-      logging.info('just run one step')
-
-    if FLAGS.work_mode != 'train':
-      assert not os.path.isdir(FLAGS.model_dir), FLAGS.model_dir  
-      if 'valid' in FLAGS.work_mode:
-        vals, names = metric_eval_fn(FLAGS.model_dir)
-        logging.info(list(zip(names, vals)))
-      if 'test' in FLAGS.work_mode:
-        inference_fn(FLAGS.model_dir)
-      exit(0)
-
-    #early_stop = True #TODO allow config
-    num_bad_epochs = 0
-    pre_epoch_eval_loss = 1e20
-    best_epoch_eval_loss = 1e20
-    num_allowed_bad_epochs = 4 #allow 5 non decrease eval loss epochs  before stop
-    epoch_saved_step = 0
-    #while not coord.should_stop():
-    while True:
-      model_step_path = None
-      if model_dir_:
-        model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
-        model_step_path_ = model_path_ + '-' + str(step)
-        if (write_during_train and metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0):
-          model_step_path = model_step_path_
-        else:
-           model_step_path = None
-
-      if step == 0:
-        model_step_path = None
-
-      #print('--------------------step', step)
-      stop = train_once_fn(sess, 
-                           step, 
-                           is_start=(step==start), 
-                           fixed_step=fixed_step,
-                           num_epochs=num_epochs,
-                           model_path=model_step_path,
-                           use_horovod=use_horovod,
-                           ## TODO FIXME this line will cause   tensorflow.python.framework.errors_impl.NotFoundError: Resource localhost/save_counter/N10tensorflow3VarE does not exist. 
-                          )
-
-      #first = False
-
-      if only_one_step:
-        stop = True
-
-      step += 1
-      fixed_step += 1
-
-      if save_model and step and model_dir:
-        #step 0 is also saved! actually train one step and save
-        is_step_save = step % save_interval_steps == 0
-        is_epoch_save = save_interval_steps and num_steps_per_epoch and fixed_step % int(num_steps_per_epoch * save_interval_epochs) == 0
-
-        is_step_save = is_step_save or is_epoch_save
-
-        if is_step_save:
-          timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path), False)
-          model_path_ = _get_checkpoint_path(checkpoint_path, fixed_step, num_steps_per_epoch)
-          saver.save(sess, model_path_, global_step=step)
-          if freeze_graph:
-            melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
-          if log_dir != model_dir:
-           assert log_dir
-           command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
-           print(command, file=sys.stderr)
-           os.system(command)
-          timer.print_elapsed()
   
-        if is_epoch_save:
-          # TODO only epoch in name not sep ?
-          epoch_saved_step = step
+  if use_horovod:
+    ## TODO FIXME why bcast here not work ? simple test work see tests/bcast.py
+    #comm.bcast(pre_step, root=0)
+    temp = np.array([pre_step, fixed_pre_step])
+    comm.Bcast(temp, root=0)
+    pre_step, fixed_pre_step = temp[0], temp[1]
+
+  step = start = pre_step + 1
+  fixed_step = fixed_pre_step + 1 
+
+  #first = True
+
+  #hack just for save one model after load
+  if num_steps < 0 or (num_steps and num_steps < step):
+    logging.info('just load and resave then exit')
+    model_path_ =  _get_checkpoint_path(checkpoint_path, step, num_steps_per_epoch, epoch=pre_epoch)
+    saver.save(sess, model_path_, global_step=step + 1)
+    if freeze_graph:
+      melt.freeze_graph(sess, model_path_, step + 1, output_collection_names, output_node_names)
+    sess.close()
+    exit(0)
+  
+  if num_epochs < 0:
+    only_one_step = True
+    logging.info('just run one step')
+
+  if FLAGS.work_mode != 'train':
+    assert not os.path.isdir(FLAGS.model_dir), FLAGS.model_dir  
+    if 'valid' in FLAGS.work_mode:
+      vals, names = metric_eval_fn(FLAGS.model_dir)
+      logging.info(list(zip(names, vals)))
+    if 'test' in FLAGS.work_mode:
+      inference_fn(FLAGS.model_dir)
+    exit(0)
+
+  #early_stop = True #TODO allow config
+  num_bad_epochs = 0
+  pre_epoch_eval_loss = 1e20
+  best_epoch_eval_loss = 1e20
+  num_allowed_bad_epochs = 4 #allow 5 non decrease eval loss epochs  before stop
+  epoch_saved_step = 0
+  num_epochs = num_epochs if num_epochs else 1024
+
+  #-------------------------------main loop
+  try:
+    for epoch in range(num_epochs):
+      for _ in tqdm(range(num_steps_per_epoch), ascii=True):
+        model_step_path = None
+        if model_dir_:
           model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
-          model_step_path = model_path_ + '-' + str(step)
-          timer = gezi.Timer('epoch save to {}'.format(model_path_))
-          epoch_saver.save(sess, model_path_, global_step=step)
-          #logging.info(timer.elapsed())
-          timer.print_elapsed()
-          
-          # TODO FIXME if add keras save below wil hang, might due to rank 0 save so slower then others
-          # fixed by adding allreduce on each loop end
-          # [1,0]<stderr>:Stalled ranks:
-          # [1,0]<stderr>:0: [HorovodAllreduce_Const_9_0]
-          if model and not use_horovod:
-          #if model:          
-            #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
-            # TODO FIXME if restart will save from 1... again..
-            timer = gezi.Timer('keras epoch save to {}'.format(checkpoint_prefix))
-            checkpoint.save(checkpoint_prefix, session=sess)
-            #print(sess.run(checkpoint.save_counter))
+          model_step_path_ = model_path_ + '-' + str(step)
+          if (write_during_train and metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0):
+            model_step_path = model_step_path_
+          else:
+             model_step_path = None
+
+        if step == 0:
+          model_step_path = None
+
+        #print('--------------------step', step)
+        stop = train_once_fn(sess, 
+                             step, 
+                             is_start=(step==start), 
+                             fixed_step=fixed_step,
+                             num_epochs=num_epochs,
+                             model_path=model_step_path,
+                             use_horovod=use_horovod,
+                             ## TODO FIXME this line will cause   tensorflow.python.framework.errors_impl.NotFoundError: Resource localhost/save_counter/N10tensorflow3VarE does not exist. 
+                            )
+
+        #first = False
+
+        if only_one_step:
+          stop = True
+
+        step += 1
+        fixed_step += 1
+
+        if save_model and step and model_dir:
+          #step 0 is also saved! actually train one step and save
+          is_step_save = step % save_interval_steps == 0
+          is_epoch_save = save_interval_steps and num_steps_per_epoch and fixed_step % int(num_steps_per_epoch * save_interval_epochs) == 0
+
+          is_step_save = is_step_save or is_epoch_save
+
+          if is_step_save:
+            timer = gezi.Timer('save model step %d to %s'%(step, checkpoint_path), False)
+            model_path_ = _get_checkpoint_path(checkpoint_path, fixed_step, num_steps_per_epoch)
+            saver.save(sess, model_path_, global_step=step)
+            if freeze_graph:
+              melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
+            if log_dir != model_dir:
+             assert log_dir
+             command = 'rsync -l -r -t %s/* %s' % (log_dir, model_dir) 
+             print(command, file=sys.stderr)
+             os.system(command)
+            timer.print_elapsed()
+    
+          if is_epoch_save:
+            # TODO only epoch in name not sep ?
+            epoch_saved_step = step
+            model_path_ = os.path.join(epoch_dir,'model.ckpt-%.2f'%(fixed_step / float(num_steps_per_epoch)))
+            model_step_path = model_path_ + '-' + str(step)
+            timer = gezi.Timer('epoch save to {}'.format(model_path_))
+            epoch_saver.save(sess, model_path_, global_step=step)
             #logging.info(timer.elapsed())
             timer.print_elapsed()
             
-          if freeze_graph:
-            melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
+            # TODO FIXME if add keras save below wil hang, might due to rank 0 save so slower then others
+            # fixed by adding allreduce on each loop end
+            # [1,0]<stderr>:Stalled ranks:
+            # [1,0]<stderr>:0: [HorovodAllreduce_Const_9_0]
+            if model and not use_horovod:
+            #if model:          
+              #model.save_weights(epoch_dir + '/ckpt-%.2f' % (fixed_step / float(num_steps_per_epoch)))
+              # TODO FIXME if restart will save from 1... again..
+              timer = gezi.Timer('keras epoch save to {}'.format(checkpoint_prefix))
+              checkpoint.save(checkpoint_prefix, session=sess)
+              #print(sess.run(checkpoint.save_counter))
+              #logging.info(timer.elapsed())
+              timer.print_elapsed()
+              
+            if freeze_graph:
+              melt.freeze_graph(sess, model_path_, step, output_collection_names, output_node_names)
 
-        if write_during_train:
-          if inference_fn is not None and inference_interval_epochs and fixed_step % int(num_steps_per_epoch * inference_interval_epochs) == 0:
-            model_step_path = model_path_ + '-' + str(step)
-            try:
-              #print('--------------inference fn')
-              inference_fn(model_path=model_step_path)
-            except Exception:
-              logging.info(traceback.format_exc())  
+          if write_during_train:
+            if inference_fn is not None and inference_interval_epochs and fixed_step % int(num_steps_per_epoch * inference_interval_epochs) == 0:
+              model_step_path = model_path_ + '-' + str(step)
+              try:
+                #print('--------------inference fn')
+                inference_fn(model_path=model_step_path)
+              except Exception:
+                logging.info(traceback.format_exc())  
 
-          ## metric eval move to train_once which means you first save then eval, so might need 1 more step
-          # if metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0:
-          #   model_step_path = model_path_ + '-' + str(step)
-          #   try:
-          #     metric_eval_fn(model_path=model_step_path)
-          #   except Exception:
-          #     logging.info(traceback.format_exc())  
+            ## metric eval move to train_once which means you first save then eval, so might need 1 more step
+            # if metric_eval_fn is not None and valid_interval_epochs and fixed_step % int(num_steps_per_epoch * valid_interval_epochs) == 0:
+            #   model_step_path = model_path_ + '-' + str(step)
+            #   try:
+            #     metric_eval_fn(model_path=model_step_path)
+            #   except Exception:
+            #     logging.info(traceback.format_exc())  
 
-      if stop is True:
-        print('Early stop running %d stpes'%(step), file=sys.stderr)
-        raise tf.errors.OutOfRangeError(None, None,'Early stop running %d stpes'%(step))
-      if num_steps and (step + 1) == start + num_steps:
-        raise tf.errors.OutOfRangeError(None, None,'Reached max num steps')
-      #max_num_epochs = 1000
-      max_num_epochs = num_epochs
-      #if max_num_epochs and num_steps_per_epoch and fixed_step // num_steps_per_epoch >= max_num_epochs:
-      if max_num_epochs and num_steps_per_epoch and fixed_step / num_steps_per_epoch > max_num_epochs:
-        raise tf.errors.OutOfRangeError(None, None,'Reached max num epochs of %d'%max_num_epochs)
-      ## will hange with allreduce
-      #sess.run(hvd.allreduce(tf.constant(0)))
-  #except tf.errors.OutOfRangeError, e:
+        if stop is True:
+          print('Early stop running %d stpes'%(step), file=sys.stderr)
+          raise tf.errors.OutOfRangeError(None, None,'Early stop running %d stpes'%(step))
+        if num_steps and (step + 1) == start + num_steps:
+          raise tf.errors.OutOfRangeError(None, None,'Reached max num steps')
+        #max_num_epochs = 1000
+        max_num_epochs = num_epochs
+        #if max_num_epochs and num_steps_per_epoch and fixed_step // num_steps_per_epoch >= max_num_epochs:
+        if max_num_epochs and num_steps_per_epoch and fixed_step / num_steps_per_epoch > max_num_epochs:
+          raise tf.errors.OutOfRangeError(None, None,'Reached max num epochs of %d'%max_num_epochs)
+    raise tf.errors.OutOfRangeError(None, None,'Reached max num epochs of %d'%max_num_epochs)
   except tf.errors.OutOfRangeError:
     # if run 2 epoch and we have just epoch saved, do not need to save only 1 step more model
     if (step - epoch_saved_step > 1) and not (step==start) and save_model and step % save_interval_steps != 0 and model_dir:
@@ -563,14 +566,6 @@ def tf_train_flow(train_once_fn,
       logging.info('Should not stop, but stopped at epoch: %.3f'%(fixed_step / num_steps_per_epoch))
       logging.info(traceback.format_exc())
       #raise e
-  # finally:
-  #   coord.request_stop()
-
-  # coord.join(threads, stop_grace_period_secs=5)
-
-  #FIMXE due to use melt.get_session(global not handle del well)
-  #Done training for 3090020 steps.
-  #Exception TypeError: "'NoneType' object is not callable" in <bound method Session.__del__ of <tensorflow.python.client.session.Session object at 0x7f6cf33cd450>> ignored
   if FLAGS.use_tpu:
     sess.run(tpu.shutdown_system())
   sess.close()
@@ -607,8 +602,3 @@ def tf_test_flow(test_once, model_dir='./model',
         raise tf.errors.OutOfRangeError(None, None, 'Reached max num steps')
   except tf.errors.OutOfRangeError:
     print('Done testing for %d epochs, %d steps.' % (num_epochs, step))
-  # finally:
-  #   # When done, ask the threads to stop.
-  #   coord.request_stop()
-  # # Wait for threads to finish.
-  # coord.join(threads)

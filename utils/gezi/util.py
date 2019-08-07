@@ -386,6 +386,8 @@ def file_is_empty(path):
   return os.stat(path).st_size==0
 
 def list_files(inputs):
+  if not inputs:
+    return []
   files = []
   inputs = inputs.split(',')
   for input in inputs:

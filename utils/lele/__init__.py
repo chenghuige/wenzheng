@@ -10,3 +10,4 @@ except Exception:
 
 from lele.util import * 
 from lele.training import *
+from lele.apps import * 

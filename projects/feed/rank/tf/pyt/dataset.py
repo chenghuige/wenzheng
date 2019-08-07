@@ -45,6 +45,7 @@ class TextDataset(Dataset):
     return self._total_data
 
 def get_dataset(files, td):
+  assert files
   datasets = [TextDataset(x, td) for x in files]
   return ConcatDataset(datasets)
 

@@ -1378,6 +1378,9 @@ class GlobalStep():
   def numpy(self):
     return self.step
 
+  def value(self):
+    return self.step
+
 class LearningRate():
   def __init__(self, lr):
     self.lr = lr
@@ -1386,6 +1389,9 @@ class LearningRate():
     self.lr = lr
 
   def numpy(self):
+    return self.lr
+
+  def value(self):
     return self.lr
 
   def __mul__(self, scalar):

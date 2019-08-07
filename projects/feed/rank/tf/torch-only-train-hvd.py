@@ -14,13 +14,16 @@ import multiprocessing
 import os
 import sys
 
+import gezi
+import melt
+
 import tensorflow as tf
 
 import evaluate as ev
-import gezi
+
 import lele
 import loss
-import melt
+
 import pyt.model as base
 import torch
 import text_dataset
@@ -60,7 +63,10 @@ def main(_):
   
   #kwargs = {'num_workers': 4, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
   #kwargs = {'num_workers': 0, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
-  kwargs = {'num_workers': 0, 'pin_memory': False, 'collate_fn': lele.DictPadCollate()}
+  #kwargs = {'num_workers': 4, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  
+  num_workers = 1
+  kwargs = {'num_workers': num_workers, 'pin_memory': False, 'collate_fn': lele.DictPadCollate()}
 
   train_sampler = train_ds
   train_sampler = torch.utils.data.distributed.DistributedSampler(
@@ -71,10 +77,12 @@ def main(_):
   valid_files = gezi.list_files('../input/valid/*')
   valid_ds = get_dataset(valid_files, td)
 
+  kwargs['num_workers'] = 1
   # support shuffle=False from version 1.2
   valid_sampler = torch.utils.data.distributed.DistributedSampler(
       valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
 
+  kwargs['num_workers'] = 1
   valid_sampler2 = torch.utils.data.distributed.DistributedSampler(
       valid_ds, num_replicas=hvd.size(), rank=hvd.rank(), shuffle=False)
   

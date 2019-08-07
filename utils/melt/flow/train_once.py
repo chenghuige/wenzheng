@@ -209,8 +209,8 @@ def train_once(sess,
 
   #print('------------1step', step, 'pre metric_evaluate', metric_evaluate, hvd.rank())
   if metric_evaluate:
-    if use_horovod:
-      print('------------metric evaluate step', step, model_path, hvd.rank())
+    # if use_horovod:
+    #   print('------------metric evaluate step', step, model_path, hvd.rank())
     if not model_path or 'model_path' not in inspect.getargspec(metric_eval_fn).args:
       metric_eval_fn_ = metric_eval_fn
     else:
@@ -332,8 +332,10 @@ def train_once(sess,
         else:
           hours_per_epoch = num_steps_per_epoch / interval_steps * elapsed / 3600
           epoch_time_info = '1epoch:[{:.2f}h]'.format(hours_per_epoch)
-        info.write('elapsed:[{:.2f}] batch_size:[{}]{} batches/s:[{:.2f}] insts/s:[{:.2f}] {} lr:[{:.6f}]'.format(
-                      elapsed, batch_size, gpu_info, steps_per_second, instances_per_second, epoch_time_info, learning_rate))
+        # info.write('elapsed:[{:.2f}] batch_size:[{}]{} batches/s:[{:.2f}] insts/s:[{:.2f}] {} lr:[{:.6f}]'.format(
+        #               elapsed, batch_size, gpu_info, steps_per_second, instances_per_second, epoch_time_info, learning_rate))
+          info.write('elap:[{:.2f}] batch:[{}] {} lr:[{:.6f}]'.format(
+                elapsed, batch_size, epoch_time_info, learning_rate))
 
       if print_avg_loss:
         #info.write('train_avg_metrics:{} '.format(melt.value_name_list_str(train_average_loss, names)))
@@ -391,8 +393,13 @@ def train_once(sess,
           prefix = 'step_eval'
           if model_path:
             prefix = 'eval'
+            valid_interval_epochs = 1. 
+            try:
+              valid_interval_epochs = FLAGS.valid_interval_epochs 
+            except Exception:
+              pass
             if not hasattr(train_once, 'epoch_step'):
-              train_once.epoch_step = 1
+              train_once.epoch_step = 1 if melt.epoch() <= 1 else int(int(melt.epoch() * 10) / int(valid_interval_epochs * 10))
             else:
               train_once.epoch_step += 1
             step = train_once.epoch_step

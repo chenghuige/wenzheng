@@ -11,11 +11,11 @@ python ./train.py \
     --dense_activation=relu \
     --model=$model \
     --num_epochs=2 \
-    --eager=0 \
+    --eager=1 \
     --valid_interval_epochs=0.1 \
     --train_input=../input/train \
     --valid_input=../input/valid \
-    --model_dir=../input/model/$model.best.v0 \
+    --model_dir=../input/model/eager.$model.best.v0 \
     --batch_size=512 \
     --max_feat_len=100 \
     --optimizer=bert \

@@ -134,7 +134,7 @@ class Evaluator(Callback):
                                 weights='quadratic')
       print("\n epoch: %d - kappa: %.6f \n" % (epoch + 1, score))
 
-      self.logger.scalar_summary('kappa', score, epoch + 1)
+      self.logger.scalar('kappa', score, epoch + 1)
 
       print('image_dict size', len(image_dict))
 
@@ -153,7 +153,7 @@ class Evaluator(Callback):
                       to_str(y_scores[indexes[i]]))) 
       images = [cv2.cvtColor(img, cv2.COLOR_BGR2RGB) for img in self.valid_generator.get_images(indexes)]       
       
-      self.logger.image_summary('rand', images, epoch + 1, texts)
+      self.logger.image('rand', images, epoch + 1, texts)
       timer.print()
 
       # timer = gezi.Timer('image/confidence')
@@ -170,7 +170,7 @@ class Evaluator(Callback):
       #                 to_str(y_scores[indexes[i]]))) 
       # images = [cv2.cvtColor(img, cv2.COLOR_BGR2RGB) for img in self.valid_generator.get_images(indexes)]  
 
-      # self.logger.image_summary('confidence', images, epoch + 1, texts)  
+      # self.logger.image('confidence', images, epoch + 1, texts)  
       # timer.print()
 
       timer = gezi.Timer('image/dist')
@@ -185,11 +185,11 @@ class Evaluator(Callback):
                       to_str(y_scores[indexes[i]]))) 
       images = [cv2.cvtColor(img, cv2.COLOR_BGR2RGB) for img in self.valid_generator.get_images(indexes)]   
 
-      self.logger.image_summary('dist', images, epoch + 1, texts)   
+      self.logger.image('dist', images, epoch + 1, texts)   
       timer.print()
 
       confusion = gen_confusion(y_true, y_pred, info='kappa:{:.4f}'.format(score))
-      self.logger.image_summary('confusion', confusion, epoch + 1, bytes_input=True)
+      self.logger.image('confusion', confusion, epoch + 1, bytes_input=True)
 
       self.history.append(score)
       if score >= max(self.history):

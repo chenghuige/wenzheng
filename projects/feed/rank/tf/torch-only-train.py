@@ -35,8 +35,14 @@ FLAGS = flags.FLAGS
 
 logging = melt.logging
 
+import horovod.torch as hvd
+hvd.init()
+# Horovod: pin GPU to local rank.
+torch.cuda.set_device(hvd.local_rank())
+
 def main(_):
   FLAGS.torch_only = True
+  #FLAGS.valid_input = None
   melt.init()
   fit = melt.get_fit()
 
@@ -55,20 +61,27 @@ def main(_):
   ## num_workers 1 is very slow especially for validation, seems 4 workers is enough, large number dangerous sometimes 12 ok sometimes hang, too much resource seems
 
   #kwargs = {'num_workers': 12, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
-  kwargs = {'num_workers': 6, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
-  #kwargs = {'num_workers': 12, 'pin_memory': False, 'collate_fn': lele.DictPadCollate()}
+  #kwargs = {'num_workers': 6, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  kwargs = {'num_workers': 8, 'pin_memory': True, 'collate_fn': lele.DictPadCollate()}
+  ## for 1 gpu, set > 8 might startup very slow
+  #num_workers = int(8 / hvd.size())
+  # num_workers = 0
+  # pin_memory = False
+  #kwargs = {'num_workers': num_workers, 'pin_memory': pin_memory, 'collate_fn': lele.DictPadCollate()}
   
   train_dl = DataLoader(train_ds, FLAGS.batch_size, shuffle=True, **kwargs)
 
-  kwargs['num_workers'] = 24
+  #kwargs['num_workers'] = max(1, num_workers)
   #logging.info('num train examples', len(train_ds), len(train_dl))
-  valid_files = gezi.list_files(FLAGS.valid_input)
-  valid_ds = get_dataset(valid_files, td)
-  valid_dl = DataLoader(valid_ds, FLAGS.eval_batch_size, **kwargs)
 
-  kwargs['num_workers'] = 6
-  valid_dl2 = DataLoader(valid_ds, FLAGS.batch_size, **kwargs)
-  #logging.info('num valid examples', len(valid_ds), len(valid_dl))
+  if FLAGS.valid_input:
+    valid_files = gezi.list_files(FLAGS.valid_input)
+    valid_ds = get_dataset(valid_files, td)
+    valid_dl = DataLoader(valid_ds, FLAGS.eval_batch_size, **kwargs)
+
+    #kwargs['num_workers'] = max(1, num_workers)
+    valid_dl2 = DataLoader(valid_ds, FLAGS.batch_size, **kwargs)
+    #logging.info('num valid examples', len(valid_ds), len(valid_dl))
 
   fit(model,  
       loss_fn,

@@ -17,6 +17,8 @@ import os
 
 import torch
 from torch import nn
+#from torch.utils.data import Dataset, ConcatDataset
+
 import copy
 import traceback
 import numpy as np
@@ -70,7 +72,7 @@ def clones(module, N):
 
 try:
   import torch 
-  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 except Exception:
   pass
 import numpy as np 
@@ -85,6 +87,7 @@ def torch_(x):
     x = torch.from_numpy(x)
     #if torch.cuda.is_available():
       #x = x.cuda()
+    #x = x.cuda()
     x = x.to(device)
 
   return x

@@ -75,6 +75,8 @@ def list_files(input):
   """
   @TODO support hdfsGlob 
   """
+  if not input:
+    return []
   local_files = gezi.list_files(input)
   if local_files:
     return local_files

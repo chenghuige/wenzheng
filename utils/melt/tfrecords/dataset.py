@@ -115,9 +115,9 @@ class Dataset(object):
     if self.pos_filter_fn and self.neg_filter_fn:
       balance_pos_neg = True
 
-    print('-----------dataset repeat', repeat)
-    print('-----------dataset batch_parse', self.batch_parse)
-    print('-----------dataset allow final small batch', allow_smaller_final_batch)
+    logging.info('-----------dataset repeat', repeat)
+    logging.info('-----------dataset batch_parse', self.batch_parse)
+    logging.info('-----------dataset allow final small batch', allow_smaller_final_batch)
     # for bow using cpu 69 insts/s using gpu 54 inst/s
     with tf.device('/cpu:0'):
       result = melt.dataset_decode.inputs(
@@ -135,7 +135,7 @@ class Dataset(object):
         bucket_batch_sizes=FLAGS.batch_sizes,
         length_index=FLAGS.length_index,
         length_key=FLAGS.length_key,
-        seed=FLAGS.random_seed,
+        seed=FLAGS.seed,
         return_iterator=return_iterator,
         filter_fn=self.filter_fn if subset == 'train' else None,
         balance_pos_neg=balance_pos_neg,

@@ -14,7 +14,7 @@ from __future__ import print_function
 
 try:
   import torch 
-  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 except Exception:
   pass
 
@@ -63,6 +63,8 @@ def torch_(x):
     #if torch.cuda.is_available():
       #x = x.cuda()
     x = x.to(device)
+    ## TODO FIXME support cpu
+    #x = x.cuda()
 
   return x
 
@@ -71,8 +73,10 @@ def to_torch(x, y=None):
     for key in x:
       if type(x[key][0]) != np.str_:
       #if x.dtype == np.int64 or x.dtype == np.int32 or x.dtype == np.float32 or x.dtype == np.float64:
-        x[key] = x[key].to(device)
+        #x[key] = x[key].to(device)
+        x[key] = x[key].cuda()
     return x, y.to(device)
+    #return x, y.cuda()
   if y is not None:
     y = torch_(y)
 
@@ -336,7 +340,7 @@ def load_torch_model(model, path):
 
 def horovod_torch_deal_optimizer(optimizer, model):
   import horovod.torch as hvd
-  hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+  #hvd.broadcast_optimizer_state(optimizer, root_rank=0)
   optimizer = hvd.DistributedOptimizer(optimizer,
                                        named_parameters=model.named_parameters())
   return optimizer
@@ -402,6 +406,7 @@ def train(model,
           init_fn=None,
           sep=','):
   use_horovod = 'OMPI_COMM_WORLD_RANK' in os.environ
+  is_eager = tf.executing_eagerly()
   if use_horovod:
     if FLAGS.torch:
       import horovod.torch as hvd
@@ -410,16 +415,19 @@ def train(model,
 
   if Dataset is None:
     assert dataset
-  logging.info('Dataset', Dataset, 'dataset', dataset, 'valid_dataset', valid_dataset, 'test_dataset', test_dataset, loss_fn)
+  if not use_horovod or hvd.rank() == 0:
+    logging.info('Dataset', Dataset, 'dataset', dataset, 'valid_dataset', valid_dataset, 'test_dataset', test_dataset, loss_fn)
 
   if FLAGS.torch:
-    logging.info(model) # keras will show model after first training step
+    if not use_horovod or hvd.rank() == 0:
+      logging.info(model) # keras will show model after first training step
     torch.manual_seed(FLAGS.seed or 0)
     if torch.cuda.device_count():
       torch.cuda.manual_seed(FLAGS.seed or 0)
     if torch.cuda.device_count() > 1 and not use_horovod:
       model = torch.nn.DataParallel(model)
-    model.to(device)
+    #model.to(device)
+    #model = model.cuda()  #move it after loading model 
     
   input_ =  FLAGS.train_input 
   inputs = gezi.list_files(input_)
@@ -533,15 +541,21 @@ def train(model,
       num_test_steps_per_epoch = -(-num_test_examples // (batch_size_ * hvd.size()))
   logging.info('num_test_examples:', num_test_examples)
   
-  summary = tf.contrib.summary
-  # writer = summary.create_file_writer(FLAGS.log_dir + '/epoch')
-  # writer_train = summary.create_file_writer(FLAGS.log_dir + '/train')
-  # writer_valid = summary.create_file_writer(FLAGS.log_dir + '/valid')
-  writer = summary.create_file_writer(FLAGS.log_dir)
-  writer_train = summary.create_file_writer(FLAGS.log_dir)
-  writer_valid = summary.create_file_writer(FLAGS.log_dir)
-  
-  if not FLAGS.torch:
+  if not use_horovod or hvd.rank() == 0:
+    ## this is eager mode summary.. which will not work on non eager mode
+    if is_eager:
+      summary = tf.contrib.summary
+      # writer = summary.create_file_writer(FLAGS.log_dir + '/epoch')
+      # writer_train = summary.create_file_writer(FLAGS.log_dir + '/train')
+      # writer_valid = summary.create_file_writer(FLAGS.log_dir + '/valid')
+      writer = summary.create_file_writer(FLAGS.log_dir)
+      writer_train = summary.create_file_writer(FLAGS.log_dir)
+      writer_valid = summary.create_file_writer(FLAGS.log_dir)
+    else:
+      # can not be used in eager mode but much better then above TODO see what in TF2.0
+      summary = gezi.SummaryWriter(FLAGS.log_dir)
+
+  if is_eager:
     global_step = tf.train.get_or_create_global_step()
   else:
     global_step = melt.GlobalStep(0)
@@ -636,14 +650,33 @@ def train(model,
     if not os.path.exists(latest_path):
       latest_path = os.path.join(FLAGS.model_dir, 'latest.pyt')
     if os.path.exists(latest_path):
-      logging.info('loading torch model from', latest_path)
-      checkpoint = load_torch_model(model, latest_path)
+      # NOTICE must only load 0! if all load now will OOM...
+      if not use_horovod or hvd.rank() == 0:
+        logging.info('loading torch model from', latest_path)
+        checkpoint = load_torch_model(model, latest_path)
+        if FLAGS.torch_load_optimizer:
+          optimizer.load_state_dict(checkpoint['optimizer']) 
+
+      if use_horovod:  
+        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+        optimizer_ = optimizer if not hasattr(optimizer, 'optimizer') else optimizer.optimizer 
+        hvd.broadcast_optimizer_state(optimizer_, root_rank=0)
+   
       if not FLAGS.torch_finetune:
-        start_epoch = checkpoint['epoch']
-        step = checkpoint['step']
-        global_step.assign(step + 1)
-      if FLAGS.torch_load_optimizer:
-        optimizer.load_state_dict(checkpoint['optimizer'])
+        if not use_horovod or hvd.rank() == 0:
+          start_epoch = checkpoint['epoch']
+          step = checkpoint['step']
+        else:
+          start_epoch = 0
+          step = 0
+      
+        if use_horovod:
+          temp = np.array([start_epoch, step])
+          comm.Bcast(temp, root=0)
+          start_epoch, step = temp[0], temp[1]
+        
+        #global_step.assign(step + 1)  #why add 1 ?
+        global_step.assign(step)
 
     if not FLAGS.torch:
       # TODO by this way restart can not change learning rate..
@@ -792,8 +825,6 @@ def train(model,
     model.train()
 
   if use_horovod:
-    if FLAGS.torch:
-      hvd.broadcast_parameters(model.state_dict(), root_rank=0)
     # if using tf eager reading need to shink size 
     if not FLAGS.torch_only:
       # if use torch dataset, can get len directly for distributed train
@@ -810,6 +841,8 @@ def train(model,
   if not num_epochs:
     num_epochs = 1024 # not stop if not manu set num epochs
 
+  if FLAGS.torch:
+    model = model.to(device)
   #----------------------------------------main loop here
   for epoch in range(start_epoch, start_epoch + num_epochs):
     # FLAGS.torch only will not use eager, FLAGS.torch still use eager tf reading
@@ -818,7 +851,7 @@ def train(model,
         # if not set each epoch shuffle same seed..
         train_dataset.sampler.set_epoch(epoch)
 
-    for i, (x, y) in enumerate(train_dataset):
+    for i, (x, y) in tqdm(enumerate(train_dataset), total=num_steps_per_epoch, ascii=True):
       if FLAGS.torch:
         x, y = to_torch(x, y)
         if is_dynamic_opt:
@@ -874,6 +907,7 @@ def train(model,
         num_insts = 0
 
         if num_steps_per_epoch is None:
+          hours_per_epoch = None
           epoch_time_info = ''
         else:
           hours_per_epoch = num_steps_per_epoch / FLAGS.interval_steps * elapsed / 3600
@@ -904,46 +938,62 @@ def train(model,
                         # 'valid_loss:[%.4f]' % valid_loss_avg.result().numpy()
             logging.info2('epoch:%.2f/%d' % ((global_step.numpy() / num_steps_per_epoch), num_epochs), 
                         'step:%d' % global_step.numpy(), 
-                        'elapsed:[%.2f]' % elapsed,
-                        'batch_size:[%d]' % batch_size_,
-                        'gpus:[%d]' % num_gpus, 
-                        'batches/s:[%.2f]' % steps_per_second,
-                        'insts/s:[%d]' % instances_per_second,
+                        'elap:[%.2f]' % elapsed,
+                        'batch:[%d]' % batch_size_,
+                        #'gpus:[%d]' % num_gpus, 
+                        #'batches/s:[%.2f]' % steps_per_second,
+                        #'insts/s:[%d]' % instances_per_second,
                         '%s' % epoch_time_info,
                         'lr:[%.6f]' % learning_rate.numpy(),
-                        'train_loss:[%.4f]' % loss_avg.result().numpy(),
-                        'valid_loss:[%.4f]' % valid_loss
+                        'train:[%.4f]' % loss_avg.result().numpy(),
+                        'valid:[%.4f]' % valid_loss
                         )
             if global_step.numpy() % FLAGS.valid_interval_steps == 0:
-              with writer_valid.as_default(), summary.always_record_summaries():
-                summary.scalar('loss/valid', valid_loss)
-                writer_valid.flush()
+              if is_eager:
+                with writer_valid.as_default(), summary.always_record_summaries():
+                  summary.scalar('loss/valid', valid_loss)
+                  writer_valid.flush()
+              else:
+                summary.scalar('loss/valid', valid_loss, global_step.numpy())
+
         else:
           if not use_horovod or hvd.rank() == 0:
             #'train_loss:[%.4f]' % loss_avg.result().numpy()
             logging.info2('epoch:%.2f/%d' % ((epoch + i / num_steps_per_epoch), num_epochs), 
                         'step:%d' % global_step.numpy(), 
-                        'elapsed:[%.2f]' % elapsed,
-                        'batch_size:[%d]' % batch_size_,
-                        'gpus:[%d]' % num_gpus, 
-                        'batches/s:[%.2f]' % steps_per_second,
-                        'insts/s:[%d]' % instances_per_second,
+                        'elap:[%.2f]' % elapsed,
+                        'batch:[%d]' % batch_size_,
+                        # 'gpus:[%d]' % num_gpus, 
+                        # 'batches/s:[%.2f]' % steps_per_second,
+                        #'insts/s:[%d]' % instances_per_second,
                         '%s' % epoch_time_info,
                         'lr:[%.6f]' % learning_rate.numpy(),
-                        'train_loss:[%.4f]' % loss_avg.result().numpy()
+                        'train:[%.4f]' % loss_avg.result().numpy()
                         )      
 
         if not use_horovod or hvd.rank() == 0:
           if global_step.numpy() % FLAGS.valid_interval_steps == 0:
-            with writer_train.as_default(), summary.always_record_summaries():
-              summary.scalar('loss/train_avg', loss_avg.result().numpy())
-              summary.scalar('learning_rate', learning_rate.numpy())
-              summary.scalar('other/batch_size', batch_size_)
-              summary.scalar('other/epoch', melt.epoch())
-              summary.scalar('perf/steps_per_second', steps_per_second)
-              summary.scalar('perf/instances_per_second', instances_per_second)
-              writer_train.flush()
-
+            if is_eager:
+              with writer_train.as_default(), summary.always_record_summaries():
+                summary.scalar('loss/train_avg', loss_avg.result().numpy())
+                summary.scalar('learning_rate', learning_rate.numpy())
+                summary.scalar('other/batch_size', batch_size_)
+                summary.scalar('other/epoch', melt.epoch())
+                if hours_per_epoch:
+                  summary.scalar('perf/hours_per_epoch', hours_per_epoch)
+                summary.scalar('perf/steps_per_second', steps_per_second)
+                summary.scalar('perf/instances_per_second', instances_per_second)
+                writer_train.flush()
+            else:
+              summary.scalar('loss/train_avg', loss_avg.result().numpy(), global_step.numpy())
+              summary.scalar('learning_rate', learning_rate.numpy(), global_step.numpy())
+              summary.scalar('other/batch_size', batch_size_, global_step.numpy())
+              summary.scalar('other/epoch', melt.epoch(), global_step.numpy())
+              if hours_per_epoch:
+                summary.scalar('perf/hours_per_epoch', hours_per_epoch, global_step.numpy())
+              summary.scalar('perf/steps_per_second', steps_per_second, global_step.numpy())
+              summary.scalar('perf/instances_per_second', instances_per_second, global_step.numpy())
+  
       if valid_dataset and FLAGS.metric_eval_interval_steps and global_step.numpy() and global_step.numpy() % FLAGS.metric_eval_interval_steps == 0:
         if hasattr(model, eval):
           model.eval()
@@ -957,11 +1007,14 @@ def train(model,
                                   num_valid_steps_per_epoch, num_valid_examples, sep=sep)
         if not use_horovod or hvd.rank() == 0:
           if vals and names:
-            with writer_valid.as_default(), summary.always_record_summaries():
+            if is_eager:
+              with writer_valid.as_default(), summary.always_record_summaries():
+                for name, val in zip(names, vals):
+                  summary.scalar(f'step_eval/{name}', val)
+                writer_valid.flush()
+            else:
               for name, val in zip(names, vals):
-                summary.scalar(f'step_eval/{name}', val)
-              writer_valid.flush()
-      
+                summary.scalar(f'step_eval/{name}', val, global_step.numpy())              
         if FLAGS.torch:
           if not FLAGS.torch_lr:
             # control learning rate by tensorflow learning rate
@@ -1032,7 +1085,7 @@ def train(model,
           vals, names = evaluate_fn(model, valid_dataset, tf.train.latest_checkpoint(ckpt_dir), num_valid_steps_per_epoch)
         elif eval_fn:
           model_path = None if not write_valid else tf.train.latest_checkpoint(ckpt_dir)
-          print('---------metric evaluate step', global_step.numpy(), 'model_path:', model_path)
+          #print('---------metric evaluate step', global_step.numpy(), 'model_path:', model_path)
           names = valid_names if valid_names is not None else [infer_names[0]] + [x + '_y' for x in infer_names[1:]] + infer_names[1:] if infer_names else None
 
           vals, names = evaluate(model, valid_dataset, eval_fn, model_path, 
@@ -1045,19 +1098,19 @@ def train(model,
                           'step:%d' % global_step.numpy(),
                           'valid_metrics',
                           ['%s:%.5f' % (name, val) for name, val in zip(names, vals)])
-
-        if not use_horovod or hvd.rank() == 0:
-          with writer.as_default(), summary.always_record_summaries():
-            temp = global_step.value()
-            global_step.assign(int(global_step.numpy() / int(num_steps_per_epoch * FLAGS.valid_interval_epochs)))
-            if valid_dataset:
-              if hasattr(model, 'eval'):
-                model.eval()
+            if is_eager:
+              with writer.as_default(), summary.always_record_summaries():
+                temp = global_step.value()
+                global_step.assign(int(global_step.numpy() / int(num_steps_per_epoch * FLAGS.valid_interval_epochs)))
+                if vals and names:
+                  for name, val in zip(names, vals):
+                    summary.scalar(f'eval/{name}', val)
+                writer.flush()
+                global_step.assign(temp)
+            else:
               if vals and names:
                 for name, val in zip(names, vals):
-                  summary.scalar(f'eval/{name}', val)
-            writer.flush()
-            global_step.assign(temp)
+                  summary.scalar(f'eval/{name}', val, int(global_step.numpy() / int(num_steps_per_epoch * FLAGS.valid_interval_epochs)))
 
       if test_dataset and global_step.numpy() % int(num_steps_per_epoch * FLAGS.inference_interval_epochs) == 0:
         if hasattr(model, 'eval'):
@@ -1069,7 +1122,7 @@ def train(model,
         else:
           inference_fn(model, test_dataset, tf.train.latest_checkpoint(ckpt_dir), num_test_steps_per_epoch)
 
-      if num_epochs and (global_step.numpy() % num_steps_per_epoch) == 0 and int(global_step.numpy() / num_steps_per_epoch) >= num_epochs:
+      if num_epochs and num_steps_per_epoch and int(global_step.numpy() / num_steps_per_epoch) >= num_epochs:
         logging.info(f'Finshed training of {num_epochs} epochs')
         exit(0)
 

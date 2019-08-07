@@ -35,13 +35,13 @@ class SummaryWriter(object):
         """Create a summary writer logging to log_dir."""
         self.writer = tf.summary.FileWriter(log_dir)
 
-    def scalar_summary(self, tag, value, step):
+    def scalar(self, tag, value, step):
         """Log a scalar variable."""
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
         self.writer.add_summary(summary, step)
         self.writer.flush() 
 
-    def image_summary(self, tag, images, step, texts=None, bytes_input=False):
+    def image(self, tag, images, step, texts=None, bytes_input=False):
         """Log a list of images."""
 
         if not isinstance(images, (list, tuple)):
@@ -85,7 +85,7 @@ class SummaryWriter(object):
         self.writer.add_summary(summary, step)
         self.writer.flush() 
         
-    def histo_summary(self, tag, values, step, bins=1000):
+    def history(self, tag, values, step, bins=1000):
         """Log a histogram of the tensor of values."""
 
         # Create a histogram using numpy

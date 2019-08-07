@@ -19,12 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import debug as tf_debug
-import tensorflow.contrib.slim as slim
-
-from tqdm import tqdm
-import numpy as np
-
 __pacage__ = None 
 
 import sys 
@@ -33,6 +27,12 @@ import inspect
 
 import gezi
 import melt  
+
+from tensorflow.python import debug as tf_debug
+import tensorflow.contrib.slim as slim
+
+from tqdm import tqdm
+import numpy as np
 
 #or from melt.utils import logging
 import melt.utils.logging as logging
@@ -154,7 +154,6 @@ flags.DEFINE_integer('log_level', 0, '')
 flags.DEFINE_boolean('no_log', False, '')
 #flags.DEFINE_string('mode', 'train', 'or predict')
 flags.DEFINE_boolean('freeze_graph_collections', True, '')
-flags.DEFINE_integer('random_seed', None, '')
 
 flags.DEFINE_boolean('use_tower_loss', True, '')
 
@@ -316,16 +315,19 @@ def init():
 
   if FLAGS.use_horovod:
     mpi4py.rc.initialize = False
-    if not FLAGS.torch:
+    if not FLAGS.torch: 
       import horovod.tensorflow as hvd 
       hvd.init()
+      logging.set_hvd(hvd)
     else:
       import torch
       import horovod.torch as hvd
       hvd.init()
+      logging.set_hvd(hvd)
       torch.cuda.set_device(hvd.local_rank())
     assert hvd.mpi_threads_supported()
     assert hvd.size() == comm.Get_size()
+    logging.info('In Horvod mode using %d gpus' % hvd.size())
       
     if FLAGS.horovod_scale:
       FLAGS.learning_rate = FLAGS.learning_rate * hvd.size()
@@ -408,16 +410,39 @@ def init():
   # TODO torch mode should use tf eager mode reading but since some bug for gpu oom.. now just use graph mode
   if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ or FLAGS.torch:
   #if FLAGS.eager or 'EAGER' in os.environ and int(os.environ['EAGER']) == 1 or 'SHOW' in os.environ:
-    logging.info('-------------RUN IN EAGER MODE!')
+    # if torch and horovod can not use eager mode will conflict with torch.cuda.set_device, each process will use all gpus then 
     if not FLAGS.torch_only:
+      logging.info('-------------RUN IN EAGER MODE!')
       if FLAGS.torch:
         # by default tf will use all... and also set 0. not ok so set really small
         #opts = tf.GPUOptions(per_process_gpu_memory_fraction=1e-5)
         #conf = tf.ConfigProto(gpu_options=opts)
         config = tf.ConfigProto(device_count={'GPU': 0})
+        # config.use_per_session_threads = False
+        # config.allow_soft_placement = False
+        # config.gpu_options.per_process_gpu_memory_fraction = 0.0
+        # config.gpu_options.allow_growth = True
+        # config.graph_options.enable_recv_scheduling = False
+        # config.graph_options.timeline_step = 0
+        # config.rpc_options.use_rpc_for_inprocess_master = False
+        # config.gpu_options.visible_device_list = str(hvd.local_rank())
         tf.enable_eager_execution(config=config)
       else:
         tf.enable_eager_execution()
+
+  is_eager = tf.executing_eagerly()
+
+  if not FLAGS.torch:
+    if not is_eager:
+      logging.info('Tf dataset and Tf model train in Graph mode, support Horovod')
+    else:
+      logging.info('Tf dataset and Tf model train in Eager mode, not support Horovod now')
+  else:
+    if not FLAGS.torch_only:
+      logging.info('Tf dataset and Torch model train in Eager mode, not support Horovod now')
+    else:
+      logging.info('Torch dataset and Torch model train, support Horovod')
+
 
   if 'BIG' in os.environ and int(os.environ['BIG']) == 1:
     if FLAGS.big_batch_size is not None:
@@ -429,12 +454,12 @@ def init():
 
   # but seems not work ... still different result different run TODO FIXME
   # looks a bit fixed but not exactly..
-  if FLAGS.random_seed or 'SEED' in os.environ:
-    if not FLAGS.random_seed:
-      FLAGS.random_seed = int(os.environ['SEED'])
-    tf.set_random_seed(FLAGS.random_seed)
+  if FLAGS.seed or 'SEED' in os.environ:
+    if not FLAGS.seed:
+      FLAGS.seed = int(os.environ['SEED'])
+    tf.set_seed(FLAGS.seed)
 
-  logging.info('seed', FLAGS.random_seed)
+  logging.info('seed', FLAGS.seed)
 
   if 'VLOG' in os.environ:
     FLAGS.log_level = int(os.environ['VLOG'])
@@ -597,7 +622,7 @@ def init():
       FLAGS.learning_rate_decay_factor = 0.5
 
   # TODO check if can all use tfe.Variable ?
-  if not tf.executing_eagerly() and not FLAGS.torch_only:
+  if not is_eager and not FLAGS.torch_only:
     learning_rate_weight = tf.get_variable('learning_rate_weight', initializer=tf.ones(shape=(), dtype=tf.float32), trainable=False)
     tf.add_to_collection('learning_rate_weight', learning_rate_weight)
     if FLAGS.num_learning_rate_weights > 0:
@@ -605,10 +630,10 @@ def init():
       tf.add_to_collection('learning_rate_weights', learning_rate_weights)
   else:
     # will cause torch each process occupy all gpus...   TODO tf torch conflict!
-    if not FLAGS.torch:
+    if is_eager:
       learning_rate_weight = tfe.Variable(1., name='learning_rate_weight', trainable=False)
       #tf.add_to_collection('learning_rate_weight', learning_rate_weight)
-      #melt.add_global('learning_rate_weight', learning_rate_weight)
+      melt.add_global('learning_rate_weight', learning_rate_weight)
       if FLAGS.num_learning_rate_weights > 0:
         learning_rate_weights = tfe.Variable(tf.ones(shape=(FLAGS.num_learning_rate_weights), dtype=tf.float32), name='learning_rate_weights', trainable=False)
         #tf.add_to_collection('learning_rate_weights', learning_rate_weights)
@@ -1356,7 +1381,7 @@ def train(model,
   
   logging.info('valid_inputs', valid_inputs)
   num_valid_examples = None
-  if FLAGS.valid_input:
+  if FLAGS.valid_input and valid_dataset:
     num_valid_examples = valid_dataset.num_examples_per_epoch('valid')
     num_valid_steps_per_epoch = -(-num_valid_examples // valid_batch_size) if num_valid_examples else None    
   else:

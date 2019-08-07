@@ -44,26 +44,39 @@ log = _logger.log
 
 #info2 = _logger2.info 
 
+hvd = None
+
+def set_hvd(hvd_):
+  global hvd 
+  hvd = hvd_
+
 def info(*args):
-  _logger.info(' '.join("{}".format(a) for a in args))
+  if not hvd or hvd.rank() == 0:
+    _logger.info(' '.join("{}".format(a) for a in args))
 
 def info2(*args):
-  _logger2.info(' '.join("{}".format(a) for a in args))
+  if not hvd or hvd.rank() == 0:
+    _logger2.info(' '.join("{}".format(a) for a in args))
 
 def fatal(*args):
-  _logger.fatal(' '.join("{}".format(a) for a in args))
+  if not hvd or hvd.rank() == 0:
+    _logger.fatal(' '.join("{}".format(a) for a in args))
 
 def error(*args):
-  _logger.error(' '.join("{}".format(a) for a in args))
+  if not hvd or hvd.rank() == 0:
+    _logger.error(' '.join("{}".format(a) for a in args))
 
 def debug(*args):
-  _logger.debug(' '.join("{}".format(a) for a in args))
+  if not hvd or hvd.rank() == 0:
+    _logger.debug(' '.join("{}".format(a) for a in args))
 
 def warn(*args):
-  _logger.warn(' '.join("{}".format(a) for a in args))
+  if not hvd or hvd.rank() == 0:
+    _logger.warn(' '.join("{}".format(a) for a in args))
 
 def warning(*args):
-  _logger.warning('WARNING: %s' % (' '.join("{}".format(a) for a in args)))
+  if not hvd or hvd.rank() == 0:
+    _logger.warning('WARNING: %s' % (' '.join("{}".format(a) for a in args)))
 
 from datetime import timedelta
 import time
